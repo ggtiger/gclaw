@@ -1,0 +1,18 @@
+# BMAD Method - Workflow Status
+# Project: GClaw (web-app, Level 2)
+# Generated: 2026-04-02
+
+phase_1_analysis:
+  product_brief: "docs/product-brief-gclaw.md"
+  brainstorm: "optional"
+  research: "optional"
+
+phase_2_planning:
+  prd: "required"
+  tech_spec: "optional"
+
+phase_3_solutioning:
+  architecture: "required"
+
+phase_4_implementation:
+  sprint_planning: "required"

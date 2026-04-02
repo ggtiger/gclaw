@@ -37,3 +37,10 @@ next-env.d.ts
 
 # runtime data
 /data/
+
+# tauri
+/src-tauri/target/
+/src-tauri/server/
+/src-tauri/icons/*.icns
+/src-tauri/icons/*.ico
+/src-tauri/icons/*.png

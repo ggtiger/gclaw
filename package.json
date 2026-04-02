@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3100",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "node scripts/bundle-sidecar.js && tauri build",
+    "tauri:bundle": "node scripts/bundle-sidecar.js"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.1.76",
@@ -19,6 +22,8 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

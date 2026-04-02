@@ -67,7 +67,9 @@ export function findChannelByWebhookKey(
   type: ChannelType,
   key: string
 ): { projectId: string; channel: ChannelConfig } | null {
-  const DATA_DIR = path.join(process.cwd(), 'data')
+  const DATA_DIR = process.env.GCLAW_DATA_DIR
+    ? path.join(process.env.GCLAW_DATA_DIR, 'data')
+    : path.join(process.cwd(), 'data')
   const PROJECTS_DIR = path.join(DATA_DIR, 'projects')
 
   if (!fs.existsSync(PROJECTS_DIR)) return null

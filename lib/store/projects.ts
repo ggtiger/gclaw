@@ -3,7 +3,9 @@ import path from 'path'
 import { randomUUID } from 'crypto'
 import type { ProjectInfo } from '@/types/skills'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
+const DATA_DIR = process.env.GCLAW_DATA_DIR
+  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
+  : path.join(process.cwd(), 'data')
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json')
 const PROJECTS_DIR = path.join(DATA_DIR, 'projects')
 

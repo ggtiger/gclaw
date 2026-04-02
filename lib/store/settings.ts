@@ -10,7 +10,9 @@ import {
 } from '@/types/skills'
 import { getProjectDir } from './projects'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
+const DATA_DIR = process.env.GCLAW_DATA_DIR
+  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
+  : path.join(process.cwd(), 'data')
 const GLOBAL_FILE = path.join(DATA_DIR, 'global.json')
 
 function ensureDataDir() {

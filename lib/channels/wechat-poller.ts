@@ -19,7 +19,10 @@ import { handleChannelMessage } from './channel-service'
 import type { ChannelConfig } from '@/types/channels'
 
 /** syncBuf 持久化目录 */
-const DATA_DIR = path.join(process.cwd(), 'data', 'wechat')
+const DATA_ROOT = process.env.GCLAW_DATA_DIR
+  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
+  : path.join(process.cwd(), 'data')
+const DATA_DIR = path.join(DATA_ROOT, 'wechat')
 const SYNC_BUF_FILE = path.join(DATA_DIR, '_sync_buf.json')
 
 /** 连续失败 backoff */

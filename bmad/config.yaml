@@ -1,0 +1,13 @@
+# BMAD Method - Project Configuration
+# Generated: 2026-04-02
+
+project_name: "GClaw"
+project_type: "web-app"
+project_level: 2
+output_folder: "docs"
+communication_language: "Chinese"
+
+# Level 2 project requirements
+# PRD: required
+# Tech Spec: optional
+# Architecture: required
