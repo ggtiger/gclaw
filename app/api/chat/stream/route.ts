@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server'
 import { executeChat } from '@/lib/claude/process-manager'
+import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { addMessage } from '@/lib/store/messages'
-import type { ChatMessage } from '@/types/chat'
+import type { ChatMessage, PermissionRequest } from '@/types/chat'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { message } = body
+  const { message, projectId = '' } = body
 
   if (!message || typeof message !== 'string') {
     return new Response(JSON.stringify({ error: 'message is required' }), {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     messageType: 'text',
     createdAt: new Date().toISOString(),
   }
-  addMessage(userMsg)
+  addMessage(projectId, userMsg)
 
   // 创建 SSE 流
   const encoder = new TextEncoder()
@@ -32,15 +33,37 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      // 权限请求回调：直接通过 SSE 推送到前端
+      const onPermissionRequest = (req: PermissionRequest) => {
+        const sseData = `event: permission_request\ndata: ${JSON.stringify(req)}\n\n`
+        controller.enqueue(encoder.encode(sseData))
+      }
+
+      // 订阅 GClaw 事件总线：将技能通知转发为 SSE
+      const unsubscribe = gclawEventBus.subscribe(projectId, (event) => {
+        try {
+          const sseData = `event: skill_notify\ndata: ${JSON.stringify({
+            type: event.type,
+            source: event.source,
+            message: event.data.message || '',
+            data: event.data,
+            timestamp: event.timestamp,
+          })}\n\n`
+          controller.enqueue(encoder.encode(sseData))
+        } catch {
+          // controller 可能已关闭
+        }
+      })
+
       try {
-        for await (const event of executeChat(message)) {
+        for await (const event of executeChat(message, { projectId }, onPermissionRequest)) {
           // 累积完整内容
           if (event.event === 'delta' && typeof event.data.content === 'string') {
             fullContent += event.data.content
           }
 
-          // done 时持久化 AI 回复
-          if (event.event === 'done') {
+          // done 时持久化 AI 回复（仅当有文本内容时）
+          if (event.event === 'done' && fullContent.trim()) {
             const assistantMsg: ChatMessage = {
               id: `msg_${Date.now()}_assistant`,
               role: 'assistant',
@@ -57,7 +80,7 @@ export async function POST(request: NextRequest) {
                   }
                 : undefined,
             }
-            addMessage(assistantMsg)
+            addMessage(projectId, assistantMsg)
           }
 
           const sseData = `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`
@@ -69,6 +92,7 @@ export async function POST(request: NextRequest) {
         const endData = `event: end\ndata: {}\n\n`
         controller.enqueue(encoder.encode(endData))
       } finally {
+        unsubscribe()
         controller.close()
       }
     },

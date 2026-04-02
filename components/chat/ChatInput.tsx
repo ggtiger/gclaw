@@ -8,9 +8,10 @@ interface ChatInputProps {
   onAbort: () => void
   sending: boolean
   disabled?: boolean
+  glass?: boolean
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, glass }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -54,19 +55,19 @@ export function ChatInput({ onSend, onAbort, sending, disabled }: ChatInputProps
   )
 
   return (
-    <div className="border-t px-4 py-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+    <div className={`px-4 py-3 ${glass ? 'glass-heavy' : ''}`} style={glass ? {} : { backgroundColor: 'var(--color-surface)' }}>
       <div
-        className="flex items-end gap-2 rounded-xl border px-3 py-2 transition-colors focus-within:border-[var(--color-primary)]"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }}
+        className={`flex items-end gap-2 rounded-xl border px-3 py-2 transition-all focus-within:border-[var(--color-primary)] focus-within:shadow-sm ${glass ? 'glass-surface' : ''}`}
+        style={glass ? {} : { borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }}
       >
         {/* 附件按钮 (预留) */}
         <button
-          className="p-1.5 rounded-lg transition-colors cursor-pointer self-end mb-0.5"
+          className="p-1.5 rounded-lg transition-colors cursor-pointer self-end mb-0.5 hover:bg-[var(--color-bg-secondary)]"
           style={{ color: 'var(--color-text-muted)' }}
           title="附加文件"
           type="button"
         >
-          <Paperclip size={18} />
+          <Paperclip size={16} />
         </button>
 
         {/* 输入框 */}
@@ -78,7 +79,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled }: ChatInputProps
           placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
           rows={1}
           disabled={disabled}
-          className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+          className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-[var(--color-text-muted)] leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
         />
 
@@ -86,18 +87,18 @@ export function ChatInput({ onSend, onAbort, sending, disabled }: ChatInputProps
         {sending ? (
           <button
             onClick={onAbort}
-            className="p-1.5 rounded-lg transition-colors cursor-pointer self-end mb-0.5"
+            className="p-1.5 rounded-lg transition-all cursor-pointer self-end mb-0.5 hover:opacity-80"
             style={{ backgroundColor: 'var(--color-error)', color: 'white' }}
             title="停止生成"
             type="button"
           >
-            <Square size={18} />
+            <Square size={16} />
           </button>
         ) : (
           <button
             onClick={handleSubmit}
             disabled={!input.trim() || disabled}
-            className="p-1.5 rounded-lg transition-colors cursor-pointer self-end mb-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-lg transition-all cursor-pointer self-end mb-0.5 disabled:opacity-30 disabled:cursor-not-allowed"
             style={{
               backgroundColor: input.trim() ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
               color: input.trim() ? 'white' : 'var(--color-text-muted)',
@@ -105,12 +106,9 @@ export function ChatInput({ onSend, onAbort, sending, disabled }: ChatInputProps
             title="发送消息"
             type="button"
           >
-            <Send size={18} />
+            <Send size={16} />
           </button>
         )}
-      </div>
-      <div className="text-xs text-center mt-2" style={{ color: 'var(--color-text-muted)' }}>
-        GClaw &middot; 基于 Claude Code SDK
       </div>
     </div>
   )

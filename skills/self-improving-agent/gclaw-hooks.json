@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "description": "工具执行失败时提醒记录错误到 .learnings/ERRORS.md",
+        "filter": { "tools": ["Bash", "Write", "Edit", "MultiEdit"] },
+        "action": "notify",
+        "message": "[self-improvement] 工具执行失败，建议记录到 .learnings/ERRORS.md",
+        "agentMessage": "刚才的工具执行失败了。请按照 self-improving-agent 技能的经验格式，将此错误记录到 .learnings/ERRORS.md（使用 ERR-YYYYMMDD-XXX 格式的条目 ID，包含摘要、错误信息、上下文和建议修复）。记录完成后继续原来的任务。"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "description": "Bash 命令非零退出码时提醒记录错误",
+        "filter": {
+          "tools": ["Bash"],
+          "responsePattern": "Exit code [1-9]|exit status [1-9]|command not found|Permission denied|No such file"
+        },
+        "action": "notify",
+        "message": "[self-improvement] Bash 命令执行失败（非零退出码），建议记录到 .learnings/ERRORS.md",
+        "agentMessage": "刚才的 Bash 命令返回了非零退出码，表示执行失败。请按照 self-improving-agent 技能的经验格式，将此错误记录到 .learnings/ERRORS.md（使用 ERR-YYYYMMDD-XXX 格式的条目 ID，包含摘要、错误信息、上下文和建议修复）。记录完成后继续原来的任务。"
+      },
+      {
+        "description": "Bash 命令执行后记录日志（用于错误模式分析）",
+        "filter": { "tools": ["Bash"] },
+        "action": "log",
+        "logFile": ".learnings/hook-events.log"
+      }
+    ],
+    "SessionStart": [
+      {
+        "description": "会话开始时提醒回顾已有经验",
+        "action": "notify",
+        "message": "[self-improvement] 新会话开始，建议先回顾 .learnings/ 中的相关经验",
+        "agentMessage": "新会话已开始。如果即将处理重大任务，请先用 grep 或 cat 查看 .learnings/ 目录中的 pending 条目，了解历史经验后再开始工作。"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "description": "会话结束时提醒评估未记录的经验",
+        "action": "notify",
+        "message": "[self-improvement] 会话即将结束，请检查是否有未记录的经验",
+        "agentMessage": "会话即将结束。请回顾本次会话中是否有值得记录的经验、错误或发现，如有请记录到 .learnings/ 对应文件中。"
+      }
+    ]
+  }
+}

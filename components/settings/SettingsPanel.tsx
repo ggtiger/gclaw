@@ -1,10 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon } from 'lucide-react'
 import type { AppSettings } from '@/types/skills'
 
-export function SettingsPanel() {
+interface SettingsPanelProps {
+  projectId: string
+  backgroundImage?: string
+  onBackgroundChange?: (url: string) => void
+}
+
+export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }: SettingsPanelProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -14,7 +20,7 @@ export function SettingsPanel() {
   const fetchSettings = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/settings')
+      const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
       const data = await res.json()
       setSettings(data)
     } catch (err) {
@@ -22,7 +28,7 @@ export function SettingsPanel() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     fetchSettings()
@@ -38,7 +44,7 @@ export function SettingsPanel() {
     if (!settings || !dirty) return
     setSaving(true)
     try {
-      await fetch('/api/settings', {
+      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
@@ -181,6 +187,30 @@ export function SettingsPanel() {
         />
       </div>
 
+      {/* System Prompt (Soul) */}
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+          系统提示词 (Soul)
+        </label>
+        <textarea
+          value={settings.systemPrompt}
+          onChange={e => updateField('systemPrompt', e.target.value)}
+          placeholder="每次会话自动注入的持久化指令，例如角色设定、行为规范、项目上下文等"
+          rows={4}
+          className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors resize-y focus:border-[var(--color-primary)]"
+          style={{
+            borderColor: 'var(--color-border)',
+            backgroundColor: 'var(--color-bg)',
+            color: 'var(--color-text)',
+            minHeight: '80px',
+            maxHeight: '200px',
+          }}
+        />
+        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+          写入项目 CLAUDE.md，SDK 每次会话自动加载
+        </div>
+      </div>
+
       {/* Skip Permissions */}
       <div className="flex items-center justify-between py-2">
         <div>
@@ -227,6 +257,65 @@ export function SettingsPanel() {
         <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
           留空则每次新建会话
         </div>
+      </div>
+
+      {/* 背景图片 */}
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+          <div className="flex items-center gap-1.5">
+            <ImageIcon size={13} />
+            自定义背景
+          </div>
+        </label>
+        {backgroundImage ? (
+          <div className="space-y-2">
+            <div className="relative rounded-lg overflow-hidden h-20 border" style={{ borderColor: 'var(--color-border)' }}>
+              <img
+                src={backgroundImage}
+                alt="背景预览"
+                className="w-full h-full object-cover"
+              />
+              <button
+                onClick={() => onBackgroundChange?.('')}
+                className="absolute top-1 right-1 p-1 rounded-full cursor-pointer"
+                style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: 'white' }}
+                title="移除背景"
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={backgroundImage}
+              onChange={e => onBackgroundChange?.(e.target.value)}
+              placeholder="输入图片 URL"
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'var(--color-bg)',
+                color: 'var(--color-text)',
+              }}
+            />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <input
+              type="text"
+              value=""
+              onChange={e => onBackgroundChange?.(e.target.value)}
+              placeholder="输入图片 URL 启用毛玻璃效果"
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'var(--color-bg)',
+                color: 'var(--color-text)',
+              }}
+            />
+            <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              设置背景图后界面将启用毛玻璃效果
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 保存按钮 */}

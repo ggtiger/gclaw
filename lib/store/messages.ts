@@ -1,22 +1,24 @@
 import fs from 'fs'
 import path from 'path'
 import type { ChatMessage } from '@/types/chat'
+import { getProjectDir } from './projects'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json')
 const MAX_MESSAGES = 500
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true })
-  }
+function getMessagesFile(projectId: string): string {
+  return path.join(getProjectDir(projectId), 'messages.json')
 }
 
-function readMessages(): ChatMessage[] {
-  ensureDataDir()
+function ensureProjectDir(projectId: string) {
+  const dir = getProjectDir(projectId)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+}
+
+function readMessages(projectId: string): ChatMessage[] {
+  const file = getMessagesFile(projectId)
   try {
-    if (!fs.existsSync(MESSAGES_FILE)) return []
-    const raw = fs.readFileSync(MESSAGES_FILE, 'utf-8')
+    if (!fs.existsSync(file)) return []
+    const raw = fs.readFileSync(file, 'utf-8')
     const data = JSON.parse(raw)
     return Array.isArray(data.messages) ? data.messages : []
   } catch {
@@ -24,13 +26,13 @@ function readMessages(): ChatMessage[] {
   }
 }
 
-function writeMessages(messages: ChatMessage[]) {
-  ensureDataDir()
-  fs.writeFileSync(MESSAGES_FILE, JSON.stringify({ messages }, null, 2), 'utf-8')
+function writeMessages(projectId: string, messages: ChatMessage[]) {
+  ensureProjectDir(projectId)
+  fs.writeFileSync(getMessagesFile(projectId), JSON.stringify({ messages }, null, 2), 'utf-8')
 }
 
-export function getMessages(limit = 50, before?: string): { messages: ChatMessage[]; hasMore: boolean } {
-  const all = readMessages()
+export function getMessages(projectId: string, limit = 50, before?: string): { messages: ChatMessage[]; hasMore: boolean } {
+  const all = readMessages(projectId)
   let filtered = all
   if (before) {
     const idx = all.findIndex(m => m.id === before)
@@ -45,17 +47,17 @@ export function getMessages(limit = 50, before?: string): { messages: ChatMessag
   }
 }
 
-export function addMessage(msg: ChatMessage) {
-  const messages = readMessages()
+export function addMessage(projectId: string, msg: ChatMessage) {
+  const messages = readMessages(projectId)
   messages.push(msg)
   // 超过上限时截断
   if (messages.length > MAX_MESSAGES) {
-    writeMessages(messages.slice(messages.length - MAX_MESSAGES))
+    writeMessages(projectId, messages.slice(messages.length - MAX_MESSAGES))
   } else {
-    writeMessages(messages)
+    writeMessages(projectId, messages)
   }
 }
 
-export function clearMessages() {
-  writeMessages([])
+export function clearMessages(projectId: string) {
+  writeMessages(projectId, [])
 }

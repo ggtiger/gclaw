@@ -1,0 +1,6 @@
+{
+  "slug": "self-improving-agent",
+  "version": "2.0.0",
+  "platform": "gclaw",
+  "description": "持续改进：捕获错误、纠正和发现，形成经验积累"
+}

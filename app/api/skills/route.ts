@@ -4,9 +4,14 @@ import { getEnabledSkills, setEnabledSkills } from '@/lib/store/skills'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+function getProjectId(request: NextRequest): string {
+  return new URL(request.url).searchParams.get('projectId') || ''
+}
+
+export async function GET(request: NextRequest) {
+  const projectId = getProjectId(request)
   const available = scanAvailableSkills()
-  const enabled = getEnabledSkills()
+  const enabled = getEnabledSkills(projectId)
 
   // 合并 enabled 状态
   const merged = available.map(skill => ({
@@ -18,6 +23,7 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const projectId = getProjectId(request)
   const body = await request.json()
   const enabled = body.enabled || body.enabledSkills
 
@@ -25,6 +31,6 @@ export async function PUT(request: NextRequest) {
     return Response.json({ error: 'enabled must be an array' }, { status: 400 })
   }
 
-  setEnabledSkills(enabled)
+  setEnabledSkills(projectId, enabled)
   return Response.json({ success: true, enabled })
 }

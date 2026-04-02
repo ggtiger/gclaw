@@ -12,5 +12,9 @@ export type ParsedEvent =
   | { kind: 'thinking'; content: string }
   | { kind: 'tool_use'; toolUseId: string; toolName: string; input: Record<string, unknown> }
   | { kind: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+  | { kind: 'tool_progress'; toolUseId: string; toolName: string; elapsedSeconds: number }
+  | { kind: 'status'; status: 'compacting' | null }
+  | { kind: 'compact_boundary'; trigger: 'manual' | 'auto'; preTokens: number }
+  | { kind: 'hook_response'; hookName: string; hookEvent: string; stdout: string; stderr: string; exitCode?: number }
   | { kind: 'done'; sessionId: string | null; usage: { inputTokens: number; outputTokens: number; cachedTokens: number } | null; costUsd: number | null; summary: string }
   | { kind: 'error'; message: string }

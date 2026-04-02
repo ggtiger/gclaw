@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tencent-meeting-mcp": {
+      "baseUrl": "https://mcp.meeting.tencent.com/mcp/wemeet-open/v1",
+      "headers": {
+        "X-Tencent-Meeting-Token": "BTzwLTRdCBq77D9Dow5I37zaIV8zrqcAOY0F51GoK6lC6Eba",
+        "X-Skill-Version": "v1.0.6"
+      }
+    }
+  },
+  "imports": []
+}

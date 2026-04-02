@@ -1,6 +1,9 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ParsedEvent, ConvertContext } from '@/types/claude'
 
+// 过滤 SDK 工具调用轮次中的占位文本（如 "(no content)"）
+const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
+
 /**
  * 创建新的转换上下文 — 每次 executeChat 调用时初始化一个
  */
@@ -28,12 +31,55 @@ export function convertSDKMessage(
       // SDKSystemMessage 有 subtype: 'init' | 'compact_boundary' | 'status' | 'hook_response'
       if ('subtype' in msg && msg.subtype === 'init' && 'model' in msg) {
         ctx.lastModel = (msg as { model: string }).model
+        // 打印 SDK 加载的技能列表
+        if ('skills' in msg) {
+          console.log('[GClaw SDK] Loaded skills:', (msg as { skills: string[] }).skills)
+        }
         results.push({
           kind: 'init',
           sessionId: msg.session_id,
           model: ctx.lastModel,
         })
       }
+
+      // compact_boundary: 对话压缩边界
+      if ('subtype' in msg && msg.subtype === 'compact_boundary') {
+        const meta = (msg as { compact_metadata?: { trigger?: string; pre_tokens?: number } }).compact_metadata
+        results.push({
+          kind: 'compact_boundary',
+          trigger: (meta?.trigger as 'manual' | 'auto') || 'auto',
+          preTokens: meta?.pre_tokens || 0,
+        })
+      }
+
+      // status: 压缩进行中等状态变化
+      if ('subtype' in msg && msg.subtype === 'status') {
+        const status = (msg as { status?: string | null }).status
+        results.push({
+          kind: 'status',
+          status: status === 'compacting' ? 'compacting' : null,
+        })
+      }
+
+      // hook_response: hook 脚本执行结果
+      if ('subtype' in msg && msg.subtype === 'hook_response') {
+        const hookMsg = msg as {
+          hook_name?: string
+          hook_event?: string
+          stdout?: string
+          stderr?: string
+          exit_code?: number
+        }
+        results.push({
+          kind: 'hook_response',
+          hookName: hookMsg.hook_name || '',
+          hookEvent: hookMsg.hook_event || '',
+          stdout: hookMsg.stdout || '',
+          stderr: hookMsg.stderr || '',
+          exitCode: hookMsg.exit_code,
+        })
+      }
+
       break
     }
 
@@ -111,6 +157,8 @@ export function convertSDKMessage(
 
       for (const block of content) {
         if (block.type === 'text' && block.text) {
+          // 过滤 SDK 占位文本
+          if (NOISE_PATTERN.test(block.text)) continue
           // 去重：如果 stream_event 已经发送了部分/全部文本，只发送增量
           const newText = block.text.slice(ctx.streamedTextLength)
           // 重置流式追踪（为下一轮做准备）
@@ -121,16 +169,8 @@ export function convertSDKMessage(
         } else if (block.type === 'thinking' && block.thinking) {
           // thinking 不做去重，在 process-manager 中跳过即可
         } else if (block.type === 'tool_use' && block.id && block.name) {
-          // 去重：如果 stream_event 已发送过此 tool_use id 则跳过
-          // 但 stream_event 只发送了空 input，这里需要用完整 input 更新
-          if (ctx.sentToolUseIds.has(block.id)) {
-            // 已通过 stream_event 发送过 tool_use，但 input 可能不完整
-            // 发送一个带完整 input 的更新事件
-            // 实际上在 stream_event 中我们已发送了 tool_use（带空 input），
-            // 这里的完整 input 需要用另一种方式处理
-            // 简单起见：跳过（因为前端主要关心 tool_name 和 toolUseId）
-            continue
-          }
+          // stream_event 已发送过带空 input 的 tool_use，
+          // 这里用完整 input 再发一次，前端会更新对应的 tool 数据
           results.push({
             kind: 'tool_use',
             toolUseId: block.id,
@@ -221,8 +261,23 @@ export function convertSDKMessage(
       break
     }
 
-    // ── tool_progress (工具执行进度，忽略) ──────────
-    case 'tool_progress':
+    // ── tool_progress (工具执行进度) ──────────────
+    case 'tool_progress': {
+      const progressMsg = msg as {
+        tool_use_id?: string
+        tool_name?: string
+        elapsed_time_seconds?: number
+      }
+      if (progressMsg.tool_use_id && progressMsg.tool_name) {
+        results.push({
+          kind: 'tool_progress',
+          toolUseId: progressMsg.tool_use_id,
+          toolName: progressMsg.tool_name,
+          elapsedSeconds: progressMsg.elapsed_time_seconds || 0,
+        })
+      }
+      break
+    }
     // ── auth_status (认证状态，忽略) ────────────────
     case 'auth_status':
       break

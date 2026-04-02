@@ -1,9 +1,29 @@
 import fs from 'fs'
 import path from 'path'
 import type { SkillInfo } from '@/types/skills'
+import { getProjectDir } from '@/lib/store/projects'
 
 const SKILLS_DIR = path.join(process.cwd(), 'skills')
-const CLAUDE_SKILLS_DIR = path.join(process.cwd(), '.claude', 'skills')
+
+/**
+ * 清理目录中所有条目（symlink、文件、目录）
+ */
+function cleanDir(dir: string): void {
+  if (!fs.existsSync(dir)) return
+  for (const file of fs.readdirSync(dir)) {
+    const fullPath = path.join(dir, file)
+    try {
+      const stat = fs.lstatSync(fullPath)
+      if (stat.isSymbolicLink() || stat.isFile()) {
+        fs.unlinkSync(fullPath)
+      } else if (stat.isDirectory()) {
+        fs.rmSync(fullPath, { recursive: true, force: true })
+      }
+    } catch {
+      // 忽略
+    }
+  }
+}
 
 /**
  * 扫描 skills/ 目录，支持两种技能格式：
@@ -92,46 +112,80 @@ function parseSkillMeta(content: string, fallbackName: string): { displayName: s
 }
 
 /**
- * 根据启用的技能列表，同步 .claude/skills/ 目录
- * - 启用的技能：创建 symlink 到 skills/ 下的源文件
- * - 未启用的技能：删除对应的 symlink
- * SDK 通过 settingSources: ['project'] 自动读取 .claude/skills/
+ * 同步启用的技能 symlink 到项目的 .claude/skills/ 目录。
+ * 只在 data/projects/{id}/.claude/skills/ 下操作，不碰 cwd 或根目录。
+ *
+ * @param enabledSkillNames 启用的技能名称列表
+ * @param projectId 项目 ID
  */
-export function syncClaudeSkillsDir(enabledSkillNames: string[]): void {
-  // 确保 .claude/skills/ 存在
-  fs.mkdirSync(CLAUDE_SKILLS_DIR, { recursive: true })
+export function syncProjectSkillsDir(enabledSkillNames: string[], projectId: string): void {
+  const projectDir = getProjectDir(projectId)
+  const projectSkillsDir = path.join(projectDir, '.claude', 'skills')
+  fs.mkdirSync(projectSkillsDir, { recursive: true })
 
-  // 清理 .claude/skills/ 中所有已有的 symlink（只清理 symlink，不动非 symlink 文件）
-  const existing = fs.readdirSync(CLAUDE_SKILLS_DIR)
-  for (const file of existing) {
-    const fullPath = path.join(CLAUDE_SKILLS_DIR, file)
-    try {
-      const stat = fs.lstatSync(fullPath)
-      if (stat.isSymbolicLink()) {
-        fs.unlinkSync(fullPath)
-      }
-    } catch {
-      // 忽略
-    }
-  }
+  // 清理旧条目
+  cleanDir(projectSkillsDir)
 
   // 为启用的技能创建 symlink
   for (const name of enabledSkillNames) {
     try {
-      // 目录型技能：skills/xxx/SKILL.md -> .claude/skills/xxx.md
-      const dirSkillMd = path.join(SKILLS_DIR, name, 'SKILL.md')
+      // 目录型技能：skills/xxx/ -> data/projects/{id}/.claude/skills/xxx
+      const dirPath = path.join(SKILLS_DIR, name)
+      const dirSkillMd = path.join(dirPath, 'SKILL.md')
       if (fs.existsSync(dirSkillMd)) {
-        fs.symlinkSync(dirSkillMd, path.join(CLAUDE_SKILLS_DIR, `${name}.md`))
+        fs.symlinkSync(dirPath, path.join(projectSkillsDir, name))
         continue
       }
 
-      // 单文件技能：skills/xxx.md -> .claude/skills/xxx.md
+      // 单文件技能：skills/xxx.md -> data/projects/{id}/.claude/skills/xxx.md
       const mdPath = path.join(SKILLS_DIR, `${name}.md`)
       if (fs.existsSync(mdPath)) {
-        fs.symlinkSync(mdPath, path.join(CLAUDE_SKILLS_DIR, `${name}.md`))
+        fs.symlinkSync(mdPath, path.join(projectSkillsDir, `${name}.md`))
       }
     } catch (err) {
       console.error(`Failed to link skill ${name}:`, err)
     }
   }
+}
+
+/**
+ * 读取启用技能的 .env 文件，合并为环境变量对象
+ * 支持格式：KEY=value 或 KEY="value"
+ */
+export function loadSkillEnvVars(enabledSkillNames: string[]): Record<string, string> {
+  const env: Record<string, string> = {}
+
+  for (const name of enabledSkillNames) {
+    const envPath = path.join(SKILLS_DIR, name, '.env')
+    if (!fs.existsSync(envPath)) continue
+
+    try {
+      const content = fs.readFileSync(envPath, 'utf-8')
+      const loaded: string[] = []
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        const eqIdx = trimmed.indexOf('=')
+        if (eqIdx === -1) continue
+        const key = trimmed.slice(0, eqIdx).trim()
+        let value = trimmed.slice(eqIdx + 1).trim()
+        // 去掉引号
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1)
+        }
+        if (key) {
+          env[key] = value
+          loaded.push(key)
+        }
+      }
+      if (loaded.length > 0) {
+        console.log(`[GClaw] Loaded env from skill "${name}":`, loaded)
+      }
+    } catch (err) {
+      console.error(`Failed to load .env for skill ${name}:`, err)
+    }
+  }
+
+  return env
 }

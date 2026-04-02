@@ -7,12 +7,17 @@ type Theme = 'light' | 'dark' | 'system'
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>('system')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
+  const [backgroundImage, setBackgroundImageState] = useState<string>('')
 
   useEffect(() => {
     // 从 localStorage 读取
     const saved = localStorage.getItem('gclaw-theme') as Theme | null
     if (saved) {
       setThemeState(saved)
+    }
+    const savedBg = localStorage.getItem('gclaw-background-image')
+    if (savedBg) {
+      setBackgroundImageState(savedBg)
     }
   }, [])
 
@@ -50,5 +55,16 @@ export function useTheme() {
     localStorage.setItem('gclaw-theme', t)
   }, [])
 
-  return { theme, resolvedTheme, setTheme }
+  const setBackgroundImage = useCallback((url: string) => {
+    setBackgroundImageState(url)
+    if (url) {
+      localStorage.setItem('gclaw-background-image', url)
+    } else {
+      localStorage.removeItem('gclaw-background-image')
+    }
+  }, [])
+
+  const hasBackground = !!backgroundImage
+
+  return { theme, resolvedTheme, setTheme, backgroundImage, setBackgroundImage, hasBackground }
 }

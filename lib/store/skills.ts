@@ -1,20 +1,21 @@
 import fs from 'fs'
 import path from 'path'
+import { getProjectDir } from './projects'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-const SKILLS_FILE = path.join(DATA_DIR, 'enabled-skills.json')
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true })
-  }
+function getSkillsFile(projectId: string): string {
+  return path.join(getProjectDir(projectId), 'enabled-skills.json')
 }
 
-export function getEnabledSkills(): string[] {
-  ensureDataDir()
+function ensureProjectDir(projectId: string) {
+  const dir = getProjectDir(projectId)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+}
+
+export function getEnabledSkills(projectId: string): string[] {
+  const file = getSkillsFile(projectId)
   try {
-    if (!fs.existsSync(SKILLS_FILE)) return []
-    const raw = fs.readFileSync(SKILLS_FILE, 'utf-8')
+    if (!fs.existsSync(file)) return []
+    const raw = fs.readFileSync(file, 'utf-8')
     const data = JSON.parse(raw)
     return Array.isArray(data.enabled) ? data.enabled : []
   } catch {
@@ -22,7 +23,7 @@ export function getEnabledSkills(): string[] {
   }
 }
 
-export function setEnabledSkills(names: string[]) {
-  ensureDataDir()
-  fs.writeFileSync(SKILLS_FILE, JSON.stringify({ enabled: names }, null, 2), 'utf-8')
+export function setEnabledSkills(projectId: string, names: string[]) {
+  ensureProjectDir(projectId)
+  fs.writeFileSync(getSkillsFile(projectId), JSON.stringify({ enabled: names }, null, 2), 'utf-8')
 }

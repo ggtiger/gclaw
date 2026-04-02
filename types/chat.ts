@@ -16,6 +16,7 @@ export interface ToolCallItem {
   status: 'pending' | 'completed' | 'error'
   output?: string
   isError?: boolean
+  elapsedSeconds?: number
 }
 
 export interface ToolSummary {
@@ -37,12 +38,24 @@ export interface SessionInfo {
   cwd?: string
 }
 
+export interface PermissionRequest {
+  requestId: string
+  toolName: string
+  toolInput: Record<string, unknown>
+  description: string
+}
+
 export type SSEEventType =
   | 'start'
   | 'init'
   | 'delta'
+  | 'thinking'
   | 'tool_use'
   | 'tool_result'
+  | 'tool_progress'
+  | 'status'
+  | 'permission_request'
+  | 'skill_notify'
   | 'done'
   | 'error'
   | 'end'
