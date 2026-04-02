@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getSettings, updateSettings } from '@/lib/store/settings'
 import { maskApiKey } from '@/lib/crypto'
 import { addAuditLog } from '@/lib/store/audit-log'
+import { getAuthUser } from '@/lib/auth/helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,12 +26,13 @@ export async function PUT(request: NextRequest) {
     delete body.apiKey
   }
   // 审计：记录设置变更（脱敏后记录）
+  const user = getAuthUser(request)
   const changedKeys = Object.keys(body).filter(k => k !== 'apiKey')
   const auditDetails: Record<string, unknown> = { changedKeys }
   if (body.apiKey) {
     auditDetails.apiKeyUpdated = true
   }
-  addAuditLog('settings:update', 'system', auditDetails, projectId || undefined)
+  addAuditLog('settings:update', user?.username || 'system', auditDetails, projectId || undefined)
 
   const settings = updateSettings(projectId, body)
   // 返回脱敏后的设置

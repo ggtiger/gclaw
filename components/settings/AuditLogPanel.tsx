@@ -27,6 +27,11 @@ const ACTION_LABELS: Record<string, string> = {
   'channel:create': '创建渠道',
   'channel:delete': '删除渠道',
   'chat:abort': '中止对话',
+  'user:register': '注册用户',
+  'user:login': '用户登录',
+  'user:logout': '用户登出',
+  'user:role-update': '更新角色',
+  'user:disable': '禁用/启用用户',
 }
 
 export function AuditLogPanel() {

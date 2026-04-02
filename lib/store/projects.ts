@@ -26,6 +26,10 @@ export function getProjects(): ProjectInfo[] {
   }
 }
 
+export function getProjectsByOwner(userId: string): ProjectInfo[] {
+  return getProjects().filter(p => !p.ownerId || p.ownerId === userId)
+}
+
 export function saveProjects(list: ProjectInfo[]) {
   ensureDataDir()
   fs.writeFileSync(PROJECTS_FILE, JSON.stringify({ projects: list }, null, 2), 'utf-8')
@@ -35,11 +39,11 @@ export function getProjectDir(projectId: string): string {
   return path.join(PROJECTS_DIR, projectId)
 }
 
-export function createProject(name: string): ProjectInfo {
+export function createProject(name: string, ownerId?: string): ProjectInfo {
   ensureDataDir()
   const id = randomUUID().slice(0, 8)
   const now = new Date().toISOString()
-  const project: ProjectInfo = { id, name, createdAt: now, updatedAt: now }
+  const project: ProjectInfo = { id, name, ownerId, createdAt: now, updatedAt: now }
 
   fs.mkdirSync(path.join(PROJECTS_DIR, id), { recursive: true })
 

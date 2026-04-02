@@ -50,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export interface ProjectInfo {
   id: string
   name: string
+  ownerId?: string    // 项目所有者 userId
   createdAt: string
   updatedAt: string
 }

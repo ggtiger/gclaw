@@ -61,3 +61,65 @@ export function addMessage(projectId: string, msg: ChatMessage) {
 export function clearMessages(projectId: string) {
   writeMessages(projectId, [])
 }
+
+// ── 搜索 ──
+
+export interface SearchOptions {
+  keyword: string
+  role?: 'user' | 'assistant' | 'system'
+  timeRange?: 'today' | '7d' | '30d' | 'all'
+  limit?: number
+}
+
+export interface SearchResult {
+  id: string
+  role: string
+  content: string
+  createdAt: string
+  matchIndex: number   // 在原始消息中的位置
+}
+
+export function searchMessages(projectId: string, options: SearchOptions): SearchResult[] {
+  const all = readMessages(projectId)
+  const keyword = options.keyword.toLowerCase()
+  if (!keyword) return []
+
+  const now = Date.now()
+  const timeRangeMs: Record<string, number> = {
+    today: 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+    all: Infinity,
+  }
+  const rangeMs = timeRangeMs[options.timeRange || 'all'] ?? Infinity
+
+  const results: SearchResult[] = []
+
+  for (let i = 0; i < all.length; i++) {
+    const msg = all[i]
+
+    // 角色过滤
+    if (options.role && msg.role !== options.role) continue
+
+    // 时间范围过滤
+    if (rangeMs !== Infinity) {
+      const msgTime = new Date(msg.createdAt).getTime()
+      if (now - msgTime > rangeMs) continue
+    }
+
+    // 关键词匹配
+    if (msg.content.toLowerCase().includes(keyword)) {
+      results.push({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt,
+        matchIndex: i,
+      })
+    }
+
+    if (results.length >= (options.limit || 50)) break
+  }
+
+  return results
+}

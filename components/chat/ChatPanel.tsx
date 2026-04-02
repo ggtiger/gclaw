@@ -7,6 +7,7 @@ import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
+import { SearchBar } from './SearchBar'
 import type { ChatMessage, ToolSummary, PermissionRequest } from '@/types/chat'
 
 interface ChatPanelProps {
@@ -17,6 +18,7 @@ interface ChatPanelProps {
   sending: boolean
   permissionRequest: PermissionRequest | null
   statusText?: string | null
+  projectId: string
   onSend: (message: string) => void
   onAbort: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
@@ -63,10 +65,22 @@ function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, onSend, onAbort, onRespondPermission, glass }: ChatPanelProps) {
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onRespondPermission, glass }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
+
+  const handleJumpToMessage = (messageId: string) => {
+    const el = document.getElementById(`msg-${messageId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('ring-2')
+      el.style.setProperty('--tw-ring-color', 'var(--color-primary)')
+      setTimeout(() => {
+        el.classList.remove('ring-2')
+      }, 1500)
+    }
+  }
 
   // 自动滚动到底部
   useEffect(() => {
@@ -96,8 +110,11 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
           className="flex-1 overflow-y-auto"
         >
           <div className="max-w-3xl mx-auto">
+            <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
             {messages.map(msg => (
-              <MessageBubble key={msg.id} message={msg} glass={glass} />
+              <div key={msg.id} id={`msg-${msg.id}`} className="transition-all duration-300 rounded-lg">
+                <MessageBubble message={msg} glass={glass} />
+              </div>
             ))}
 
             {/* 压缩状态指示器 */}

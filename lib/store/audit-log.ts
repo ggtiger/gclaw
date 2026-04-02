@@ -28,8 +28,11 @@ export type AuditAction =
   | 'channel:delete'
   | 'chat:abort'
   | 'chat:clear'
+  | 'user:register'
   | 'user:login'
   | 'user:logout'
+  | 'user:role-update'
+  | 'user:disable'
 
 export interface AuditRecord {
   id: string
