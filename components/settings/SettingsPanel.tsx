@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield, Users, ShieldAlert } from 'lucide-react'
 import type { AppSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
+import { UsersPanel } from './UsersPanel'
+import { SecurityPanel } from './SecurityPanel'
 
 interface SettingsPanelProps {
   projectId: string
@@ -22,7 +24,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
   // 用户编辑时记录实际值，未编辑时保持掩码
   const [apiKeyEditing, setApiKeyEditing] = useState(false)
   const [apiKeyRawValue, setApiKeyRawValue] = useState('')
-  const [activeTab, setActiveTab] = useState<'settings' | 'audit'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'audit' | 'users' | 'security'>('settings')
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -112,11 +114,37 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
           <Shield size={14} />
           审计日志
         </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
+          style={{
+            borderBottomColor: activeTab === 'users' ? 'var(--color-primary)' : 'transparent',
+            color: activeTab === 'users' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          }}
+        >
+          <Users size={14} />
+          用户管理
+        </button>
+        <button
+          onClick={() => setActiveTab('security')}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
+          style={{
+            borderBottomColor: activeTab === 'security' ? 'var(--color-primary)' : 'transparent',
+            color: activeTab === 'security' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          }}
+        >
+          <ShieldAlert size={14} />
+          安全过滤
+        </button>
       </div>
 
       {/* Tab 内容 */}
-      {activeTab === 'audit' ? (
+      {activeTab === 'audit'? (
         <AuditLogPanel />
+      ) : activeTab === 'users'? (
+        <UsersPanel />
+      ) : activeTab === 'security'? (
+        <SecurityPanel />
       ) : (
     <div className="p-4 space-y-4">
       {/* API Key */}

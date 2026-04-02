@@ -2,6 +2,16 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Send, Square, Paperclip } from 'lucide-react'
+import { TemplateSelector } from './TemplateSelector'
+
+interface Template {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  firstMessage: string
+  isBuiltIn: boolean
+}
 
 interface ChatInputProps {
   onSend: (message: string) => void
@@ -9,9 +19,11 @@ interface ChatInputProps {
   sending: boolean
   disabled?: boolean
   glass?: boolean
+  projectId?: string
+  onTemplateSelect?: (template: Template) => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, glass }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, glass, projectId, onTemplateSelect }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -56,6 +68,12 @@ export function ChatInput({ onSend, onAbort, sending, disabled, glass }: ChatInp
 
   return (
     <div className={`px-4 py-3 ${glass ? 'glass-heavy' : ''}`} style={glass ? {} : { backgroundColor: 'var(--color-surface)' }}>
+      {/* 模板选择器 */}
+      {onTemplateSelect && (
+        <div className="mb-2">
+          <TemplateSelector projectId={projectId || ''} onSelect={onTemplateSelect} />
+        </div>
+      )}
       <div
         className={`flex items-end gap-2 rounded-xl border px-3 py-2 transition-all focus-within:border-[var(--color-primary)] focus-within:shadow-sm ${glass ? 'glass-surface' : ''}`}
         style={glass ? {} : { borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }}

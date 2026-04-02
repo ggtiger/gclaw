@@ -11,6 +11,13 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json')
 
 export type UserRole = 'admin' | 'user'
 
+export interface OAuthBinding {
+  provider: 'dingtalk' | 'feishu'
+  providerUserId: string
+  providerUsername?: string
+  boundAt: string
+}
+
 export interface UserInfo {
   id: string
   username: string
@@ -19,6 +26,7 @@ export interface UserInfo {
   createdAt: string
   lastLoginAt?: string
   disabled: boolean
+  oauthBindings?: OAuthBinding[]
 }
 
 interface UsersData {
@@ -177,4 +185,91 @@ export function toggleUserDisabled(userId: string, disabled: boolean): boolean {
  */
 export function getUserCount(): number {
   return readAll().length
+}
+
+// ── OAuth ──
+
+/**
+ * 通过 OAuth 提供商用户 ID 查找用户
+ */
+export function findUserByOAuth(provider: 'dingtalk' | 'feishu', providerUserId: string): UserInfo | null {
+  const users = readAll()
+  return users.find(u =>
+    u.oauthBindings?.some(b => b.provider === provider && b.providerUserId === providerUserId)
+  ) || null
+}
+
+/**
+ * OAuth 登录：查找或创建用户
+ */
+export function findOrCreateOAuthUser(
+  provider: 'dingtalk' | 'feishu',
+  providerUserId: string,
+  providerUsername?: string
+): { user: UserInfo; isNew: boolean } {
+  const users = readAll()
+
+  // 查找已有绑定
+  const existing = users.find(u =>
+    u.oauthBindings?.some(b => b.provider === provider && b.providerUserId === providerUserId)
+  )
+  if (existing) {
+    existing.lastLoginAt = new Date().toISOString()
+    writeAll(users)
+    return { user: existing, isNew: false }
+  }
+
+  // 创建新用户
+  const id = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const username = providerUsername || `${provider}_${providerUserId.slice(0, 8)}`
+  const role: UserRole = users.length === 0 ? 'admin' : 'user'
+
+  const user: UserInfo = {
+    id,
+    username,
+    passwordHash: '', // OAuth 用户无密码
+    role,
+    createdAt: new Date().toISOString(),
+    disabled: false,
+    oauthBindings: [{
+      provider,
+      providerUserId,
+      providerUsername,
+      boundAt: new Date().toISOString(),
+    }],
+  }
+
+  users.push(user)
+  writeAll(users)
+  return { user, isNew: true }
+}
+
+/**
+ * 绑定 OAuth 账号到已有用户
+ */
+export function bindOAuth(userId: string, provider: 'dingtalk' | 'feishu', providerUserId: string, providerUsername?: string): boolean {
+  const users = readAll()
+  const user = users.find(u => u.id === userId)
+  if (!user) return false
+
+  // 检查是否已绑定
+  if (user.oauthBindings?.some(b => b.provider === provider && b.providerUserId === providerUserId)) {
+    return true // 已绑定
+  }
+
+  // 检查该 OAuth 账号是否被其他用户绑定
+  if (users.some(u => u.id !== userId && u.oauthBindings?.some(b => b.provider === provider && b.providerUserId === providerUserId))) {
+    return false // 已被其他用户绑定
+  }
+
+  if (!user.oauthBindings) user.oauthBindings = []
+  user.oauthBindings.push({
+    provider,
+    providerUserId,
+    providerUsername,
+    boundAt: new Date().toISOString(),
+  })
+
+  writeAll(users)
+  return true
 }

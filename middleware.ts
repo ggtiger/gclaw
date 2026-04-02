@@ -5,6 +5,7 @@ import { verifyToken, TOKEN_COOKIE_NAME } from '@/lib/auth/jwt'
 const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/auth/register',
+  '/api/auth/oauth',
   '/login',
   '/register',
 ]

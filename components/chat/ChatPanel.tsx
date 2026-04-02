@@ -8,6 +8,7 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
+import { ExportButton } from './ExportButton'
 import type { ChatMessage, ToolSummary, PermissionRequest } from '@/types/chat'
 
 interface ChatPanelProps {
@@ -223,7 +224,12 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
           className="flex-1 overflow-y-auto"
         >
           <div className="max-w-3xl mx-auto">
-            <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
+              </div>
+              <ExportButton projectId={projectId} />
+            </div>
 
             {/* 筛选栏 */}
             <FilterBar

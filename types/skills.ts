@@ -7,16 +7,26 @@ export interface SkillInfo {
 }
 
 // ── 全局设置（跨项目共享）──
+export interface SecuritySettings {
+  sensitiveWords: string[]       // 敏感词列表（支持正则）
+  retentionDays: number          // 对话保留天数，0 = 永久
+}
+
 export interface GlobalSettings {
   apiKey: string
   apiBaseUrl: string
   theme: 'light' | 'dark' | 'system'
+  security: SecuritySettings
 }
 
 export const DEFAULT_GLOBAL: GlobalSettings = {
   apiKey: '',
   apiBaseUrl: '',
   theme: 'system',
+  security: {
+    sensitiveWords: [],
+    retentionDays: 0,
+  },
 }
 
 // ── 项目级设置（每个项目独立）──
