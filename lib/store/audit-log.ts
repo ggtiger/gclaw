@@ -33,6 +33,9 @@ export type AuditAction =
   | 'user:logout'
   | 'user:role-update'
   | 'user:disable'
+  | 'project:member-add'
+  | 'project:member-remove'
+  | 'project:member-role-update'
 
 export interface AuditRecord {
   id: string

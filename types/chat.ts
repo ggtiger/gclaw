@@ -64,3 +64,16 @@ export interface SSEEvent {
   event: SSEEventType
   data: Record<string, unknown>
 }
+
+// ── 对话分支 ──
+
+export interface BranchInfo {
+  id: string
+  name: string
+  forkFromMessageId: string   // 从哪条消息分叉
+  forkAtIndex: number          // 分叉点在原始消息列表中的索引
+  messages?: ChatMessage[]      // 分支消息列表
+  createdAt: string
+}
+
+export const MAX_BRANCHES = 5

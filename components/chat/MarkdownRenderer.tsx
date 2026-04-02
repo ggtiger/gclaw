@@ -3,6 +3,7 @@
 import { memo, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 
@@ -57,6 +58,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
     <div className={`markdown-body prose prose-sm max-w-none ${isStreaming ? 'streaming-cursor' : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeSanitize]}
         components={{
           code({ className, children, ...props }) {
             const isInline = !className

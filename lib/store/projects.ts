@@ -1,7 +1,9 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import type { ProjectInfo } from '@/types/skills'
+import type { ProjectInfo, ProjectMember, ProjectRole } from '@/types/skills'
+import { getAllUsers } from './users'
+import { addAuditLog } from './audit-log'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -30,6 +32,15 @@ export function getProjectsByOwner(userId: string): ProjectInfo[] {
   return getProjects().filter(p => !p.ownerId || p.ownerId === userId)
 }
 
+export function getProjectsForUser(userId: string, role?: 'admin'): ProjectInfo[] {
+  if (role === 'admin') return getProjects()
+  return getProjects().filter(p =>
+    !p.ownerId ||
+    p.ownerId === userId ||
+    p.members?.some(m => m.userId === userId)
+  )
+}
+
 export function saveProjects(list: ProjectInfo[]) {
   ensureDataDir()
   fs.writeFileSync(PROJECTS_FILE, JSON.stringify({ projects: list }, null, 2), 'utf-8')
@@ -39,11 +50,22 @@ export function getProjectDir(projectId: string): string {
   return path.join(PROJECTS_DIR, projectId)
 }
 
+export function getProjectById(id: string): ProjectInfo | undefined {
+  return getProjects().find(p => p.id === id)
+}
+
 export function createProject(name: string, ownerId?: string): ProjectInfo {
   ensureDataDir()
   const id = randomUUID().slice(0, 8)
   const now = new Date().toISOString()
-  const project: ProjectInfo = { id, name, ownerId, createdAt: now, updatedAt: now }
+  const members: ProjectMember[] = ownerId ? [{
+    userId: ownerId,
+    username: '',
+    role: 'owner',
+    joinedAt: now,
+  }] : []
+
+  const project: ProjectInfo = { id, name, ownerId, members, createdAt: now, updatedAt: now }
 
   fs.mkdirSync(path.join(PROJECTS_DIR, id), { recursive: true })
 
@@ -80,6 +102,128 @@ export function touchProject(id: string) {
     p.updatedAt = new Date().toISOString()
     saveProjects(list)
   }
+}
+
+// ── 成员管理 ──
+
+function resolveUsername(userId: string): string {
+  const users = getAllUsers()
+  return users.find(u => u.id === userId)?.username || userId.slice(0, 8)
+}
+
+export function addProjectMember(
+  projectId: string,
+  userId: string,
+  role: ProjectRole = 'editor',
+  actorName?: string
+): { success: boolean; error?: string } {
+  const list = getProjects()
+  const project = list.find(p => p.id === projectId)
+  if (!project) return { success: false, error: '项目不存在' }
+
+  if (!project.members) project.members = []
+
+  if (project.members.length >= 50) {
+    return { success: false, error: '项目成员数已达上限' }
+  }
+
+  if (project.members.some(m => m.userId === userId)) {
+    return { success: false, error: '用户已是项目成员' }
+  }
+
+  project.members.push({
+    userId,
+    username: resolveUsername(userId),
+    role,
+    joinedAt: new Date().toISOString(),
+  })
+  project.updatedAt = new Date().toISOString()
+  saveProjects(list)
+
+  addAuditLog('project:member-add', actorName || 'system', {
+    projectId,
+    targetUserId: userId,
+    role,
+  })
+
+  return { success: true }
+}
+
+export function removeProjectMember(
+  projectId: string,
+  userId: string,
+  actorName?: string
+): { success: boolean; error?: string } {
+  const list = getProjects()
+  const project = list.find(p => p.id === projectId)
+  if (!project) return { success: false, error: '项目不存在' }
+
+  if (!project.members) return { success: false, error: '用户不是项目成员' }
+
+  const member = project.members.find(m => m.userId === userId)
+  if (!member) return { success: false, error: '用户不是项目成员' }
+
+  if (member.role === 'owner') {
+    return { success: false, error: '不能移除项目所有者' }
+  }
+
+  project.members = project.members.filter(m => m.userId !== userId)
+  project.updatedAt = new Date().toISOString()
+  saveProjects(list)
+
+  addAuditLog('project:member-remove', actorName || 'system', {
+    projectId,
+    targetUserId: userId,
+  })
+
+  return { success: true }
+}
+
+export function updateProjectMemberRole(
+  projectId: string,
+  userId: string,
+  newRole: ProjectRole,
+  actorName?: string
+): { success: boolean; error?: string } {
+  const list = getProjects()
+  const project = list.find(p => p.id === projectId)
+  if (!project) return { success: false, error: '项目不存在' }
+
+  if (!project.members) return { success: false, error: '用户不是项目成员' }
+
+  const member = project.members.find(m => m.userId === userId)
+  if (!member) return { success: false, error: '用户不是项目成员' }
+
+  if (member.role === 'owner') {
+    return { success: false, error: '不能修改所有者角色' }
+  }
+
+  member.role = newRole
+  project.updatedAt = new Date().toISOString()
+  saveProjects(list)
+
+  addAuditLog('project:member-role-update', actorName || 'system', {
+    projectId,
+    targetUserId: userId,
+    newRole,
+  })
+
+  return { success: true }
+}
+
+export function getProjectMemberRole(
+  projectId: string,
+  userId: string
+): ProjectRole | null {
+  const project = getProjectById(projectId)
+  if (!project) return null
+
+  // owner
+  if (project.ownerId === userId) return 'owner'
+
+  // member
+  const member = project.members?.find(m => m.userId === userId)
+  return member?.role || null
 }
 
 /**

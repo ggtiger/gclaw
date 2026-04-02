@@ -47,10 +47,20 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 // ── 项目信息 ──
+export type ProjectRole = 'owner' | 'editor' | 'viewer'
+
+export interface ProjectMember {
+  userId: string
+  username: string
+  role: ProjectRole
+  joinedAt: string
+}
+
 export interface ProjectInfo {
   id: string
   name: string
-  ownerId?: string    // 项目所有者 userId
+  ownerId?: string
+  members?: ProjectMember[]
   createdAt: string
   updatedAt: string
 }
