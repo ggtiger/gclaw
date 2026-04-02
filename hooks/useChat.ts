@@ -591,6 +591,11 @@ export function useChat(projectId: string) {
     }
   }, [projectId])
 
+  // 更新单条消息（标签/收藏操作后）
+  const updateMessage = useCallback((updated: ChatMessage) => {
+    setMessages(prev => prev.map(m => m.id === updated.id ? updated : m))
+  }, [])
+
   return {
     messages,
     streamingContent,
@@ -606,5 +611,6 @@ export function useChat(projectId: string) {
     clearChat,
     loadHistory,
     respondPermission,
+    updateMessage,
   }
 }

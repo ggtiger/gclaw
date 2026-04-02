@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* highlight.js 代码高亮主题 */
+@import 'highlight.js/styles/github-dark.css' (prefers-color-scheme: dark);
+@import 'highlight.js/styles/github.css' (prefers-color-scheme: light);
+
 :root {
   --color-bg: #F8FAFC;
   --color-bg-secondary: #F1F5F9;

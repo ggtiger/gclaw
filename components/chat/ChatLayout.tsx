@@ -12,9 +12,11 @@ import { AgentsPanel } from '../agents/AgentsPanel'
 import { ChannelsPanel } from '../channels/ChannelsPanel'
 import { ProjectSidebar } from '../projects/ProjectSidebar'
 import { MobileNav, type Tab } from './MobileNav'
+import { CommandPalette } from './CommandPalette'
 import { useChat, useActiveProjects } from '@/hooks/useChat'
 import { useProject } from '@/hooks/useProject'
 import { useTheme } from '@/hooks/useTheme'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 
 type SidePanel = 'none' | 'skills' | 'agents' | 'channels' | 'settings'
 
@@ -32,6 +34,7 @@ export function ChatLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
   const [mobileTab, setMobileTab] = useState<Tab>('chat')
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   // 判断是否为移动端（<768px），移动端降级毛玻璃为纯色
   const [isMobile, setIsMobile] = useState(false)
@@ -63,6 +66,23 @@ export function ChatLayout() {
     const next = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light'
     setTheme(next)
   }
+
+  // 键盘快捷键
+  useKeyboardShortcuts({
+    onEscape: () => {
+      if (commandPaletteOpen) { setCommandPaletteOpen(false); return }
+      if (sidePanel !== 'none') { setSidePanel('none'); return }
+    },
+    onOpenCommandPalette: () => setCommandPaletteOpen(true),
+    onCloseCommandPalette: () => setCommandPaletteOpen(false),
+    onClearChat: chat.clearChat,
+    onCycleTheme: cycleTheme,
+    onToggleSidePanel: (panel) => toggleSidePanel(panel as SidePanel),
+    onFocusInput: () => {
+      const input = document.querySelector<HTMLTextAreaElement>('.chat-input textarea')
+      input?.focus()
+    },
+  })
 
   // 等待项目加载
   if (project.loading) {
@@ -247,6 +267,7 @@ export function ChatLayout() {
             onSend={chat.sendMessage}
             onAbort={chat.abortChat}
             onRespondPermission={chat.respondPermission}
+            onUpdateMessage={chat.updateMessage}
             glass={g}
           />
         </main>
@@ -343,6 +364,18 @@ export function ChatLayout() {
           </div>
         </div>
       )}
+
+      {/* 命令面板 */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onClearChat={chat.clearChat}
+        onCycleTheme={cycleTheme}
+        onSwitchProject={project.switchProject}
+        projects={project.projects}
+        currentProjectId={project.currentId}
+        onToggleSidePanel={(panel) => toggleSidePanel(panel as SidePanel)}
+      />
     </div>
   )
 }

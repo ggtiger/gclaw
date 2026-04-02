@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { useRef, useEffect, useState, useCallback } from 'react'
+import { Bot, Brain, ChevronDown, ChevronUp, RefreshCw, Star, Tag, X } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -23,6 +23,7 @@ interface ChatPanelProps {
   onAbort: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
   glass?: boolean
+  onUpdateMessage?: (message: ChatMessage) => void
 }
 
 function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
@@ -65,10 +66,108 @@ function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onRespondPermission, glass }: ChatPanelProps) {
+/** 筛选栏：按标签和收藏过滤消息 */
+function FilterBar({
+  tags,
+  activeTag,
+  activeStarred,
+  onTagChange,
+  onStarredChange,
+  onClear,
+}: {
+  tags: { name: string; count: number }[]
+  activeTag: string | null
+  activeStarred: boolean
+  onTagChange: (tag: string | null) => void
+  onStarredChange: (v: boolean) => void
+  onClear: () => void
+}) {
+  const hasFilter = activeTag !== null || activeStarred
+  if (!hasFilter && tags.length === 0) return null
+
+  return (
+    <div
+      className="px-3 py-1.5 flex items-center gap-1.5 flex-wrap animate-fade-in"
+      style={{ borderBottom: '1px solid var(--color-border)' }}
+    >
+      <span className="text-[11px] font-medium mr-1" style={{ color: 'var(--color-text-muted)' }}>
+        筛选:
+      </span>
+
+      {/* 收藏筛选 */}
+      <button
+        onClick={() => onStarredChange(!activeStarred)}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
+        style={{
+          backgroundColor: activeStarred
+            ? 'color-mix(in srgb, #FDE047 20%, transparent)'
+            : 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
+          color: activeStarred ? '#D97706' : 'var(--color-text-muted)',
+        }}
+      >
+        <Star size={10} fill={activeStarred ? 'currentColor' : 'none'} />
+        收藏
+      </button>
+
+      {/* 标签筛选 */}
+      {tags.map(t => (
+        <button
+          key={t.name}
+          onClick={() => onTagChange(activeTag === t.name ? null : t.name)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
+          style={{
+            backgroundColor: activeTag === t.name
+              ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)'
+              : 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
+            color: activeTag === t.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          }}
+        >
+          <Tag size={10} />
+          {t.name}
+          <span className="opacity-60">{t.count}</span>
+        </button>
+      ))}
+
+      {/* 清除筛选 */}
+      {hasFilter && (
+        <button
+          onClick={onClear}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-colors"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <X size={10} />
+          清除
+        </button>
+      )}
+    </div>
+  )
+}
+
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onRespondPermission, glass, onUpdateMessage }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
+
+  // 筛选状态
+  const [filterTag, setFilterTag] = useState<string | null>(null)
+  const [filterStarred, setFilterStarred] = useState(false)
+  const [allTags, setAllTags] = useState<{ name: string; count: number }[]>([])
+  const [tagNameList, setTagNameList] = useState<string[]>([])
+
+  // 加载标签列表
+  const loadTags = useCallback(async () => {
+    if (!projectId) return
+    try {
+      const res = await fetch(`/api/chat/messages/tags?projectId=${encodeURIComponent(projectId)}`)
+      const data = await res.json()
+      setAllTags(data.tags || [])
+      setTagNameList((data.tags || []).map((t: { name: string }) => t.name))
+    } catch {}
+  }, [projectId])
+
+  useEffect(() => {
+    loadTags()
+  }, [loadTags, messages])
 
   const handleJumpToMessage = (messageId: string) => {
     const el = document.getElementById(`msg-${messageId}`)
@@ -82,12 +181,26 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
     }
   }
 
+  // 消息更新回调（标签/收藏操作后）
+  const handleMessageUpdate = useCallback((updated: ChatMessage) => {
+    if (onUpdateMessage) {
+      onUpdateMessage(updated)
+    }
+  }, [onUpdateMessage])
+
+  // 根据筛选条件过滤消息
+  const filteredMessages = messages.filter(msg => {
+    if (filterStarred && !msg.isStarred) return false
+    if (filterTag && !(msg.tags || []).includes(filterTag)) return false
+    return true
+  })
+
   // 自动滚动到底部
   useEffect(() => {
     if (shouldAutoScroll.current && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
     }
-  }, [messages, streamingContent, toolSummary])
+  }, [filteredMessages, streamingContent, toolSummary])
 
   // 检测用户是否手动向上滚动
   const handleScroll = () => {
@@ -111,9 +224,26 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
         >
           <div className="max-w-3xl mx-auto">
             <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
-            {messages.map(msg => (
+
+            {/* 筛选栏 */}
+            <FilterBar
+              tags={allTags}
+              activeTag={filterTag}
+              activeStarred={filterStarred}
+              onTagChange={setFilterTag}
+              onStarredChange={setFilterStarred}
+              onClear={() => { setFilterTag(null); setFilterStarred(false) }}
+            />
+
+            {filteredMessages.map(msg => (
               <div key={msg.id} id={`msg-${msg.id}`} className="transition-all duration-300 rounded-lg">
-                <MessageBubble message={msg} glass={glass} />
+                <MessageBubble
+                  message={msg}
+                  glass={glass}
+                  projectId={projectId}
+                  onMessageUpdate={handleMessageUpdate}
+                  allTags={tagNameList}
+                />
               </div>
             ))}
 

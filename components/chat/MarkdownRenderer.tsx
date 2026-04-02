@@ -1,9 +1,10 @@
 'use client'
 
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import rehypeSanitize from 'rehype-sanitize'
+import hljs from 'highlight.js'
 import { Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 
@@ -12,15 +13,27 @@ interface MarkdownRendererProps {
   isStreaming?: boolean
 }
 
-function CodeBlock({ className, children }: { className?: string; children: string }) {
+function HighlightedCodeBlock({ className, children }: { className?: string; children: string }) {
   const [copied, setCopied] = useState(false)
+  const codeRef = useRef<HTMLElement>(null)
   const language = className?.replace('language-', '') || ''
+  const codeText = children
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(children.trim())
+    navigator.clipboard.writeText(codeText.trim())
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [children])
+  }, [codeText])
+
+  useEffect(() => {
+    if (codeRef.current && language) {
+      try {
+        hljs.highlightElement(codeRef.current)
+      } catch {
+        // highlight.js 可能不支持某些语言，忽略
+      }
+    }
+  }, [language, codeText])
 
   return (
     <div className="relative group">
@@ -38,7 +51,7 @@ function CodeBlock({ className, children }: { className?: string; children: stri
         </div>
       )}
       <pre className={language ? '!rounded-t-none !mt-0' : ''}>
-        <code className={className}>{children}</code>
+        <code ref={codeRef} className={className}>{codeText}</code>
       </pre>
       {!language && (
         <button
@@ -66,9 +79,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
               return <code className={className} {...props}>{children}</code>
             }
             return (
-              <CodeBlock className={className}>
+              <HighlightedCodeBlock className={className}>
                 {String(children).replace(/\n$/, '')}
-              </CodeBlock>
+              </HighlightedCodeBlock>
             )
           },
           pre({ children }) {

@@ -7,6 +7,8 @@ export interface ChatMessage {
   isStreaming?: boolean
   toolSummary?: ToolSummary
   stats?: ConversationStats
+  tags?: string[]       // 消息标签
+  isStarred?: boolean   // 是否收藏
 }
 
 export interface ToolCallItem {
