@@ -92,11 +92,30 @@ fn get_server_url(state: tauri::State<ServerState>) -> String {
 
 pub fn run() {
     let is_dev = cfg!(debug_assertions);
+    // 远程模式：通过环境变量 GCLAW_REMOTE_URL 指定远程服务器地址
+    let remote_url = std::env::var("GCLAW_REMOTE_URL").ok();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            if is_dev {
+            if let Some(ref url) = remote_url {
+                // 远程模式：直接连接远程服务器，不启动本地 sidecar
+                println!("[GClaw] Remote mode — connecting to {}", url);
+                app.manage(ServerState {
+                    child: Mutex::new(None),
+                    port: 0, // 远程模式无本地端口
+                });
+
+                let remote = url.clone();
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    // 短暂延迟等待窗口就绪
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    if let Some(window) = handle.get_webview_window("main") {
+                        let _ = window.navigate(remote.parse().unwrap());
+                    }
+                });
+            } else if is_dev {
                 // 开发模式：devUrl 已配置为 localhost:3100
                 // Next.js dev server 由 beforeDevCommand 自动启动
                 println!("[GClaw] Dev mode — using devUrl from tauri.conf.json");
