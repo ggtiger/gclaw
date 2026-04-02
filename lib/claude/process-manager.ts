@@ -8,6 +8,7 @@ import { loadSkillHooks, buildSkillHookMatchers } from './skill-hooks'
 import { getSettings, updateProjectSettings } from '@/lib/store/settings'
 import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
+import { sanitizeForLog } from '@/lib/crypto'
 import type { SSEEvent, PermissionRequest } from '@/types/chat'
 
 // 模块级状态：per-project AbortController，支持多项目并发执行
@@ -80,6 +81,7 @@ export async function* executeChat(
     options.dangerouslySkipPermissions ?? settings.dangerouslySkipPermissions
 
   // 通过环境变量传递 API Key 和 Base URL（SDK 从环境变量读取）
+  // 不在日志中输出完整 API Key
   if (settings.apiKey) {
     process.env.ANTHROPIC_API_KEY = settings.apiKey
   }
@@ -260,7 +262,7 @@ export async function* executeChat(
       return Object.keys(hooks).length > 0 ? hooks : undefined
     })(),
     stderr: (data: string) => {
-      stderrBuffer += data
+      stderrBuffer += sanitizeForLog(data)
     },
   })
 
@@ -394,13 +396,13 @@ export async function* executeChat(
           yield* runQuery(undefined)
         } catch (retryErr) {
           const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
-          console.error('[GClaw SDK retry]', retryMsg)
+          console.error('[GClaw SDK retry]', sanitizeForLog(retryMsg))
           yield { event: 'error', data: { message: `SDK error: ${retryMsg}` } }
         }
       } else {
         const fullError = detail
-          ? `SDK error: ${errMsg}\nstderr: ${detail}`
-          : `SDK error: ${errMsg}`
+          ? sanitizeForLog(`SDK error: ${errMsg}\nstderr: ${detail}`)
+          : sanitizeForLog(`SDK error: ${errMsg}`)
         console.error('[GClaw SDK]', fullError)
         yield { event: 'error', data: { message: fullError } }
       }

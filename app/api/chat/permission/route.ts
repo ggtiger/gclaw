@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { resolvePermission } from '@/lib/claude/process-manager'
+import { addAuditLog } from '@/lib/store/audit-log'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +16,13 @@ export async function POST(request: NextRequest) {
   }
 
   resolvePermission(requestId, decision)
+
+  // 审计：记录权限审批决策
+  addAuditLog(
+    decision === 'allow' ? 'permission:allow' : 'permission:deny',
+    'user',
+    { requestId }
+  )
 
   return Response.json({ ok: true })
 }

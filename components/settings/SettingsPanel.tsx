@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield } from 'lucide-react'
 import type { AppSettings } from '@/types/skills'
+import { AuditLogPanel } from './AuditLogPanel'
 
 interface SettingsPanelProps {
   projectId: string
@@ -16,12 +17,23 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
+  // apiKey 掩码/实际值切换
+  // API 从后端返回的 apiKey 是掩码格式 (****xxxx)
+  // 用户编辑时记录实际值，未编辑时保持掩码
+  const [apiKeyEditing, setApiKeyEditing] = useState(false)
+  const [apiKeyRawValue, setApiKeyRawValue] = useState('')
+  const [activeTab, setActiveTab] = useState<'settings' | 'audit'>('settings')
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
       const data = await res.json()
+      // API 返回掩码 apiKey，保存用于显示
+      // 如果有完整 key（仅首次输入时），存储原始值
+      if (data.apiKey && !data.apiKey.startsWith('****')) {
+        setApiKeyRawValue(data.apiKey)
+      }
       setSettings(data)
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -44,18 +56,25 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
     if (!settings || !dirty) return
     setSaving(true)
     try {
+      // 构建提交数据：apiKey 使用原始值（非掩码）
+      const toSave = { ...settings }
+      if (apiKeyRawValue && !apiKeyRawValue.startsWith('****')) {
+        toSave.apiKey = apiKeyRawValue
+      }
       await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(toSave),
       })
       setDirty(false)
+      // 保存后重新加载（拿到掩码后的值）
+      fetchSettings()
     } catch (err) {
       console.error('Failed to save settings:', err)
     } finally {
       setSaving(false)
     }
-  }, [settings, dirty])
+  }, [settings, dirty, apiKeyRawValue])
 
   if (loading || !settings) {
     return (
@@ -68,6 +87,37 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
   }
 
   return (
+    <div className="space-y-0">
+      {/* Tab 栏 */}
+      <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
+          style={{
+            borderBottomColor: activeTab === 'settings' ? 'var(--color-primary)' : 'transparent',
+            color: activeTab === 'settings' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          }}
+        >
+          <SettingsIcon size={14} />
+          设置
+        </button>
+        <button
+          onClick={() => setActiveTab('audit')}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
+          style={{
+            borderBottomColor: activeTab === 'audit' ? 'var(--color-primary)' : 'transparent',
+            color: activeTab === 'audit' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          }}
+        >
+          <Shield size={14} />
+          审计日志
+        </button>
+      </div>
+
+      {/* Tab 内容 */}
+      {activeTab === 'audit' ? (
+        <AuditLogPanel />
+      ) : (
     <div className="p-4 space-y-4">
       {/* API Key */}
       <div>
@@ -78,7 +128,11 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
           <input
             type={showApiKey ? 'text' : 'password'}
             value={settings.apiKey}
-            onChange={e => updateField('apiKey', e.target.value)}
+            onChange={e => {
+              const val = e.target.value
+              setApiKeyRawValue(val)
+              updateField('apiKey', val)
+            }}
             placeholder="sk-ant-..."
             className="w-full px-3 py-2 pr-10 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
             style={{
@@ -331,6 +385,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
         {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
         {saving ? '保存中...' : '保存设置'}
       </button>
+    </div>
+      )}
     </div>
   )
 }

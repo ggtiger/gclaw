@@ -8,11 +8,11 @@ phase_1_analysis:
   research: "optional"
 
 phase_2_planning:
-  prd: "required"
+  prd: "docs/prd-gclaw.md"
   tech_spec: "optional"
 
 phase_3_solutioning:
-  architecture: "required"
+  architecture: "docs/architecture-gclaw.md"
 
 phase_4_implementation:
-  sprint_planning: "required"
+  sprint_planning: "docs/sprint-planning-gclaw.md"

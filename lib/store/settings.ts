@@ -9,6 +9,7 @@ import {
   DEFAULT_SETTINGS,
 } from '@/types/skills'
 import { getProjectDir } from './projects'
+import { encrypt, decrypt, isEncrypted } from '@/lib/crypto'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -29,7 +30,12 @@ export function getGlobalSettings(): GlobalSettings {
     if (!fs.existsSync(GLOBAL_FILE)) return { ...DEFAULT_GLOBAL }
     const raw = fs.readFileSync(GLOBAL_FILE, 'utf-8')
     const data = JSON.parse(raw)
-    return { ...DEFAULT_GLOBAL, ...data }
+    const settings = { ...DEFAULT_GLOBAL, ...data }
+    // 解密 apiKey
+    if (settings.apiKey) {
+      settings.apiKey = decrypt(settings.apiKey)
+    }
+    return settings
   } catch {
     return { ...DEFAULT_GLOBAL }
   }
@@ -38,8 +44,16 @@ export function getGlobalSettings(): GlobalSettings {
 export function updateGlobalSettings(partial: Partial<GlobalSettings>): GlobalSettings {
   const current = getGlobalSettings()
   const updated = { ...current, ...partial }
+  // 加密 apiKey 后存储
+  const toStore = { ...updated }
+  if (toStore.apiKey) {
+    // 仅在非加密状态时加密（避免重复加密）
+    if (!isEncrypted(toStore.apiKey)) {
+      toStore.apiKey = encrypt(toStore.apiKey)
+    }
+  }
   ensureDataDir()
-  fs.writeFileSync(GLOBAL_FILE, JSON.stringify(updated, null, 2), 'utf-8')
+  fs.writeFileSync(GLOBAL_FILE, JSON.stringify(toStore, null, 2), 'utf-8')
   return updated
 }
 
