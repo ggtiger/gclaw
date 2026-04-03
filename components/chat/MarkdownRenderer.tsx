@@ -13,11 +13,12 @@ interface MarkdownRendererProps {
   isStreaming?: boolean
 }
 
-function HighlightedCodeBlock({ className, children }: { className?: string; children: string }) {
+function HighlightedCodeBlock({ className, children, isStreaming }: { className?: string; children: string; isStreaming?: boolean }) {
   const [copied, setCopied] = useState(false)
   const codeRef = useRef<HTMLElement>(null)
   const language = className?.replace('language-', '') || ''
   const codeText = children
+  const highlightedRef = useRef(false)
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(codeText.trim())
@@ -25,15 +26,22 @@ function HighlightedCodeBlock({ className, children }: { className?: string; chi
     setTimeout(() => setCopied(false), 2000)
   }, [codeText])
 
+  // 流式结束后做一次高亮，流式中跳过避免 DOM 抖动
   useEffect(() => {
+    if (isStreaming) {
+      highlightedRef.current = false
+      return
+    }
+    if (highlightedRef.current) return
     if (codeRef.current && language) {
+      highlightedRef.current = true
       try {
         hljs.highlightElement(codeRef.current)
       } catch {
         // highlight.js 可能不支持某些语言，忽略
       }
     }
-  }, [language, codeText])
+  }, [isStreaming, language, codeText])
 
   return (
     <div className="relative group">
@@ -79,7 +87,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
               return <code className={className} {...props}>{children}</code>
             }
             return (
-              <HighlightedCodeBlock className={className}>
+              <HighlightedCodeBlock className={className} isStreaming={isStreaming}>
                 {String(children).replace(/\n$/, '')}
               </HighlightedCodeBlock>
             )

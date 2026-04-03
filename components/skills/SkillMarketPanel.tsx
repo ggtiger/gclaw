@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Search, Download, Check, RefreshCw, ExternalLink } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
 
 interface MarketSkill {
   name: string
@@ -19,6 +20,7 @@ interface SkillMarketPanelProps {
 }
 
 export function SkillMarketPanel({ onSkillInstalled }: SkillMarketPanelProps) {
+  const { toast } = useToast()
   const [skills, setSkills] = useState<MarketSkill[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -75,11 +77,11 @@ export function SkillMarketPanel({ onSkillInstalled }: SkillMarketPanelProps) {
         setSkills(prev => prev.map(s => s.name === skillName ? { ...s, installed: true } : s))
         onSkillInstalled?.()
       } else {
-        alert(data.error || '安装失败')
+        toast(data.error || '安装失败', 'error')
       }
     } catch (err) {
       console.error('Install failed:', err)
-      alert('安装失败')
+      toast('安装失败', 'error')
     } finally {
       setInstalling(null)
     }

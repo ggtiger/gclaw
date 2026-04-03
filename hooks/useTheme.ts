@@ -64,7 +64,5 @@ export function useTheme() {
     }
   }, [])
 
-  const hasBackground = !!backgroundImage
-
-  return { theme, resolvedTheme, setTheme, backgroundImage, setBackgroundImage, hasBackground }
+  return { theme, resolvedTheme, setTheme, backgroundImage, setBackgroundImage }
 }

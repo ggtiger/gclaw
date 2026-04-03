@@ -13,7 +13,11 @@ function getEncryptionKey(): Buffer {
   if (envKey) {
     return crypto.scryptSync(envKey, 'gclaw-salt', 32)
   }
-  // 回退：使用固定种子（适用于单机部署）
+  // 生产环境警告
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[Crypto] 安全警告：未设置 GCLAW_ENCRYPT_KEY 环境变量，正在使用默认加密密钥！API Key 加密不安全，请立即设置 GCLAW_ENCRYPT_KEY。')
+  }
+  // 回退：使用固定种子（适用于开发/单机部署）
   return crypto.scryptSync('gclaw-default-encryption-key', 'gclaw-salt', 32)
 }
 

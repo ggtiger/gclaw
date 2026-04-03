@@ -33,6 +33,7 @@ export type AuditAction =
   | 'user:logout'
   | 'user:role-update'
   | 'user:disable'
+  | 'user:password_change'
   | 'project:member-add'
   | 'project:member-remove'
   | 'project:member-role-update'

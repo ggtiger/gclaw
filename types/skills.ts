@@ -57,6 +57,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 // ── 项目信息 ──
+export type ProjectType = 'secretary' | 'development' | 'office'
 export type ProjectRole = 'owner' | 'editor' | 'viewer'
 
 export interface ProjectMember {
@@ -69,7 +70,9 @@ export interface ProjectMember {
 export interface ProjectInfo {
   id: string
   name: string
+  type: ProjectType
   ownerId?: string
+  ownerName?: string
   members?: ProjectMember[]
   createdAt: string
   updatedAt: string

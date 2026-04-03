@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { GitBranch, Plus, Trash2, X } from 'lucide-react'
 import type { BranchInfo } from '@/types/chat'
 import { MAX_BRANCHES } from '@/types/chat'
@@ -9,6 +9,7 @@ interface BranchSwitcherProps {
   projectId: string
   activeBranch: string
   onSwitch: (branchId: string) => void
+  lastMessageId?: string
 }
 
 const BRANCH_COLORS = [
@@ -19,7 +20,7 @@ const BRANCH_COLORS = [
   '#14b8a6',
 ]
 
-export function BranchSwitcher({ projectId, activeBranch, onSwitch }: BranchSwitcherProps) {
+export function BranchSwitcher({ projectId, activeBranch, onSwitch, lastMessageId }: BranchSwitcherProps) {
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -38,17 +39,24 @@ export function BranchSwitcher({ projectId, activeBranch, onSwitch }: BranchSwit
     }
   }, [projectId])
 
-  useState(() => { fetchBranches() })
+  useEffect(() => { fetchBranches() }, [fetchBranches])
+
+  const [error, setError] = useState('')
 
   const handleCreate = async () => {
     if (!newBranchName.trim()) return
+    if (!lastMessageId) {
+      setError('没有可用的消息作为分叉点')
+      return
+    }
+    setError('')
     try {
       const res = await fetch('/api/chat/branches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          fromMessageId: '', // 需要由外部传入
+          fromMessageId: lastMessageId,
           name: newBranchName.trim(),
         }),
       })
@@ -56,8 +64,13 @@ export function BranchSwitcher({ projectId, activeBranch, onSwitch }: BranchSwit
         setShowCreate(false)
         setNewBranchName('')
         fetchBranches()
+      } else {
+        const data = await res.json()
+        setError(data.error || '创建分支失败')
       }
-    } catch {}
+    } catch {
+      setError('网络错误')
+    }
   }
 
   const handleDelete = async (branchId: string) => {
@@ -137,36 +150,41 @@ export function BranchSwitcher({ projectId, activeBranch, onSwitch }: BranchSwit
       {/* 创建新分支 */}
       {totalBranches < MAX_BRANCHES && (
         showCreate ? (
-          <div className="flex items-center gap-1">
-            <input
-              autoFocus
-              value={newBranchName}
-              onChange={e => setNewBranchName(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') handleCreate()
-                if (e.key === 'Escape') { setShowCreate(false); setNewBranchName('') }
-              }}
-              placeholder="分支名称"
-              className="px-1.5 py-0.5 rounded text-[11px] border outline-none w-20"
-              style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-bg)',
-                color: 'var(--color-text)',
-              }}
-            />
-            <button
-              onClick={handleCreate}
-              className="text-[11px] cursor-pointer font-medium"
-              style={{ color: 'var(--color-primary)' }}
-            >创建</button>
-            <button
-              onClick={() => { setShowCreate(false); setNewBranchName('') }}
-              className="cursor-pointer"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              <X size={11} />
-            </button>
-          </div>
+          <>
+            <div className="flex items-center gap-1">
+              <input
+                autoFocus
+                value={newBranchName}
+                onChange={e => setNewBranchName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreate()
+                  if (e.key === 'Escape') { setShowCreate(false); setNewBranchName(''); setError('') }
+                }}
+                placeholder="分支名称"
+                className="px-1.5 py-0.5 rounded text-[11px] border outline-none w-20"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-bg)',
+                  color: 'var(--color-text)',
+                }}
+              />
+              <button
+                onClick={handleCreate}
+                className="text-[11px] cursor-pointer font-medium"
+                style={{ color: 'var(--color-primary)' }}
+              >创建</button>
+              <button
+                onClick={() => { setShowCreate(false); setNewBranchName(''); setError('') }}
+                className="cursor-pointer"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <X size={11} />
+              </button>
+            </div>
+            {error && (
+              <span className="text-[10px] ml-1" style={{ color: 'var(--color-error)' }}>{error}</span>
+            )}
+          </>
         ) : (
           <button
             onClick={() => setShowCreate(true)}

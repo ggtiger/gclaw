@@ -8,13 +8,12 @@ import type { ChatMessage } from '@/types/chat'
 
 interface MessageBubbleProps {
   message: ChatMessage
-  glass?: boolean
   projectId: string
   onMessageUpdate?: (message: ChatMessage) => void
   allTags?: string[]
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, glass, projectId, onMessageUpdate, allTags = [] }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, allTags = [] }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
 
@@ -134,46 +133,45 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
 
   return (
     <div
-      className={`relative flex gap-3 px-4 py-3.5 group ${glass && !isUser ? 'mx-2 my-1 rounded-xl' : ''}`}
-      style={{
-        backgroundColor: isUser ? 'transparent' : (glass ? 'var(--glass-msg-assistant)' : 'var(--color-bg-secondary)'),
-        backdropFilter: glass && !isUser ? 'blur(12px)' : undefined,
-      }}
+      className={`flex gap-3 max-w-3xl group ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setShowTagInput(false); setTagQuery('') }}
     >
       {/* Avatar */}
-      <div className="flex-shrink-0">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{
-          backgroundColor: isUser
-            ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)'
-            : 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
-        }}>
+      <div className="shrink-0">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isUser ? 'bg-purple-500/15' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
           {isUser
-            ? <User size={15} style={{ color: 'var(--color-primary)' }} />
-            : <Bot size={15} style={{ color: 'var(--color-primary)' }} />
+            ? <User size={15} className="text-purple-600 dark:text-purple-400" />
+            : <Bot size={15} className="text-purple-600 dark:text-purple-400" />
           }
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-          {isUser ? '你' : 'Claude'}
+      <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={`flex items-baseline gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
+          <span className={`text-xs font-medium ${isUser ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'}`}>
+            {isUser ? '你' : 'Claude'}
+          </span>
+          <span className="text-[10px] text-slate-400/50">
+            {new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+          </span>
         </div>
 
         {isUser ? (
-          <div className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--color-text)' }}>
+          <div className="p-3.5 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-2xl rounded-tr-md shadow-lg shadow-purple-500/20">
             {message.content}
           </div>
         ) : (
-          <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
+          <div className="p-3.5 text-sm leading-relaxed break-words max-w-full bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl rounded-tl-md border border-white/40 dark:border-white/10 text-[var(--color-text)] shadow-sm">
+            <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
+          </div>
         )}
 
         {/* 消息级工具摘要（含 Todo 列表） */}
         {!isUser && message.toolSummary &&
           (message.toolSummary.pendingTools.length > 0 || message.toolSummary.completedTools.length > 0) && (
-          <div className="mt-2">
+          <div className="ml-10 mr-2">
             <ToolCallSummary summary={message.toolSummary} />
           </div>
         )}
@@ -184,17 +182,12 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
             {message.tags.map(tag => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[11px] font-medium cursor-default group/tag"
-                style={{
-                  backgroundColor: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
-                  color: 'var(--color-primary)',
-                }}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[11px] font-medium cursor-default group/tag bg-purple-500/10 text-purple-600 dark:text-purple-400"
               >
                 {tag}
                 <button
                   onClick={(e) => handleRemoveTag(tag, e)}
-                  className="opacity-0 group-hover/tag:opacity-100 transition-opacity cursor-pointer ml-0.5"
-                  style={{ color: 'var(--color-primary)' }}
+                  className="opacity-0 group-hover/tag:opacity-100 transition-opacity cursor-pointer ml-0.5 text-purple-600 dark:text-purple-400"
                 >
                   <X size={10} />
                 </button>
@@ -205,18 +198,15 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
 
         {/* Stats */}
         {message.stats && (
-          <div className="mt-2.5 flex items-center gap-2 text-[11px] px-2 py-1 rounded-md w-fit" style={{
-            color: 'var(--color-text-muted)',
-            backgroundColor: 'color-mix(in srgb, var(--color-text-muted) 6%, transparent)',
-          }}>
+          <div className="mt-2.5 flex items-center gap-2 text-[11px] px-2 py-1 rounded-md w-fit text-slate-500 dark:text-slate-400 bg-slate-500/5">
             <span>{message.stats.model}</span>
-            <span className="opacity-40">&middot;</span>
+            <span className="opacity-40">·</span>
             <span>输入 {message.stats.inputTokens.toLocaleString()}</span>
-            <span className="opacity-40">&middot;</span>
+            <span className="opacity-40">·</span>
             <span>输出 {message.stats.outputTokens.toLocaleString()}</span>
             {message.stats.costUsd > 0 && (
               <>
-                <span className="opacity-40">&middot;</span>
+                <span className="opacity-40">·</span>
                 <span>${message.stats.costUsd.toFixed(4)}</span>
               </>
             )}
@@ -233,13 +223,7 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
           {/* 收藏按钮 */}
           <button
             onClick={handleToggleStar}
-            className="p-1 rounded-md cursor-pointer transition-colors"
-            style={{
-              backgroundColor: message.isStarred
-                ? 'color-mix(in srgb, #FDE047 20%, transparent)'
-                : 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
-              color: message.isStarred ? '#D97706' : 'var(--color-text-muted)',
-            }}
+            className={`p-1 rounded-md cursor-pointer transition-colors ${message.isStarred ? 'bg-amber-500/15 text-amber-600' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
             title={message.isStarred ? '取消收藏' : '收藏'}
           >
             <Star size={13} fill={message.isStarred ? 'currentColor' : 'none'} />
@@ -249,13 +233,7 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
           <div className="relative">
             <button
               onClick={() => setShowTagInput(!showTagInput)}
-              className="p-1 rounded-md cursor-pointer transition-colors"
-              style={{
-                backgroundColor: showTagInput
-                  ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)'
-                  : 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
-                color: showTagInput ? 'var(--color-primary)' : 'var(--color-text-muted)',
-              }}
+              className={`p-1 rounded-md cursor-pointer transition-colors ${showTagInput ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
               title="添加标签"
             >
               <Tag size={13} />
@@ -294,13 +272,9 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
                       <button
                         key={tag}
                         onClick={() => handleAddTag(tag)}
-                        className="w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                        style={{
-                          backgroundColor: idx === selectedIdx ? 'color-mix(in srgb, var(--color-primary) 8%, transparent)' : 'transparent',
-                          color: 'var(--color-text-secondary)',
-                        }}
+                        className={`w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer transition-colors ${idx === selectedIdx ? 'bg-purple-500/10' : 'bg-transparent'} text-slate-600 dark:text-slate-300`}
                       >
-                        <Tag size={10} style={{ color: 'var(--color-text-muted)' }} />
+                        <Tag size={10} className="text-slate-400" />
                         {tag}
                       </button>
                     ))}
@@ -310,8 +284,7 @@ export const MessageBubble = memo(function MessageBubble({ message, glass, proje
                   <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
                     <button
                       onClick={() => handleAddTag(tagQuery.trim())}
-                      className="w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                      style={{ color: 'var(--color-primary)' }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer transition-colors text-purple-600 dark:text-purple-400"
                     >
                       <Check size={10} />
                       创建 &ldquo;{tagQuery.trim()}&rdquo;

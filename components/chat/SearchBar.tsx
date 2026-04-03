@@ -98,11 +98,7 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
       <div className="px-3 py-1.5 flex justify-end">
         <button
           onClick={() => setExpanded(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer"
-          style={{
-            color: 'var(--color-text-muted)',
-            backgroundColor: 'var(--color-bg-secondary)',
-          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-all duration-200 cursor-pointer text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/5 hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
           title="搜索消息"
         >
           <Search size={13} />
@@ -117,14 +113,14 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
       {/* 搜索输入行 */}
       <div className="flex items-center gap-2">
         <div className="flex-1 relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-500" />
           <input
             type="text"
             value={keyword}
             onChange={e => handleKeywordChange(e.target.value)}
             placeholder="搜索消息内容..."
             autoFocus
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg border text-xs outline-none transition-colors focus:border-[var(--color-primary)]"
+            className="w-full pl-8 pr-3 py-1.5 rounded-lg border text-xs outline-none transition-all duration-200 focus:border-purple-500 focus:shadow-sm focus:shadow-purple-500/10"
             style={{
               borderColor: 'var(--color-border)',
               backgroundColor: 'var(--color-bg)',
@@ -134,19 +130,14 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`p-1.5 rounded-md cursor-pointer transition-colors ${showFilters ? '' : ''}`}
-          style={{
-            backgroundColor: showFilters ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'transparent',
-            color: showFilters ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
+          className={`p-1.5 rounded-md cursor-pointer transition-all duration-200 ${showFilters ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-400 hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
           title="筛选"
         >
           <Filter size={14} />
         </button>
         <button
           onClick={handleClose}
-          className="p-1.5 rounded-md cursor-pointer"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="p-1.5 rounded-md cursor-pointer text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200"
         >
           <X size={14} />
         </button>
@@ -158,7 +149,7 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
           <select
             value={role}
             onChange={e => handleFilterChange(e.target.value, timeRange)}
-            className="px-2 py-1 rounded-md border text-xs outline-none cursor-pointer"
+            className="px-2 py-1 rounded-md border text-xs outline-none cursor-pointer focus:border-purple-500 transition-colors"
             style={{
               borderColor: 'var(--color-border)',
               backgroundColor: 'var(--color-bg)',
@@ -173,7 +164,7 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
           <select
             value={timeRange}
             onChange={e => handleFilterChange(role, e.target.value)}
-            className="px-2 py-1 rounded-md border text-xs outline-none cursor-pointer"
+            className="px-2 py-1 rounded-md border text-xs outline-none cursor-pointer focus:border-purple-500 transition-colors"
             style={{
               borderColor: 'var(--color-border)',
               backgroundColor: 'var(--color-bg)',
@@ -186,7 +177,7 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
             <option value="30d">近 30 天</option>
           </select>
           {results.length > 0 && (
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs text-slate-400">
               {results.length} 条结果
             </span>
           )}
@@ -197,11 +188,11 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
       {keyword.trim() && (
         <div className="max-h-48 overflow-y-auto space-y-0.5">
           {loading ? (
-            <div className="text-xs py-2 text-center" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="text-xs py-2 text-center text-slate-400">
               搜索中...
             </div>
           ) : results.length === 0 ? (
-            <div className="text-xs py-2 text-center" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="text-xs py-2 text-center text-slate-400">
               未找到匹配的消息
             </div>
           ) : (
@@ -209,20 +200,16 @@ export function SearchBar({ projectId, onJumpToMessage }: SearchBarProps) {
               <button
                 key={r.id}
                 onClick={() => onJumpToMessage(r.id)}
-                className="w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer hover:bg-[var(--color-bg-secondary)]"
+                className="w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-all duration-200 cursor-pointer hover:bg-purple-500/5"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
                 <div className="flex items-center gap-2 mb-0.5">
                   <span
-                    className="shrink-0 px-1.5 py-0 rounded text-[10px] font-medium"
-                    style={{
-                      backgroundColor: r.role === 'user' ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'color-mix(in srgb, var(--color-success) 12%, transparent)',
-                      color: r.role === 'user' ? 'var(--color-primary)' : 'var(--color-success)',
-                    }}
+                    className={`shrink-0 px-1.5 py-0 rounded text-[10px] font-medium ${r.role === 'user' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' : 'bg-green-500/10 text-green-600 dark:text-green-400'}`}
                   >
                     {r.role === 'user' ? '用户' : r.role === 'assistant' ? '助手' : '系统'}
                   </span>
-                  <span className="truncate" style={{ color: 'var(--color-text-muted)', fontSize: '10px' }}>
+                  <span className="truncate text-slate-400" style={{ fontSize: '10px' }}>
                     {formatTime(r.createdAt)}
                   </span>
                 </div>

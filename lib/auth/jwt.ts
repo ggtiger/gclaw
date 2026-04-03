@@ -3,6 +3,11 @@ import { cookies } from 'next/headers'
 
 // ── 配置 ──
 
+const isDefaultSecret = !process.env.JWT_SECRET
+if (isDefaultSecret && process.env.NODE_ENV === 'production') {
+  console.error('[JWT] 安全警告：未设置 JWT_SECRET 环境变量，正在使用默认密钥！这非常不安全，请立即设置 JWT_SECRET。')
+}
+
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'gclaw-default-secret-change-in-production'
 )

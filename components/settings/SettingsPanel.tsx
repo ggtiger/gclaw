@@ -1,19 +1,24 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield, Users, ShieldAlert } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield, Users, ShieldAlert, User, Upload } from 'lucide-react'
 import type { AppSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
+import { AccountPanel } from './AccountPanel'
+import { useToast } from '@/components/ui/Toast'
+
+type SettingsTab = 'settings' | 'account' | 'audit' | 'users' | 'security'
 
 interface SettingsPanelProps {
   projectId: string
   backgroundImage?: string
   onBackgroundChange?: (url: string) => void
+  initialTab?: SettingsTab
 }
 
-export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }: SettingsPanelProps) {
+export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, initialTab }: SettingsPanelProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -24,7 +29,11 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
   // 用户编辑时记录实际值，未编辑时保持掩码
   const [apiKeyEditing, setApiKeyEditing] = useState(false)
   const [apiKeyRawValue, setApiKeyRawValue] = useState('')
-  const [activeTab, setActiveTab] = useState<'settings' | 'audit' | 'users' | 'security'>('settings')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'settings')
+  const [uploadingBg, setUploadingBg] = useState(false)
+  const bgFileInputRef = useRef<HTMLInputElement>(null)
+
+  const { toast } = useToast()
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -73,10 +82,55 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
       fetchSettings()
     } catch (err) {
       console.error('Failed to save settings:', err)
+      toast('保存设置失败', 'error')
     } finally {
       setSaving(false)
     }
   }, [settings, dirty, apiKeyRawValue])
+
+  const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 验证文件类型
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast('不支持的文件类型，仅支持 JPG、PNG、WebP', 'error')
+      return
+    }
+
+    // 验证文件大小 (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast('文件大小超过限制（最大 10MB）', 'error')
+      return
+    }
+
+    setUploadingBg(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/uploads/background', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.success && data.url) {
+        onBackgroundChange?.(data.url)
+        toast('背景图上传成功', 'success')
+      } else {
+        toast(data.error || '上传失败', 'error')
+      }
+    } catch (err) {
+      console.error('上传背景图失败:', err)
+      toast('上传失败', 'error')
+    } finally {
+      setUploadingBg(false)
+      // 清空 input 以便可以重复选择同一文件
+      if (bgFileInputRef.current) {
+        bgFileInputRef.current.value = ''
+      }
+    }
+  }
 
   if (loading || !settings) {
     return (
@@ -102,6 +156,17 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
         >
           <SettingsIcon size={14} />
           设置
+        </button>
+        <button
+          onClick={() => setActiveTab('account')}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
+          style={{
+            borderBottomColor: activeTab === 'account' ? 'var(--color-primary)' : 'transparent',
+            color: activeTab === 'account' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          }}
+        >
+          <User size={14} />
+          账户
         </button>
         <button
           onClick={() => setActiveTab('audit')}
@@ -139,7 +204,9 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
       </div>
 
       {/* Tab 内容 */}
-      {activeTab === 'audit'? (
+      {activeTab === 'account'? (
+        <AccountPanel />
+      ) : activeTab === 'audit'? (
         <AuditLogPanel />
       ) : activeTab === 'users'? (
         <UsersPanel />
@@ -342,62 +409,92 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange }
       </div>
 
       {/* 背景图片 */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="p-4 rounded-2xl bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20 space-y-3">
+        <label className="block text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           <div className="flex items-center gap-1.5">
             <ImageIcon size={13} />
             自定义背景
           </div>
         </label>
+
+        {/* 预览区域 */}
         {backgroundImage ? (
-          <div className="space-y-2">
-            <div className="relative rounded-lg overflow-hidden h-20 border" style={{ borderColor: 'var(--color-border)' }}>
-              <img
-                src={backgroundImage}
-                alt="背景预览"
-                className="w-full h-full object-cover"
-              />
-              <button
-                onClick={() => onBackgroundChange?.('')}
-                className="absolute top-1 right-1 p-1 rounded-full cursor-pointer"
-                style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: 'white' }}
-                title="移除背景"
-              >
-                <XIcon size={12} />
-              </button>
-            </div>
-            <input
-              type="text"
-              value={backgroundImage}
-              onChange={e => onBackgroundChange?.(e.target.value)}
-              placeholder="输入图片 URL"
-              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
-              style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-bg)',
-                color: 'var(--color-text)',
-              }}
+          <div className="relative rounded-xl overflow-hidden h-24 border border-white/20">
+            <img
+              src={backgroundImage}
+              alt="背景预览"
+              className="w-full h-full object-cover"
             />
+            <button
+              onClick={() => onBackgroundChange?.('')}
+              className="absolute top-2 right-2 p-1.5 rounded-full cursor-pointer transition-all duration-200 hover:bg-black/70"
+              style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: 'white' }}
+              title="移除背景"
+            >
+              <XIcon size={14} />
+            </button>
           </div>
         ) : (
-          <div className="space-y-2">
-            <input
-              type="text"
-              value=""
-              onChange={e => onBackgroundChange?.(e.target.value)}
-              placeholder="输入图片 URL 启用毛玻璃效果"
-              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
-              style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-bg)',
-                color: 'var(--color-text)',
-              }}
-            />
-            <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              设置背景图后界面将启用毛玻璃效果
-            </div>
+          <div className="h-24 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>暂无背景</span>
           </div>
         )}
+
+        {/* 上传按钮 */}
+        <button
+          onClick={() => !uploadingBg && bgFileInputRef.current?.click()}
+          disabled={uploadingBg}
+          className="w-full rounded-xl border-2 border-dashed border-white/20 hover:border-purple-400/50 p-4 text-center cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+        >
+          {uploadingBg ? (
+            <div className="flex flex-col items-center gap-2">
+              <Loader size={20} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>上传中...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1">
+              <Upload size={20} style={{ color: 'var(--color-primary)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>点击上传背景图</span>
+              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>JPG / PNG / WebP，最大 10MB</span>
+            </div>
+          )}
+        </button>
+
+        {/* 隐藏的文件输入 */}
+        <input
+          ref={bgFileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleBackgroundUpload}
+          disabled={uploadingBg}
+        />
+
+        {/* 分隔线 */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
+          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>或输入 URL</span>
+          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
+        </div>
+
+        {/* URL 输入 */}
+        <input
+          type="text"
+          value={backgroundImage || ''}
+          onChange={e => onBackgroundChange?.(e.target.value)}
+          placeholder="输入图片 URL"
+          className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all duration-200 focus:border-purple-400/50"
+          style={{
+            borderColor: 'var(--color-border)',
+            backgroundColor: 'var(--color-bg)',
+            color: 'var(--color-text)',
+          }}
+        />
+
+        <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+          支持 JPG、PNG、WebP 格式图片
+        </div>
       </div>
 
       {/* 保存按钮 */}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Shield, AlertTriangle, Trash2, RefreshCw, Plus } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
 
 interface SecurityConfig {
   sensitiveWords: string[]
@@ -9,6 +10,7 @@ interface SecurityConfig {
 }
 
 export function SecurityPanel() {
+  const { toast } = useToast()
   const [config, setConfig] = useState<SecurityConfig>({ sensitiveWords: [], retentionDays: 0 })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -42,7 +44,7 @@ export function SecurityPanel() {
       })
       setDirty(false)
     } catch {
-      console.error('保存安全配置失败')
+      toast('保存安全配置失败', 'error')
     } finally {
       setSaving(false)
     }
@@ -51,11 +53,10 @@ export function SecurityPanel() {
   const addWord = () => {
     if (!newWord.trim()) return
     // 验证是否为有效正则
-1
     try {
       new RegExp(newWord.trim())
     } catch {
-      alert('无效的正则表达式')
+      toast('无效的正则表达式', 'error')
       return
     }
     if (config.sensitiveWords.includes(newWord.trim())) return
@@ -85,9 +86,9 @@ export function SecurityPanel() {
         body: JSON.stringify({ ...config, executeCleanup: true, projectId }),
       })
       const data = await res.json()
-      alert(`清理完成: 删除了 ${data.cleaned} 条过期消息， 保留了 ${data.kept} 条`)
+      toast(`清理完成: 删除了 ${data.cleaned} 条过期消息，保留了 ${data.kept} 条`, 'success')
     } catch {
-      alert('清理失败')
+      toast('清理失败', 'error')
     }
   }
 

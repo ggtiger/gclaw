@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import type { ProjectInfo } from '@/types/skills'
+import type { ProjectInfo, ProjectType } from '@/types/skills'
 
 const STORAGE_KEY = 'gclaw-current-project'
 
@@ -44,12 +44,12 @@ export function useProject() {
   }, [])
 
   // 创建项目
-  const createProject = useCallback(async (name: string) => {
+  const createProject = useCallback(async (name: string, type?: ProjectType) => {
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, type }),
       })
       const data = await res.json()
       const project: ProjectInfo = data.project

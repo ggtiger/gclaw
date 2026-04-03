@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { FolderOpen, Plus, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import type { ProjectInfo } from '@/types/skills'
+import { FolderOpen, Plus, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Loader2, Bot, Monitor, FileText } from 'lucide-react'
+import type { ProjectInfo, ProjectType } from '@/types/skills'
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[]
@@ -11,26 +11,29 @@ interface ProjectSidebarProps {
   collapsed: boolean
   onToggleCollapse: () => void
   onSwitch: (id: string) => void
-  onCreate: (name: string) => void
+  onCreate: (name: string, type?: ProjectType) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   glass?: boolean
+  userRole?: 'admin' | 'user'
 }
 
 export function ProjectSidebar({
   projects, currentId, activeProjectIds, collapsed, onToggleCollapse,
-  onSwitch, onCreate, onRename, onDelete, glass,
+  onSwitch, onCreate, onRename, onDelete, userRole,
 }: ProjectSidebarProps) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newType, setNewType] = useState<ProjectType>('development')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const handleCreate = () => {
     if (newName.trim()) {
-      onCreate(newName.trim())
+      onCreate(newName.trim(), newType)
       setNewName('')
+      setNewType('development')
       setCreating(false)
     }
   }
@@ -53,13 +56,11 @@ export function ProjectSidebar({
   if (collapsed) {
     return (
       <div
-        className={`w-10 flex flex-col items-center py-2 border-r flex-shrink-0 ${glass ? 'glass' : ''}`}
-        style={glass ? {} : { borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        className="w-10 flex flex-col items-center py-2 flex-shrink-0 rounded-2xl glass"
       >
         <button
           onClick={onToggleCollapse}
-          className="p-1.5 rounded-lg cursor-pointer transition-colors"
-          style={{ color: 'var(--color-text-secondary)' }}
+          className="p-1.5 rounded-xl cursor-pointer transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
           title="展开项目列表"
         >
           <ChevronRight size={16} />
@@ -70,28 +71,25 @@ export function ProjectSidebar({
 
   return (
     <div
-      className={`w-56 flex flex-col border-r flex-shrink-0 ${glass ? 'glass' : ''}`}
-      style={glass ? {} : { borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+      className="w-56 flex flex-col flex-shrink-0 rounded-2xl glass"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: glass ? 'var(--glass-border)' : 'var(--color-border)' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
         <div className="flex items-center gap-1.5">
-          <FolderOpen size={14} style={{ color: 'var(--color-primary)' }} />
+          <FolderOpen size={14} className="text-purple-600 dark:text-purple-400" />
           <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>项目</span>
         </div>
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => { setCreating(!creating); setNewName('') }}
-            className="p-1 rounded cursor-pointer transition-colors"
-            style={{ color: 'var(--color-text-secondary)' }}
+            className="p-1 rounded-xl cursor-pointer transition-all duration-200 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10"
             title="新建项目"
           >
             <Plus size={14} />
           </button>
           <button
             onClick={onToggleCollapse}
-            className="p-1 rounded cursor-pointer transition-colors"
-            style={{ color: 'var(--color-text-secondary)' }}
+            className="p-1 rounded-xl cursor-pointer transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
             title="收起"
           >
             <ChevronLeft size={14} />
@@ -101,7 +99,7 @@ export function ProjectSidebar({
 
       {/* New project input */}
       {creating && (
-        <div className="px-2 py-2 border-b" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="px-2 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
           <div className="flex gap-1">
             <input
               autoFocus
@@ -112,14 +110,41 @@ export function ProjectSidebar({
                 if (e.key === 'Escape') { setCreating(false); setNewName('') }
               }}
               placeholder="项目名称"
-              className="flex-1 px-2 py-1 rounded text-xs border outline-none min-w-0"
+              className="flex-1 px-2 py-1 rounded-lg text-xs border outline-none min-w-0 focus:border-purple-500 transition-colors"
               style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
             />
-            <button onClick={handleCreate} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-primary)' }}>
+            <button onClick={handleCreate} className="p-1 rounded-lg cursor-pointer text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all duration-200">
               <Check size={14} />
             </button>
-            <button onClick={() => { setCreating(false); setNewName('') }} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-muted)' }}>
+            <button onClick={() => { setCreating(false); setNewName('') }} className="p-1 rounded-lg cursor-pointer text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200">
               <X size={14} />
+            </button>
+          </div>
+          {/* 类型选择 */}
+          <div className="flex gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={() => setNewType('development')}
+              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs rounded-lg border transition-all duration-200 cursor-pointer ${
+                newType === 'development'
+                  ? 'bg-purple-500/10 border-purple-500 text-purple-700 dark:text-purple-300'
+                  : 'bg-white/40 dark:bg-white/5 border-white/50 dark:border-white/[0.06] text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              <Monitor size={12} />
+              <span>开发</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewType('office')}
+              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs rounded-lg border transition-all duration-200 cursor-pointer ${
+                newType === 'office'
+                  ? 'bg-purple-500/10 border-purple-500 text-purple-700 dark:text-purple-300'
+                  : 'bg-white/40 dark:bg-white/5 border-white/50 dark:border-white/[0.06] text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              <FileText size={12} />
+              <span>办公</span>
             </button>
           </div>
         </div>
@@ -127,6 +152,16 @@ export function ProjectSidebar({
 
       {/* Project list */}
       <div className="flex-1 overflow-y-auto py-1.5">
+        {projects.length === 0 && !creating && (
+          <div className="text-center py-8">
+            <FolderOpen size={28} className="mx-auto mb-2 text-slate-400" />
+            <div className="text-xs text-slate-400">暂无项目，点击上方 + 创建</div>
+            <button
+              onClick={() => { setCreating(true); setNewName('') }}
+              className="mt-2 text-xs px-3 py-1 rounded-xl cursor-pointer text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all duration-200"
+            >创建第一个项目</button>
+          </div>
+        )}
         {projects.map(project => {
           const isCurrent = project.id === currentId
           const isEditing = editingId === project.id
@@ -136,10 +171,7 @@ export function ProjectSidebar({
           return (
             <div
               key={project.id}
-              className="group mx-1.5 mb-0.5 rounded-lg transition-all"
-              style={{
-                backgroundColor: isCurrent ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : undefined,
-              }}
+              className={`group mx-1.5 mb-0.5 rounded-xl transition-all duration-200 ${isCurrent ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300' : 'hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
             >
               {isEditing ? (
                 <div className="flex items-center gap-1 px-2 py-1.5">
@@ -151,13 +183,13 @@ export function ProjectSidebar({
                       if (e.key === 'Enter') handleRename(project.id)
                       if (e.key === 'Escape') { setEditingId(null); setEditName('') }
                     }}
-                    className="flex-1 px-1.5 py-0.5 rounded text-xs border outline-none min-w-0"
+                    className="flex-1 px-1.5 py-0.5 rounded-lg text-xs border outline-none min-w-0 focus:border-purple-500 transition-colors"
                     style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
                   />
-                  <button onClick={() => handleRename(project.id)} className="p-0.5 cursor-pointer" style={{ color: 'var(--color-primary)' }}>
+                  <button onClick={() => handleRename(project.id)} className="p-0.5 cursor-pointer text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-all duration-200">
                     <Check size={12} />
                   </button>
-                  <button onClick={() => { setEditingId(null); setEditName('') }} className="p-0.5 cursor-pointer" style={{ color: 'var(--color-text-muted)' }}>
+                  <button onClick={() => { setEditingId(null); setEditName('') }} className="p-0.5 cursor-pointer text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200">
                     <X size={12} />
                   </button>
                 </div>
@@ -178,31 +210,39 @@ export function ProjectSidebar({
               ) : (
                 <div
                   onClick={() => onSwitch(project.id)}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left cursor-pointer rounded-lg hover:bg-[var(--color-bg-secondary)] transition-all"
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left cursor-pointer rounded-xl transition-all duration-200"
                   style={{ color: isCurrent ? 'var(--color-text)' : 'var(--color-text-secondary)' }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter') onSwitch(project.id) }}
                 >
-                  <FolderOpen size={13} style={{ color: isCurrent ? 'var(--color-primary)' : 'var(--color-text-muted)', flexShrink: 0 }} />
+                  <FolderOpen size={13} className={`flex-shrink-0 ${isCurrent ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
                       <span className="text-xs font-medium truncate">{project.name}</span>
+                      {project.type === 'secretary' && (
+                        <span title="秘书项目"><Bot size={10} className="flex-shrink-0 text-purple-500" /></span>
+                      )}
                       {isRunning && (
-                        <Loader2 size={10} className="animate-spin flex-shrink-0" style={{ color: 'var(--color-primary)' }} />
+                        <Loader2 size={10} className="animate-spin flex-shrink-0 text-purple-600 dark:text-purple-400" />
                       )}
                     </div>
-                    <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{formatDate(project.updatedAt)}</div>
+                    <div className="text-[10px] flex items-center gap-1 text-slate-400">
+                      <span>{formatDate(project.updatedAt)}</span>
+                      {userRole === 'admin' && project.ownerName && (
+                        <span className="opacity-60">· {project.ownerName}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     <button
                       onClick={e => { e.stopPropagation(); setEditingId(project.id); setEditName(project.name) }}
-                      className="p-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-muted)' }} title="重命名"
+                      className="p-0.5 rounded-lg cursor-pointer text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all duration-200" title="重命名"
                     ><Pencil size={11} /></button>
                     {projects.length > 1 && (
                       <button
                         onClick={e => { e.stopPropagation(); setConfirmDeleteId(project.id) }}
-                        className="p-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-muted)' }} title="删除"
+                        className="p-0.5 rounded-lg cursor-pointer text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-all duration-200" title="删除"
                       ><Trash2 size={11} /></button>
                     )}
                   </div>

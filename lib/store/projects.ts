@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import type { ProjectInfo, ProjectMember, ProjectRole } from '@/types/skills'
+import type { ProjectInfo, ProjectMember, ProjectRole, ProjectType } from '@/types/skills'
 import { getAllUsers } from './users'
 import { addAuditLog } from './audit-log'
 
@@ -22,14 +22,22 @@ export function getProjects(): ProjectInfo[] {
     if (!fs.existsSync(PROJECTS_FILE)) return []
     const raw = fs.readFileSync(PROJECTS_FILE, 'utf-8')
     const data = JSON.parse(raw)
-    return Array.isArray(data.projects) ? data.projects : []
+    const projects = Array.isArray(data.projects) ? data.projects : []
+    // 兼容旧数据：没有 type 字段的项目默认为 secretary
+    return projects.map((p: ProjectInfo) => ({
+      ...p,
+      type: p.type || 'secretary',
+    }))
   } catch {
     return []
   }
 }
 
 export function getProjectsByOwner(userId: string): ProjectInfo[] {
-  return getProjects().filter(p => !p.ownerId || p.ownerId === userId)
+  return getProjects().filter(p =>
+    p.ownerId === userId ||
+    p.members?.some(m => m.userId === userId)
+  )
 }
 
 export function getProjectsForUser(userId: string, role?: 'admin'): ProjectInfo[] {
@@ -39,6 +47,18 @@ export function getProjectsForUser(userId: string, role?: 'admin'): ProjectInfo[
     p.ownerId === userId ||
     p.members?.some(m => m.userId === userId)
   )
+}
+
+/**
+ * 给项目列表附加 ownerName（从用户表批量查询）
+ */
+export function enrichWithOwnerName(projects: ProjectInfo[]): ProjectInfo[] {
+  const users = getAllUsers()
+  const userMap = new Map(users.map(u => [u.id, u.username]))
+  return projects.map(p => ({
+    ...p,
+    ownerName: p.ownerId ? (userMap.get(p.ownerId) || p.ownerId.slice(0, 8)) : undefined,
+  }))
 }
 
 export function saveProjects(list: ProjectInfo[]) {
@@ -54,7 +74,7 @@ export function getProjectById(id: string): ProjectInfo | undefined {
   return getProjects().find(p => p.id === id)
 }
 
-export function createProject(name: string, ownerId?: string): ProjectInfo {
+export function createProject(name: string, ownerId?: string, type: ProjectType = 'secretary'): ProjectInfo {
   ensureDataDir()
   const id = randomUUID().slice(0, 8)
   const now = new Date().toISOString()
@@ -65,7 +85,7 @@ export function createProject(name: string, ownerId?: string): ProjectInfo {
     joinedAt: now,
   }] : []
 
-  const project: ProjectInfo = { id, name, ownerId, members, createdAt: now, updatedAt: now }
+  const project: ProjectInfo = { id, name, type, ownerId, members, createdAt: now, updatedAt: now }
 
   fs.mkdirSync(path.join(PROJECTS_DIR, id), { recursive: true })
 
@@ -228,14 +248,24 @@ export function getProjectMemberRole(
 
 /**
  * 确保至少有一个项目。若无项目，创建"默认项目"并迁移旧数据。
+ * 若当前用户的项目列表为空，为其创建一个默认项目。
  * 返回默认项目 ID。
  */
-export function ensureDefaultProject(): string {
+export function ensureDefaultProject(ownerId?: string): string {
   const list = getProjects()
-  if (list.length > 0) return list[0].id
 
-  // 创建默认项目
-  const project = createProject('默认项目')
+  // 如果用户已登录，检查用户是否有自己的项目，没有则创建一个
+  if (ownerId) {
+    const userProjects = list.filter(p =>
+      p.ownerId === ownerId || p.members?.some(m => m.userId === ownerId)
+    )
+    if (userProjects.length > 0) return userProjects[0].id
+  } else if (list.length > 0) {
+    return list[0].id
+  }
+
+  // 创建默认项目（秘书类型）
+  const project = createProject('默认项目', ownerId, 'secretary')
   const projectDir = getProjectDir(project.id)
 
   // 迁移旧数据文件

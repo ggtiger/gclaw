@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Users, Shield, UserCog, Ban, CheckCircle, RefreshCw } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
 
 interface UserItem {
   id: string
@@ -13,6 +14,7 @@ interface UserItem {
 }
 
 export function UsersPanel() {
+  const { toast } = useToast()
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
@@ -50,10 +52,10 @@ export function UsersPanel() {
       if (res.ok) {
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
       } else {
-        alert(data.error || '操作失败')
+        toast(data.error || '操作失败', 'error')
       }
     } catch {
-      alert('操作失败')
+      toast('操作失败', 'error')
     } finally {
       setUpdating(null)
     }
@@ -70,11 +72,12 @@ export function UsersPanel() {
       const data = await res.json()
       if (res.ok) {
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, disabled } : u))
+        toast(disabled ? '用户已禁用' : '用户已启用', 'success')
       } else {
-        alert(data.error || '操作失败')
+        toast(data.error || '操作失败', 'error')
       }
     } catch {
-      alert('操作失败')
+      toast('操作失败', 'error')
     } finally {
       setUpdating(null)
     }

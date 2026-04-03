@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Copy, Check, Link2, RefreshCw, QrCode, Smartphone, Loader2, AlertCircle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import type { ChannelConfig, ChannelType } from '@/types/channels'
+import { useToast } from '@/components/ui/Toast'
 
 const CHANNEL_TYPES: { type: ChannelType; label: string; icon: string }[] = [
   { type: 'dingtalk', label: '钉钉', icon: '🔵' },
@@ -12,6 +13,7 @@ const CHANNEL_TYPES: { type: ChannelType; label: string; icon: string }[] = [
 ]
 
 export function ChannelsPanel({ projectId }: { projectId: string }) {
+  const { toast } = useToast()
   const [channels, setChannels] = useState<ChannelConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
@@ -119,9 +121,13 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
         setAdding(false)
         setNewName('')
         setNewFields({})
+        toast('渠道添加成功', 'success')
+      } else {
+        toast(data.error || '添加渠道失败', 'error')
       }
     } catch (err) {
       console.error('Failed to add channel:', err)
+      toast('添加渠道失败', 'error')
     }
   }
 
@@ -147,6 +153,7 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
       })
     } catch (err) {
       console.error('Failed to delete channel:', err)
+      toast('删除渠道失败', 'error')
       fetchChannels()
     }
   }

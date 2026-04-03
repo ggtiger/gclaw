@@ -6,9 +6,13 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/oauth',
+  '/api/channels/webhook',
   '/login',
   '/register',
 ]
+
+// 内部 API Key，用于技能环境调用 API
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'gclaw-internal-api-key'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -25,6 +29,17 @@ export async function middleware(request: NextRequest) {
   // 公开路径直接放行
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
     return NextResponse.next()
+  }
+
+  // 内部 API Key 认证（用于技能环境）
+  const internalApiKey = request.headers.get('x-internal-api-key')
+  if (internalApiKey === INTERNAL_API_KEY) {
+    // 验证通过，允许访问，但标记为内部调用
+    const requestHeaders = new Headers(request.headers)
+    requestHeaders.set('x-internal-call', 'true')
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
   }
 
   // 验证 token

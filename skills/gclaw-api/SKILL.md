@@ -35,19 +35,27 @@ metadata:
 
 - `$GCLAW_API_BASE` — 平台基础地址（如 `http://localhost:3000`）
 - `$GCLAW_PROJECT_ID` — 当前项目 ID
+- `$GCLAW_INTERNAL_API_KEY` — 内部 API 密钥（用于技能环境认证）
+
+**重要**：技能环境无法使用浏览器的 Cookie，必须使用内部 API Key 进行认证：
 
 ```bash
 # GET 请求
-curl -s "$GCLAW_API_BASE/api/projects" | jq .
+curl -s -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
+  "$GCLAW_API_BASE/api/projects" | jq .
 
 # POST/PUT 请求
 curl -s -X POST "$GCLAW_API_BASE/api/chat/stream" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"message": "hello", "projectId": "'$GCLAW_PROJECT_ID'"}' 
+  -d '{"message": "hello", "projectId": "'$GCLAW_PROJECT_ID'"}'
 
 # DELETE 请求
-curl -s -X DELETE "$GCLAW_API_BASE/api/projects?id=xxx" | jq .
+curl -s -X DELETE "$GCLAW_API_BASE/api/projects?id=xxx" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" | jq .
 ```
+
+> **注意**：所有 API 调用都必须包含 `-H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY"` 请求头，否则会返回 `{"error":"未登录"}` 错误。
 
 ---
 
@@ -425,21 +433,27 @@ Content-Type: application/json
 
 ## 常见操作示例
 
+> **重要提示**：以下所有示例都省略了 `-H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY"` 请求头以保持简洁。
+> **实际使用时，每个 curl 命令都必须添加此请求头！**
+
 ### 创建项目并配置
 
 ```bash
 # 1. 创建项目
 curl -s -X POST "$GCLAW_API_BASE/api/projects" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "我的项目"}' | jq .
 
 # 2. 配置设置（使用返回的 project.id）
 curl -s -X PUT "$GCLAW_API_BASE/api/settings?projectId=PROJECT_ID" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model": "claude-sonnet-4-20250514", "effort": "high"}' | jq .
 
 # 3. 启用技能
 curl -s -X PUT "$GCLAW_API_BASE/api/skills?projectId=PROJECT_ID" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"enabled": ["self-improving-agent"]}' | jq .
 ```
@@ -448,6 +462,7 @@ curl -s -X PUT "$GCLAW_API_BASE/api/skills?projectId=PROJECT_ID" \
 
 ```bash
 curl -N -X POST "$GCLAW_API_BASE/api/chat/stream" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"message": "你好", "projectId": "'$GCLAW_PROJECT_ID'"}'
 ```
@@ -457,12 +472,15 @@ curl -N -X POST "$GCLAW_API_BASE/api/chat/stream" \
 ```bash
 # 创建
 curl -s -X POST "$GCLAW_API_BASE/api/agents?projectId=$GCLAW_PROJECT_ID" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "code-reviewer", "prompt": "你是代码审查专家"}' | jq .
 
 # 列表
-curl -s "$GCLAW_API_BASE/api/agents?projectId=$GCLAW_PROJECT_ID" | jq .
+curl -s -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" \
+  "$GCLAW_API_BASE/api/agents?projectId=$GCLAW_PROJECT_ID" | jq .
 
 # 删除
-curl -s -X DELETE "$GCLAW_API_BASE/api/agents?projectId=$GCLAW_PROJECT_ID&name=code-reviewer" | jq .
+curl -s -X DELETE "$GCLAW_API_BASE/api/agents?projectId=$GCLAW_PROJECT_ID&name=code-reviewer" \
+  -H "x-internal-api-key: $GCLAW_INTERNAL_API_KEY" | jq .
 ```

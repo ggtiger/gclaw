@@ -9,6 +9,7 @@ import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
+import { BranchSwitcher } from './BranchSwitcher'
 import type { ChatMessage, ToolSummary, PermissionRequest } from '@/types/chat'
 
 interface ChatPanelProps {
@@ -23,17 +24,14 @@ interface ChatPanelProps {
   onSend: (message: string) => void
   onAbort: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
-  glass?: boolean
   onUpdateMessage?: (message: ChatMessage) => void
 }
 
 function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in-up">
-      <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5" style={{
-        background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 15%, transparent), color-mix(in srgb, var(--color-primary) 5%, transparent))',
-      }}>
-        <Bot size={30} style={{ color: 'var(--color-primary)' }} />
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 bg-gradient-to-br from-purple-500/20 to-purple-600/10">
+        <Bot size={30} className="text-purple-600 dark:text-purple-400" />
       </div>
       <h2 className="text-xl font-bold mb-1.5" style={{ color: 'var(--color-text)' }}>
         GClaw
@@ -51,11 +49,10 @@ function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
           <button
             key={suggestion.text}
             onClick={() => onSend(suggestion.text)}
-            className="text-left text-sm px-3.5 py-3 rounded-xl border transition-all cursor-pointer hover:border-[var(--color-primary)] hover:shadow-sm hover:-translate-y-0.5"
+            className="text-left text-sm px-3.5 py-3 rounded-xl border transition-all duration-200 cursor-pointer hover:border-purple-500 hover:shadow-sm hover:-translate-y-0.5 bg-white/40 dark:bg-white/5 backdrop-blur-sm"
             style={{
               borderColor: 'var(--color-border)',
               color: 'var(--color-text-secondary)',
-              backgroundColor: 'var(--color-surface)',
             }}
           >
             <span className="mr-1.5">{suggestion.icon}</span>
@@ -144,7 +141,7 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onRespondPermission, glass, onUpdateMessage }: ChatPanelProps) {
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onRespondPermission, onUpdateMessage }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
@@ -154,6 +151,9 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
   const [filterStarred, setFilterStarred] = useState(false)
   const [allTags, setAllTags] = useState<{ name: string; count: number }[]>([])
   const [tagNameList, setTagNameList] = useState<string[]>([])
+
+  // 分支状态
+  const [activeBranch, setActiveBranch] = useState('main')
 
   // 加载标签列表
   const loadTags = useCallback(async () => {
@@ -196,11 +196,15 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
     return true
   })
 
-  // 自动滚动到底部
+  // 自动滚动到底部（用 RAF 防抖，减少抖动）
   useEffect(() => {
-    if (shouldAutoScroll.current && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
-    }
+    if (!shouldAutoScroll.current || !scrollContainerRef.current) return
+    const raf = requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+      }
+    })
+    return () => cancelAnimationFrame(raf)
   }, [filteredMessages, streamingContent, toolSummary])
 
   // 检测用户是否手动向上滚动
@@ -214,16 +218,26 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
   const isEmpty = messages.length === 0 && !streamingContent
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
       {isEmpty ? (
-        <EmptyState onSend={onSend} />
+        <div className="flex-1 flex flex-col pb-48">
+          <EmptyState onSend={onSend} />
+        </div>
       ) : (
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto px-4 pt-4 pb-48 lg:px-8 lg:pt-6"
         >
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto flex flex-col gap-4">
+            {/* 分支切换 */}
+            <BranchSwitcher
+              projectId={projectId}
+              activeBranch={activeBranch}
+              onSwitch={setActiveBranch}
+              lastMessageId={filteredMessages.length > 0 ? filteredMessages[filteredMessages.length - 1].id : undefined}
+            />
+
             <div className="flex items-center gap-2">
               <div className="flex-1">
                 <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
@@ -245,7 +259,6 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
               <div key={msg.id} id={`msg-${msg.id}`} className="transition-all duration-300 rounded-lg">
                 <MessageBubble
                   message={msg}
-                  glass={glass}
                   projectId={projectId}
                   onMessageUpdate={handleMessageUpdate}
                   allTags={tagNameList}
@@ -255,11 +268,9 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
             {/* 压缩状态指示器 */}
             {statusText && (
-              <div className="flex items-center gap-2 px-4 py-2 mx-4 my-1 rounded-lg animate-fade-in" style={{
-                backgroundColor: 'color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent)',
-              }}>
-                <RefreshCw size={14} className="animate-spin" style={{ color: 'var(--color-warning, #f59e0b)' }} />
-                <span className="text-xs font-medium" style={{ color: 'var(--color-warning, #f59e0b)' }}>
+              <div className="flex items-center gap-2 px-4 py-2 mx-4 my-1 rounded-lg animate-fade-in bg-amber-500/10">
+                <RefreshCw size={14} className="animate-spin text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
                   {statusText === 'compacting' ? '正在压缩上下文...' : statusText}
                 </span>
               </div>
@@ -267,14 +278,10 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
             {/* Thinking 思考过程（可展开/收起） */}
             {thinkingContent && (
-              <div className="mx-4 my-1 rounded-lg overflow-hidden border animate-fade-in" style={{
-                borderColor: 'color-mix(in srgb, var(--color-primary) 20%, transparent)',
-                backgroundColor: 'color-mix(in srgb, var(--color-primary) 5%, transparent)',
-              }}>
+              <div className="mx-4 my-1 rounded-xl overflow-hidden border animate-fade-in border-purple-500/20 bg-purple-500/5">
                 <button
                   onClick={() => setThinkingExpanded(!thinkingExpanded)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] transition-colors"
-                  style={{ color: 'var(--color-primary)' }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400"
                 >
                   <Brain size={14} />
                   <span>思考过程</span>
@@ -282,9 +289,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
                   {thinkingExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 </button>
                 {thinkingExpanded && (
-                  <div className="px-3 pb-2 text-xs leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto" style={{
-                    color: 'var(--color-text-secondary)',
-                  }}>
+                  <div className="px-3 pb-2 text-xs leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto text-slate-600 dark:text-slate-400">
                     {thinkingContent}
                   </div>
                 )}
@@ -300,19 +305,16 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
             {/* 流式输出 */}
             {streamingContent && (
-              <div className={`flex gap-3 px-4 py-4 animate-fade-in ${glass ? 'mx-2 my-1 rounded-xl' : ''}`} style={{
-                backgroundColor: glass ? 'var(--glass-msg-assistant)' : 'var(--color-bg-secondary)',
-                backdropFilter: glass ? 'blur(12px)' : undefined,
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1" style={{
+                backgroundColor: 'var(--glass-msg-assistant)',
               }}>
                 <div className="flex-shrink-0">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{
-                    backgroundColor: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
-                  }}>
-                    <Bot size={16} style={{ color: 'var(--color-primary)' }} />
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
+                    <Bot size={16} className="text-purple-600 dark:text-purple-400" />
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                <div className="flex-1 min-w-0 text-sm leading-relaxed">
+                  <div className="text-xs font-medium mb-1 text-slate-500 dark:text-slate-400">
                     Claude
                   </div>
                   <MarkdownRenderer content={streamingContent} isStreaming />
@@ -322,25 +324,22 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
             {/* 等待响应指示 */}
             {sending && !streamingContent && !toolSummary && (
-              <div className={`flex gap-3 px-4 py-4 animate-fade-in ${glass ? 'mx-2 my-1 rounded-xl' : ''}`} style={{
-                backgroundColor: glass ? 'var(--glass-msg-assistant)' : 'var(--color-bg-secondary)',
-                backdropFilter: glass ? 'blur(12px)' : undefined,
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1" style={{
+                backgroundColor: 'var(--glass-msg-assistant)',
               }}>
                 <div className="flex-shrink-0">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{
-                    backgroundColor: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
-                  }}>
-                    <Bot size={16} style={{ color: 'var(--color-primary)' }} />
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
+                    <Bot size={16} className="text-purple-600 dark:text-purple-400" />
                   </div>
                 </div>
                 <div className="flex-1">
-                  <div className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                  <div className="text-xs font-medium mb-2 text-slate-500 dark:text-slate-400">
                     Claude
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-primary)', animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-primary)', animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-primary)', animationDelay: '300ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-purple-500" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-purple-500" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-purple-500" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
@@ -354,14 +353,28 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
       {/* 权限审批对话框 */}
       {permissionRequest && (
-        <div className="max-w-3xl mx-auto w-full">
-          <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
+        <div className="absolute bottom-48 left-0 right-0 z-30 px-4 lg:px-8 flex justify-center">
+          <div className="w-full max-w-3xl">
+            <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
+          </div>
         </div>
       )}
 
-      {/* 输入区域 */}
-      <div className="max-w-3xl mx-auto w-full">
-        <ChatInput onSend={onSend} onAbort={onAbort} sending={sending} glass={glass} />
+      {/* 浮动输入区域 */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white/70 via-white/40 to-transparent dark:from-[#1a1a2e]/90 dark:via-[#1a1a2e]/60 dark:to-transparent pt-6 pb-4 px-4 lg:px-8 flex justify-center z-20">
+        <div className="w-full max-w-3xl">
+          <ChatInput
+            onSend={onSend}
+            onAbort={onAbort}
+            sending={sending}
+            projectId={projectId}
+            onTemplateSelect={(template) => {
+              if (template.firstMessage) {
+                onSend(template.firstMessage)
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   )

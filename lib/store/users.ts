@@ -27,6 +27,7 @@ export interface UserInfo {
   lastLoginAt?: string
   disabled: boolean
   oauthBindings?: OAuthBinding[]
+  avatarUrl?: string  // 头像图片 URL
 }
 
 interface UsersData {
@@ -187,6 +188,33 @@ export function getUserCount(): number {
   return readAll().length
 }
 
+/**
+ * 修改用户密码
+ */
+export function updateUserPassword(userId: string, oldPassword: string, newPassword: string): { success: boolean; error?: string } {
+  const users = readAll()
+  const user = users.find(u => u.id === userId)
+  if (!user) return { success: false, error: '用户不存在' }
+
+  // OAuth 用户无密码
+  if (!user.passwordHash) return { success: false, error: 'OAuth 用户不支持密码修改，请通过第三方平台管理账号' }
+
+  // 验证旧密码
+  if (!bcrypt.compareSync(oldPassword, user.passwordHash)) {
+    return { success: false, error: '旧密码错误' }
+  }
+
+  // 校验新密码
+  const validation = validatePassword(newPassword)
+  if (!validation.valid) return { success: false, error: validation.error }
+
+  // 更新密码
+  user.passwordHash = bcrypt.hashSync(newPassword, 10)
+  writeAll(users)
+
+  return { success: true }
+}
+
 // ── OAuth ──
 
 /**
@@ -272,4 +300,39 @@ export function bindOAuth(userId: string, provider: 'dingtalk' | 'feishu', provi
 
   writeAll(users)
   return true
+}
+
+/**
+ * 更新用户头像 URL
+ */
+export function updateUserAvatar(userId: string, avatarUrl: string): Omit<UserInfo, 'passwordHash'> | null {
+  const users = readAll()
+  const user = users.find(u => u.id === userId)
+  if (!user) return null
+  user.avatarUrl = avatarUrl
+  writeAll(users)
+  const { passwordHash: _, ...safe } = user
+  return safe
+}
+
+/**
+ * 清除用户头像 URL
+ */
+export function clearUserAvatar(userId: string): Omit<UserInfo, 'passwordHash'> | null {
+  const users = readAll()
+  const user = users.find(u => u.id === userId)
+  if (!user) return null
+  delete user.avatarUrl
+  writeAll(users)
+  const { passwordHash: _, ...safe } = user
+  return safe
+}
+
+/**
+ * 根据 ID 获取用户头像 URL
+ */
+export function getUserAvatarUrl(userId: string): string | null {
+  const users = readAll()
+  const user = users.find(u => u.id === userId)
+  return user?.avatarUrl || null
 }

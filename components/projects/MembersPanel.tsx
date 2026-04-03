@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { UserPlus, X, Shield, Pencil, Trash2, Search, Loader } from 'lucide-react'
 import type { ProjectMember, ProjectRole } from '@/types/skills'
+import { useToast } from '@/components/ui/Toast'
 
 interface MembersPanelProps {
   projectId: string
@@ -21,6 +22,7 @@ const ROLE_COLORS: Record<ProjectRole, { bg: string; text: string }> = {
 }
 
 export function MembersPanel({ projectId }: MembersPanelProps) {
+  const { toast } = useToast()
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -72,6 +74,9 @@ export function MembersPanel({ projectId }: MembersPanelProps) {
       if (res.ok) {
         setAvailableUsers(prev => prev.filter(u => u.userId !== userId))
         fetchMembers()
+        toast('成员已添加', 'success')
+      } else {
+        toast('添加成员失败', 'error')
       }
     } finally {
       setAddingUserId(null)
@@ -87,8 +92,13 @@ export function MembersPanel({ projectId }: MembersPanelProps) {
       })
       if (res.ok) {
         fetchMembers()
+        toast('角色已更新', 'success')
+      } else {
+        toast('更新角色失败', 'error')
       }
-    } catch {}
+    } catch {
+      toast('更新角色失败', 'error')
+    }
   }
 
   const handleRemoveMember = async (userId: string) => {
@@ -98,8 +108,13 @@ export function MembersPanel({ projectId }: MembersPanelProps) {
       })
       if (res.ok) {
         fetchMembers()
+        toast('成员已移除', 'success')
+      } else {
+        toast('移除成员失败', 'error')
       }
-    } catch {}
+    } catch {
+      toast('移除成员失败', 'error')
+    }
   }
 
   // 初始加载
@@ -170,6 +185,11 @@ export function MembersPanel({ projectId }: MembersPanelProps) {
         <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
           成员 ({members.length})
         </div>
+        {members.length === 0 && (
+          <div className="text-center py-4 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            暂无其他成员，使用搜索框邀请
+          </div>
+        )}
         {members.map(member => {
           const colors = ROLE_COLORS[member.role] || ROLE_COLORS.viewer
           return (
