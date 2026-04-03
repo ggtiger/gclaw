@@ -167,7 +167,7 @@ function ToolCallRow({ tool }: { tool: ToolCallItem }) {
     <div className="border-b last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/20 dark:hover:bg-white/5 transition-colors cursor-pointer"
       >
         {statusIcon()}
         <Terminal size={14} className="text-[var(--color-text-muted)]" />
@@ -232,17 +232,17 @@ export const ToolCallSummary = memo(function ToolCallSummary({ summary }: ToolCa
     <div className="space-y-2">
       {/* TodoWrite 专用卡片 — 只显示最新一次的 todo 列表 */}
       {todoTools.length > 0 && (
-        <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+        <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5 backdrop-blur-md">
           <TodoWriteView tools={todoTools} />
         </div>
       )}
 
       {/* 其他工具调用 */}
       {otherTools.length > 0 && (
-        <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+        <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5 backdrop-blur-md">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium cursor-pointer hover:bg-white/20 dark:hover:bg-white/5 transition-colors"
           >
             <Terminal size={16} className="text-[var(--color-primary)]" />
             <span style={{ color: 'var(--color-text)' }}>

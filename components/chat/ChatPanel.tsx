@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, RefreshCw, Star, Tag, X } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -23,6 +23,7 @@ interface ChatPanelProps {
   projectId: string
   onSend: (message: string) => void
   onAbort: () => void
+  onClearChat?: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
   onUpdateMessage?: (message: ChatMessage) => void
 }
@@ -141,7 +142,7 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onRespondPermission, onUpdateMessage }: ChatPanelProps) {
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onClearChat, onRespondPermission, onUpdateMessage }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
@@ -219,6 +220,28 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
   return (
     <div className="relative flex flex-col h-full">
+      {/* 固定工具栏：分支 + 搜索 + 导出 + 清空 */}
+      {!isEmpty && (
+        <div className="flex items-center gap-2 px-4 lg:px-8 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0">
+          <BranchSwitcher
+            projectId={projectId}
+            activeBranch={activeBranch}
+            onSwitch={setActiveBranch}
+            lastMessageId={filteredMessages.length > 0 ? filteredMessages[filteredMessages.length - 1].id : undefined}
+          />
+          <div className="flex-1" />
+          <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
+          <ExportButton projectId={projectId} />
+          <button
+            onClick={() => onClearChat?.()}
+            className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+            title="清空对话"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      )}
+
       {isEmpty ? (
         <div className="flex-1 flex flex-col pb-48">
           <EmptyState onSend={onSend} />
@@ -229,22 +252,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto px-4 pt-4 pb-48 lg:px-8 lg:pt-6"
         >
-          <div className="max-w-3xl mx-auto flex flex-col gap-4">
-            {/* 分支切换 */}
-            <BranchSwitcher
-              projectId={projectId}
-              activeBranch={activeBranch}
-              onSwitch={setActiveBranch}
-              lastMessageId={filteredMessages.length > 0 ? filteredMessages[filteredMessages.length - 1].id : undefined}
-            />
-
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
-              </div>
-              <ExportButton projectId={projectId} />
-            </div>
-
+          <div className="max-w-[800px] mx-auto flex flex-col gap-4">
             {/* 筛选栏 */}
             <FilterBar
               tags={allTags}

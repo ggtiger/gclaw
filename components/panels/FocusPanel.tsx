@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Target, MoreHorizontal, Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
 // Mock 数据类型
 interface Todo {
@@ -64,17 +64,6 @@ function SidebarFocusSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* 标题行 */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-          <Target className="w-5 h-5 text-purple-600" />
-          专注模式
-        </h2>
-        <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-          <MoreHorizontal className="w-5 h-5" />
-        </button>
-      </div>
-
       {/* 任务卡片 */}
       <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-3">
         {/* 副标题行 */}

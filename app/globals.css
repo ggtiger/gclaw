@@ -34,7 +34,7 @@
   --color-error: #EF4444;
   --color-warning: #F59E0B;
   /* 代码块背景 */
-  --color-code-bg: #1E293B;
+  --color-code-bg: #1e1e2e;
   /* 毛玻璃效果变量 - 亮色模式（更透明，与暗色模式一致） */
   --glass-bg: rgba(255, 255, 255, 0.25);
   --glass-border: rgba(139, 92, 246, 0.12);
@@ -77,7 +77,7 @@
   --color-error: #F87171;
   --color-warning: #FBBF24;
   /* 代码块背景 */
-  --color-code-bg: #0F172A;
+  --color-code-bg: #1e1e2e;
   /* 毛玻璃效果变量 (暗色) - 更透明 */
   --glass-bg: rgba(30, 41, 59, 0.3);
   --glass-border: rgba(255, 255, 255, 0.06);
@@ -273,7 +273,7 @@ body {
 
 .markdown-body code {
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 .markdown-body p code {

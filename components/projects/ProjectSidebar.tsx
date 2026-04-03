@@ -77,7 +77,7 @@ export function ProjectSidebar({
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
         <div className="flex items-center gap-1.5">
           <FolderOpen size={14} className="text-purple-600 dark:text-purple-400" />
-          <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>项目</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>项目</span>
         </div>
         <div className="flex items-center gap-0.5">
           <button
@@ -216,10 +216,10 @@ export function ProjectSidebar({
                   tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter') onSwitch(project.id) }}
                 >
-                  <FolderOpen size={13} className={`flex-shrink-0 ${isCurrent ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+                  <FolderOpen size={14} className={`flex-shrink-0 ${isCurrent ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                      <span className="text-xs font-medium truncate">{project.name}</span>
+                      <span className="text-sm font-medium truncate">{project.name}</span>
                       {project.type === 'secretary' && (
                         <span title="秘书项目"><Bot size={10} className="flex-shrink-0 text-purple-500" /></span>
                       )}
@@ -227,7 +227,7 @@ export function ProjectSidebar({
                         <Loader2 size={10} className="animate-spin flex-shrink-0 text-purple-600 dark:text-purple-400" />
                       )}
                     </div>
-                    <div className="text-[10px] flex items-center gap-1 text-slate-400">
+                    <div className="text-xs flex items-center gap-1 text-slate-400">
                       <span>{formatDate(project.updatedAt)}</span>
                       {userRole === 'admin' && project.ownerName && (
                         <span className="opacity-60">· {project.ownerName}</span>

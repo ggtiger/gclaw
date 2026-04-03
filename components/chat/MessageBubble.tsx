@@ -133,7 +133,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
 
   return (
     <div
-      className={`flex gap-3 max-w-3xl group ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+      className={`flex gap-3 max-w-3xl group relative ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setShowTagInput(false); setTagQuery('') }}
     >
@@ -159,11 +159,11 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
         </div>
 
         {isUser ? (
-          <div className="p-3.5 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-2xl rounded-tr-md shadow-lg shadow-purple-500/20">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-2xl rounded-tr-md shadow-lg shadow-purple-500/20">
             {message.content}
           </div>
         ) : (
-          <div className="p-3.5 text-sm leading-relaxed break-words max-w-full bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl rounded-tl-md border border-white/40 dark:border-white/10 text-[var(--color-text)] shadow-sm">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl rounded-tl-md border border-white/40 dark:border-white/10 text-[var(--color-text)] shadow-sm">
             <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
           </div>
         )}
@@ -171,7 +171,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
         {/* 消息级工具摘要（含 Todo 列表） */}
         {!isUser && message.toolSummary &&
           (message.toolSummary.pendingTools.length > 0 || message.toolSummary.completedTools.length > 0) && (
-          <div className="ml-10 mr-2">
+          <div className="mt-1 w-full">
             <ToolCallSummary summary={message.toolSummary} />
           </div>
         )}

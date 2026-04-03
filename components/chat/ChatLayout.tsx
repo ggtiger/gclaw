@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import {
-  MessageCircle, Settings, Trash2, Sun, Moon, Monitor,
+  MessageCircle, Settings, Sun, Moon, Monitor,
   Menu, X, Zap, Bot, Link2, LogOut, User, Target, FolderOpen
 } from 'lucide-react'
 import { ChatPanel } from './ChatPanel'
@@ -223,12 +223,12 @@ export function ChatLayout() {
         )}
 
         {/* Management buttons group (桌面/平板) */}
-        <div className="hidden md:flex items-center gap-0.5 mr-2 px-1 py-0.5 rounded-xl bg-white/30 dark:bg-white/5 backdrop-blur-sm">
+        <div className="hidden md:flex items-center gap-1 mr-2 px-1.5 py-1 rounded-xl bg-white/30 dark:bg-white/5 backdrop-blur-sm">
           {/* 秘书类型：专注模式按钮 */}
           {isSecretary && (
             <button
               onClick={() => toggleSidePanel('focus')}
-              className={`p-1.5 rounded-xl transition-all duration-200 ${sidePanel === 'focus' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+              className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'focus' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
               title="专注模式"
             >
               <Target size={16} />
@@ -238,7 +238,7 @@ export function ChatLayout() {
           {!isSecretary && (
             <button
               onClick={() => toggleSidePanel('workspace')}
-              className={`p-1.5 rounded-xl transition-all duration-200 ${sidePanel === 'workspace' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+              className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'workspace' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
               title="工作空间"
             >
               <FolderOpen size={16} />
@@ -246,28 +246,28 @@ export function ChatLayout() {
           )}
           <button
             onClick={() => toggleSidePanel('skills')}
-            className={`p-1.5 rounded-xl transition-all duration-200 ${sidePanel === 'skills' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'skills' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
             title="技能管理"
           >
             <Zap size={16} />
           </button>
           <button
             onClick={() => toggleSidePanel('agents')}
-            className={`p-1.5 rounded-xl transition-all duration-200 ${sidePanel === 'agents' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'agents' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
             title="智能体管理"
           >
             <Bot size={16} />
           </button>
           <button
             onClick={() => toggleSidePanel('channels')}
-            className={`p-1.5 rounded-xl transition-all duration-200 ${sidePanel === 'channels' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'channels' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
             title="渠道管理"
           >
             <Link2 size={16} />
           </button>
           <button
             onClick={() => toggleSidePanel('settings')}
-            className={`p-1.5 rounded-xl transition-all duration-200 ${sidePanel === 'settings' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'settings' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
             title="设置"
           >
             <Settings size={16} />
@@ -275,36 +275,29 @@ export function ChatLayout() {
         </div>
 
         {/* Utility buttons */}
-        <div className="flex items-center gap-0.5">
+        <div className="hidden md:flex items-center gap-1 mr-1">
           <button
             onClick={cycleTheme}
-            className="p-1.5 rounded-xl transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+            className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
             title={`主题: ${theme}`}
           >
             {themeIcon()}
           </button>
-          <button
-            onClick={chat.clearChat}
-            className="p-1.5 rounded-xl transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 hidden sm:inline-flex"
-            title="清空对话"
-          >
-            <Trash2 size={16} />
-          </button>
-
-          {/* 用户头像下拉菜单 */}
-          {user && (
-            <div className="relative" ref={userMenuRef}>
-              <button
-                ref={userBtnRef}
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer ${userMenuOpen ? 'bg-purple-600 text-white' : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25'}`}
-                title={user.username}
-              >
-                {user.username.charAt(0).toUpperCase()}
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* 用户头像下拉菜单 */}
+        {user && (
+          <div className="relative" ref={userMenuRef}>
+            <button
+              ref={userBtnRef}
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer ${userMenuOpen ? 'bg-purple-600 text-white' : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25'}`}
+              title={user.username}
+            >
+              {user.username.charAt(0).toUpperCase()}
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Main Area - flex row with gap */}
@@ -339,6 +332,7 @@ export function ChatLayout() {
             projectId={project.currentId}
             onSend={chat.sendMessage}
             onAbort={chat.abortChat}
+            onClearChat={chat.clearChat}
             onRespondPermission={chat.respondPermission}
             onUpdateMessage={chat.updateMessage}
           />

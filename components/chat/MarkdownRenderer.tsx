@@ -46,12 +46,12 @@ function HighlightedCodeBlock({ className, children, isStreaming }: { className?
   return (
     <div className="relative group">
       {language && (
-        <div className="flex items-center justify-between px-4 py-1.5 text-xs rounded-t-lg"
-          style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+        <div className="flex items-center justify-between px-3 py-2 text-xs rounded-t-lg"
+          style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <span>{language}</span>
           <button
             onClick={handleCopy}
-            className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1 hover:text-[var(--color-text)]"
+            className="cursor-pointer flex items-center gap-1 hover:text-[var(--color-text)]"
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
             <span>{copied ? '已复制' : '复制'}</span>
