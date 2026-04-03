@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Check, MoreVertical, Info } from 'lucide-react';
 
 // Mock 数据类型
 interface Todo {
@@ -63,12 +63,25 @@ function SidebarFocusSection() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col">
+      {/* Section 标题行 */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-purple-500" />
+          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+            专注模式
+          </span>
+        </div>
+        <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+          <MoreVertical className="w-4 h-4" />
+        </button>
+      </div>
+
       {/* 任务卡片 */}
       <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-3">
         {/* 副标题行 */}
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
             即将到来的任务
           </span>
           <span className="text-xs font-medium text-purple-600 cursor-pointer hover:underline">
@@ -129,11 +142,11 @@ function SidebarNotesSection() {
   const [notes] = useState<Note[]>(initialNotes);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* 标题行 */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col">
+      {/* Section 标题行 */}
+      <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-          📝 近期笔记
+          <span className="text-amber-500">📝</span> 近期笔记
         </h2>
         <button className="text-purple-600 hover:opacity-80 text-xs font-medium bg-purple-100 dark:bg-purple-500/20 px-2 py-1 rounded-md transition-colors flex items-center gap-1">
           <Plus className="w-4 h-4" />
@@ -142,16 +155,16 @@ function SidebarNotesSection() {
       </div>
 
       {/* 笔记列表 */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2.5">
         {notes.length === 0 ? (
-          <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md border border-white/40 dark:border-white/[0.06] rounded-2xl p-3 text-xs text-gray-400 text-center">
+          <div className="bg-gray-100 dark:bg-white/5 rounded-lg p-3 text-xs text-gray-400 text-center">
             暂无笔记
           </div>
         ) : (
           notes.map((note) => (
             <div
               key={note.id}
-              className="bg-white/30 dark:bg-white/5 backdrop-blur-md border border-white/40 dark:border-white/[0.06] rounded-2xl p-3 hover:shadow-md transition-shadow cursor-pointer"
+              className="bg-gray-100 dark:bg-white/5 rounded-lg p-3 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -230,7 +243,7 @@ function MiniCalendar() {
   };
 
   return (
-    <div className="mt-auto bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-2">
+    <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-2">
       {/* 头部：年月 + 箭头 */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -284,10 +297,21 @@ function MiniCalendar() {
 // ========== 主组件 ==========
 export default function FocusPanel() {
   return (
-    <div className="flex flex-col gap-6 p-6 overflow-y-auto h-full">
-      <SidebarFocusSection />
-      <SidebarNotesSection />
-      <MiniCalendar />
+    <div className="flex flex-col overflow-y-auto h-full bg-white dark:bg-transparent">
+      {/* 专注模式 Section */}
+      <div className="px-5 py-4 border-b border-gray-200/60 dark:border-white/[0.06]">
+        <SidebarFocusSection />
+      </div>
+      
+      {/* 近期笔记 Section */}
+      <div className="px-5 py-4 border-b border-gray-200/60 dark:border-white/[0.06]">
+        <SidebarNotesSection />
+      </div>
+      
+      {/* 日历 Section */}
+      <div className="px-5 py-4 mt-auto">
+        <MiniCalendar />
+      </div>
     </div>
   );
 }

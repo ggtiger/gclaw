@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   MessageCircle, Settings, Sun, Moon, Monitor,
-  Menu, X, Zap, Bot, Link2, LogOut, User, Target, FolderOpen
+  Menu, X, Zap, Bot, Link2, LogOut, User, Target, FolderOpen, Trash2
 } from 'lucide-react'
 import { ChatPanel } from './ChatPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
@@ -160,7 +160,7 @@ export function ChatLayout() {
   }
 
   return (
-    <div className="h-screen flex flex-col relative p-2 gap-2" style={{ backgroundColor: 'transparent' }}>
+    <div className="h-screen flex flex-col relative" style={{ backgroundColor: 'transparent' }}>
       {/* 自定义背景图 */}
       {backgroundImage && (
         <div
@@ -169,11 +169,11 @@ export function ChatLayout() {
         />
       )}
 
-      {/* Top Bar - 独立圆角卡片 */}
+      {/* Top Bar - 扁平横条，无圆角，无glass效果 */}
       <header
-        className={`flex items-center h-13 px-2 sm:px-4 flex-shrink-0 relative z-10 rounded-2xl glass`}
+        className="flex items-center h-12 px-2 sm:px-4 flex-shrink-0 relative z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-white/[0.06]"
       >
-        {/* Left: mobile menu + Logo */}
+        {/* Left: mobile menu + Logo + Project + Model/Cost */}
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             className="lg:hidden toolbar-btn"
@@ -204,31 +204,25 @@ export function ChatLayout() {
           </div>
         )}
 
-        <div className="flex-1" />
-
-        {/* Stats badge */}
+        {/* Model and Cost info - moved to left */}
         {chat.lastStats && (
-          <div className="hidden md:flex items-center gap-1.5 text-xs mr-3 px-2 py-1 rounded-full" style={{
-            color: 'var(--color-text-muted)',
-            backgroundColor: 'var(--glass-surface)',
-          }}>
-            <span>{chat.lastStats.model}</span>
+          <div className="hidden md:flex items-center gap-3 ml-4">
+            <span className="text-xs text-gray-500 font-mono">{chat.lastStats.model}</span>
             {chat.lastStats.costUsd > 0 && (
-              <span className="opacity-60">·</span>
-            )}
-            {chat.lastStats.costUsd > 0 && (
-              <span>${chat.lastStats.costUsd.toFixed(4)}</span>
+              <span className="text-xs text-gray-500">${chat.lastStats.costUsd.toFixed(4)}</span>
             )}
           </div>
         )}
 
-        {/* Management buttons group (桌面/平板) */}
-        <div className="hidden md:flex items-center gap-1 mr-2 px-1.5 py-1 rounded-xl bg-white/30 dark:bg-white/5 backdrop-blur-sm">
+        <div className="flex-1" />
+
+        {/* Management buttons - 无分组容器，直接排列 */}
+        <div className="hidden md:flex items-center gap-1">
           {/* 秘书类型：专注模式按钮 */}
           {isSecretary && (
             <button
               onClick={() => toggleSidePanel('focus')}
-              className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'focus' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+              className={`p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors ${sidePanel === 'focus' ? 'text-purple-600 dark:text-purple-400' : ''}`}
               title="专注模式"
             >
               <Target size={16} />
@@ -238,7 +232,7 @@ export function ChatLayout() {
           {!isSecretary && (
             <button
               onClick={() => toggleSidePanel('workspace')}
-              className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'workspace' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+              className={`p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors ${sidePanel === 'workspace' ? 'text-purple-600 dark:text-purple-400' : ''}`}
               title="工作空间"
             >
               <FolderOpen size={16} />
@@ -246,42 +240,47 @@ export function ChatLayout() {
           )}
           <button
             onClick={() => toggleSidePanel('skills')}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'skills' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors ${sidePanel === 'skills' ? 'text-purple-600 dark:text-purple-400' : ''}`}
             title="技能管理"
           >
             <Zap size={16} />
           </button>
           <button
             onClick={() => toggleSidePanel('agents')}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'agents' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors ${sidePanel === 'agents' ? 'text-purple-600 dark:text-purple-400' : ''}`}
             title="智能体管理"
           >
             <Bot size={16} />
           </button>
           <button
             onClick={() => toggleSidePanel('channels')}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'channels' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors ${sidePanel === 'channels' ? 'text-purple-600 dark:text-purple-400' : ''}`}
             title="渠道管理"
           >
             <Link2 size={16} />
           </button>
           <button
             onClick={() => toggleSidePanel('settings')}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${sidePanel === 'settings' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400'}`}
+            className={`p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors ${sidePanel === 'settings' ? 'text-purple-600 dark:text-purple-400' : ''}`}
             title="设置"
           >
             <Settings size={16} />
           </button>
-        </div>
-
-        {/* Utility buttons */}
-        <div className="hidden md:flex items-center gap-1 mr-1">
+          {/* Theme toggle */}
           <button
             onClick={cycleTheme}
-            className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+            className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             title={`主题: ${theme}`}
           >
             {themeIcon()}
+          </button>
+          {/* Trash/Clear chat button */}
+          <button
+            onClick={chat.clearChat}
+            className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            title="清空对话"
+          >
+            <Trash2 size={16} />
           </button>
         </div>
 
@@ -301,7 +300,7 @@ export function ChatLayout() {
       </header>
 
       {/* Main Area - flex row with gap */}
-      <div className="flex-1 flex gap-2 min-h-0 relative z-10">
+      <div className="flex-1 flex min-h-0 relative z-10">
         {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥1024px) */}
         <div className="hidden lg:flex transition-all duration-200">
           <ProjectSidebar
@@ -320,7 +319,7 @@ export function ChatLayout() {
         </div>
 
         {/* Chat area - 独立圆角卡片 */}
-        <main className={`flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl glass`}>
+        <main className={`flex-1 flex flex-col min-w-0 overflow-hidden border-x border-gray-200 dark:border-white/[0.06]`}>
           <ChatPanel
             messages={chat.messages}
             streamingContent={chat.streamingContent}
@@ -343,7 +342,7 @@ export function ChatLayout() {
           <>
             {/* 桌面端：内嵌面板 */}
             <aside
-              className={`w-72 xl:w-80 flex-shrink-0 overflow-y-auto hidden lg:flex flex-col animate-slide-in-right rounded-2xl glass`}
+              className={`w-72 xl:w-80 flex-shrink-0 overflow-y-auto hidden lg:flex flex-col animate-slide-in-right`}
             >
               <div className="flex items-center justify-between px-4 h-12 border-b" style={{ borderColor: 'var(--glass-border)' }}>
                 <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
@@ -364,7 +363,7 @@ export function ChatLayout() {
             {/* 平板端 (md ~ lg)：叠加面板 */}
             <div className="hidden md:block lg:hidden fixed right-2 top-[60px] bottom-2 w-80 z-30 animate-slide-in-right">
               <div
-                className={`h-full overflow-y-auto rounded-2xl glass`}
+                className={`h-full overflow-y-auto`}
               >
                 <div className="flex items-center justify-between px-4 h-12 border-b" style={{ borderColor: 'var(--color-border)' }}>
                   <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
@@ -391,7 +390,7 @@ export function ChatLayout() {
       {sidePanel !== 'none' && (
         <div className="md:hidden fixed inset-0 z-50 flex flex-col p-2" style={{ top: '52px' }}>
           <div
-            className={`flex-1 overflow-y-auto animate-fade-in rounded-2xl glass`}
+            className={`flex-1 overflow-y-auto animate-fade-in`}
           >
             <div className="flex items-center justify-between px-4 h-12 border-b" style={{ borderColor: 'var(--panel-border)' }}>
               <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>

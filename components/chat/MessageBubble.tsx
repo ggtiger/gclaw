@@ -163,7 +163,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             {message.content}
           </div>
         ) : (
-          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl rounded-tl-md border border-white/40 dark:border-white/10 text-[var(--color-text)] shadow-sm">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-white/80 dark:bg-white/5 rounded-2xl rounded-tl-md border border-gray-200/60 dark:border-white/10 text-[var(--color-text)] shadow-sm">
             <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
           </div>
         )}

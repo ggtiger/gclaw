@@ -56,7 +56,7 @@ export function ProjectSidebar({
   if (collapsed) {
     return (
       <div
-        className="w-10 flex flex-col items-center py-2 flex-shrink-0 rounded-2xl glass"
+        className="w-10 flex flex-col items-center py-2 flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06]"
       >
         <button
           onClick={onToggleCollapse}
@@ -71,7 +71,7 @@ export function ProjectSidebar({
 
   return (
     <div
-      className="w-56 flex flex-col flex-shrink-0 rounded-2xl glass"
+      className="w-56 flex flex-col flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06]"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
