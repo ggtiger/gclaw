@@ -21,12 +21,13 @@ interface ProjectSidebarProps {
   themeIcon?: React.ReactNode
   user?: { username: string; role?: string }
   onUserMenu?: () => void
+  onHide?: () => void
 }
 
 export function ProjectSidebar({
   projects, currentId, activeProjectIds, collapsed, onToggleCollapse,
   onSwitch, onCreate, onRename, onDelete, userRole,
-  onOpenSettings, onCycleTheme, themeIcon, user, onUserMenu,
+  onOpenSettings, onCycleTheme, themeIcon, user, onUserMenu, onHide,
 }: ProjectSidebarProps) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -96,16 +97,24 @@ export function ProjectSidebar({
       {/* macOS 红绿灯空间 + GClaw 品牌区域 */}
       <div
         data-tauri-drag-region
-        className="pt-3 px-3 pb-2 select-none"
+        className="pt-3 pl-[16px] pr-3 pb-2 select-none"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         {/* GClaw 图标 + 名称 + 版本 */}
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center gap-2" >
           <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
             <span className="text-white text-[10px] font-bold">G</span>
           </div>
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">GClaw</span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v0.1.0</span>
+          <div className="flex-1" />
+          <button
+            onClick={onHide}
+            className="p-1 rounded-lg cursor-pointer transition-colors text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-600 dark:hover:text-gray-300"
+            title="收起侧边栏"
+          >
+            <ChevronLeft size={14} />
+          </button>
         </div>
       </div>
 
@@ -122,13 +131,6 @@ export function ProjectSidebar({
             title="新建项目"
           >
             <Plus size={14} />
-          </button>
-          <button
-            onClick={onToggleCollapse}
-            className="p-1 rounded-xl cursor-pointer transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
-            title="收起"
-          >
-            <ChevronLeft size={14} />
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Menu, Sun, Moon, Monitor
 } from 'lucide-react'
@@ -28,8 +28,45 @@ export function ChatLayout() {
   const { user } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
+  const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'channels' | 'settings' | null>(null)
+
+  // 右侧面板拖拽调整宽度
+  const [rightPanelWidth, setRightPanelWidth] = useState(320)
+  const isDragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    startX.current = e.clientX
+    startWidth.current = rightPanelWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [rightPanelWidth])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const diff = startX.current - e.clientX
+      const newWidth = Math.min(480, Math.max(200, startWidth.current + diff))
+      setRightPanelWidth(newWidth)
+    }
+    const handleMouseUp = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
 
   // 判断是否为移动端（<768px），移动端降级毛玻璃为纯色
   const [isMobile, setIsMobile] = useState(false)
@@ -97,9 +134,14 @@ export function ChatLayout() {
       )}
 
       {/* Main Area - flex row */}
-      <div className="flex-1 flex gap-2 p-2 min-h-0 min-w-0 overflow-hidden relative z-10">
-        {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥1024px) */}
-        <div className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200">
+      <div
+        data-tauri-drag-region
+        className="flex-1 flex gap-2 px-2 pb-2 pt-2 min-h-0 min-w-0 overflow-hidden relative z-10"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
+        {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥960px) */}
+        {!projectSidebarHidden && (
+        <div className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <ProjectSidebar
             projects={project.projects}
             currentId={project.currentId}
@@ -117,11 +159,16 @@ export function ChatLayout() {
             themeIcon={themeIcon()}
             user={user ? { username: user.username, role: user.role } : undefined}
             onUserMenu={() => setModalOpen('settings')}
+            onHide={() => setProjectSidebarHidden(true)}
           />
         </div>
+        )}
 
         {/* Chat area - 圆角毛玻璃卡片 */}
-        <main className={`flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}>
+        <main
+          className={`flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
           {/* 移动端菜单按钮 */}
           <button
             className="[@media(min-width:960px)]:hidden absolute top-3 left-3 z-20 p-2 rounded-lg bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-white/[0.06] text-gray-600 dark:text-gray-300"
@@ -139,6 +186,8 @@ export function ChatLayout() {
             statusText={chat.statusText}
             projectId={project.currentId}
             projectName={currentProject?.name}
+            sidebarHidden={projectSidebarHidden}
+            onToggleSidebar={() => setProjectSidebarHidden(false)}
             onSend={chat.sendMessage}
             onAbort={chat.abortChat}
             onClearChat={chat.clearChat}
@@ -150,9 +199,21 @@ export function ChatLayout() {
           />
         </main>
 
-        {/* Right side panel - 圆角毛玻璃卡片 */}
-        <aside className={`w-72 xl:w-80 flex-shrink-0 overflow-y-auto scrollbar-hidden hidden [@media(min-width:1024px)]:flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
-          {isSecretary ? <FocusPanel /> : <FilesPanel projectId={project.currentId} />}
+        {/* Right side panel - 可拖拽调整宽度 */}
+        <aside
+          className="flex-shrink-0 hidden [@media(min-width:1024px)]:flex relative"
+          style={{ WebkitAppRegion: 'no-drag', width: rightPanelWidth } as React.CSSProperties}
+        >
+          {/* 拖拽手柄 - 绝对定位在左边缘，不占空间 */}
+          <div
+            onMouseDown={handleResizeStart}
+            className="absolute top-0 bottom-0 -left-1.5 w-3 cursor-col-resize z-10 hover:bg-purple-500/10 active:bg-purple-500/20 transition-colors"
+            title="拖拽调整宽度"
+          />
+          {/* 面板内容 */}
+          <div className={`w-full overflow-y-auto scrollbar-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
+            {isSecretary ? <FocusPanel /> : <FilesPanel projectId={project.currentId} />}
+          </div>
         </aside>
       </div>
 
@@ -178,6 +239,7 @@ export function ChatLayout() {
               themeIcon={themeIcon()}
               user={user ? { username: user.username, role: user.role } : undefined}
               onUserMenu={() => setModalOpen('settings')}
+              onHide={() => setSidebarOpen(false)}
             />
           </div>
         </div>

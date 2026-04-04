@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, PanelLeft, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -27,6 +27,8 @@ interface ChatPanelProps {
   onOpenChannels?: () => void
   onOpenSkills?: () => void
   onOpenAgents?: () => void
+  sidebarHidden?: boolean
+  onToggleSidebar?: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
   onUpdateMessage?: (message: ChatMessage) => void
   projectName?: string
@@ -146,7 +148,7 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onRespondPermission, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onRespondPermission, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
@@ -224,32 +226,47 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
   return (
     <div className="relative flex flex-col h-full">
-      {/* 顶部拖拽区域 */}
-      <div data-tauri-drag-region className="h-1 flex-shrink-0 select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
-      {/* 固定工具栏：分支 + 搜索 + 导出 + 清空 */}
+      {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
       {!isEmpty && (
-        <div className="flex items-center pt-0 gap-2 px-3 lg:px-4 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0">
+        <div
+          data-tauri-drag-region
+          className="flex items-center pt-1 gap-2 px-3 lg:px-4 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          {/* 展开侧边栏按钮（项目名左侧） */}
+          {sidebarHidden && onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="展开项目侧边栏"
+            >
+              <PanelLeft size={14} />
+            </button>
+          )}
           {/* 项目名称 */}
           <span className="text-sm font-medium truncate max-w-[160px] text-slate-600 dark:text-slate-400">
             {projectName || projectId.slice(0, 8)}
           </span>
-          <div className="flex-1" data-tauri-drag-region style={{ WebkitAppRegion: 'drag', minHeight: '100%' } as React.CSSProperties} />
-          <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
-          <ExportButton projectId={projectId} />
-          <button
-            onClick={() => onOpenChannels?.()}
-            className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
-            title="渠道管理"
-          >
-            <Link2 size={16} />
-          </button>
-          <button
-            onClick={() => onClearChat?.()}
-            className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
-            title="清空对话"
-          >
-            <Trash2 size={16} />
-          </button>
+          <div className="flex-1" />
+          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
+            <ExportButton projectId={projectId} />
+            <button
+              onClick={() => onOpenChannels?.()}
+              className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+              title="渠道管理"
+            >
+              <Link2 size={16} />
+            </button>
+            <button
+              onClick={() => onClearChat?.()}
+              className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+              title="清空对话"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
       )}
 
