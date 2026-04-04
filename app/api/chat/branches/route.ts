@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getBranches, createBranch, getBranchMessages, deleteBranch } from '@/lib/store/messages'
+import { isValidProjectId } from '@/lib/store/projects'
 import { getAuthUser } from '@/lib/auth/helpers'
 
 export const dynamic = 'force-dynamic'
@@ -10,8 +11,8 @@ export async function GET(request: NextRequest) {
   const projectId = searchParams.get('projectId') || ''
   const branchId = searchParams.get('branchId') || 'main'
 
-  if (!projectId) {
-    return Response.json({ error: 'projectId is required' }, { status: 400 })
+  if (!projectId || !isValidProjectId(projectId)) {
+    return Response.json({ error: 'Invalid projectId' }, { status: 400 })
   }
 
   if (branchId !== 'main') {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { projectId, fromMessageId, name } = body
 
-  if (!projectId || !fromMessageId) {
+  if (!projectId || !isValidProjectId(projectId) || !fromMessageId) {
     return Response.json({ error: 'projectId and fromMessageId are required' }, { status: 400 })
   }
 
@@ -47,8 +48,8 @@ export async function DELETE(request: NextRequest) {
   const projectId = searchParams.get('projectId') || ''
   const branchId = searchParams.get('branchId') || ''
 
-  if (!projectId || !branchId) {
-    return Response.json({ error: 'projectId and branchId are required' }, { status: 400 })
+  if (!projectId || !isValidProjectId(projectId) || !branchId) {
+    return Response.json({ error: 'Invalid projectId or branchId' }, { status: 400 })
   }
 
   const success = deleteBranch(projectId, branchId)

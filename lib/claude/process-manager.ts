@@ -1,6 +1,7 @@
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk'
 import type { HookCallback } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'crypto'
+import path from 'path'
 import { convertSDKMessage, createConvertContext } from './stream-parser'
 import { syncProjectSkillsDir, loadSkillEnvVars } from './skills-dir'
 import { syncProjectClaudeMd } from './claude-md'
@@ -95,7 +96,18 @@ export async function* executeChat(
 
   // SDK cwd：优先用户配置的 cwd，否则用项目数据目录（避免在根目录产生 .claude）
   const { getProjectDir } = await import('@/lib/store/projects')
-  const sdkCwd = cwd || getProjectDir(projectId)
+  const projectDataDir = getProjectDir(projectId)
+  // 安全限制：自定义 cwd 必须在项目数据目录内，防止路径逃逸
+  let sdkCwd = projectDataDir
+  if (cwd) {
+    const resolvedCwd = path.resolve(cwd)
+    const resolvedProjectDir = path.resolve(projectDataDir)
+    if (resolvedCwd.startsWith(resolvedProjectDir)) {
+      sdkCwd = resolvedCwd
+    } else {
+      console.warn(`[GClaw] Rejected unsafe cwd "${cwd}" for project ${projectId}, falling back to project dir`)
+    }
+  }
 
   // 同步项目 CLAUDE.md（系统提示词 + .learnings 摘要）和初始化 .learnings/ 模板
   syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills)
@@ -141,17 +153,88 @@ export async function* executeChat(
   // 需要权限确认的工具列表
   const DANGEROUS_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'Skill'])
 
-  // PreToolUse hook：在工具执行前拦截危险操作，等待用户审批
+  // 文件写操作工具（需要路径边界检查）
+  const FILE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit'])
+
+  /**
+   * 安全校验：确保工具操作的文件路径在项目 cwd 内
+   * 防止 Agent 在项目目录外创建/修改/删除文件
+   */
+  const validateToolPath = (toolName: string, toolInput: Record<string, unknown>): string | null => {
+    const resolvedCwd = path.resolve(sdkCwd)
+
+    // 文件写操作：检查 file_path/path 参数
+    if (FILE_WRITE_TOOLS.has(toolName)) {
+      const filePath = String(toolInput.file_path || toolInput.path || '')
+      if (!filePath) return null // 无路径则不检查
+      const resolvedPath = path.resolve(resolvedCwd, filePath)
+      if (!resolvedPath.startsWith(resolvedCwd + path.sep) && resolvedPath !== resolvedCwd) {
+        return `文件操作超出项目目录范围: ${filePath}`
+      }
+    }
+
+    // Bash 命令：检查是否包含写入项目目录外的重定向/管道
+    if (toolName === 'Bash') {
+      const command = String(toolInput.command || '')
+      if (!command) return null
+      // 检测明显的绝对路径写入模式（> /path, >> /path, tee /path 等）
+      const absoluteWritePatterns = [
+        /\s*>\s*\//,          // > /path
+        /\s*>>\s*\//,         // >> /path
+        /\btee\s+\//,         // tee /path
+        /\bcp\s+.*\s+\//,     // cp src /path
+        /\bmv\s+.*\s+\//,     // mv src /path
+        /\binstall\s+.*\s+\//, // install ... /path
+      ]
+      for (const pattern of absoluteWritePatterns) {
+        if (pattern.test(command)) {
+          // 允许写入 /tmp 和项目目录内的路径
+          const tmpDir = path.resolve('/tmp')
+          // 提取可能的目标路径做进一步检查
+          const pathMatch = command.match(/(?:[>]{1,2}|tee\s+|cp\s+\S+\s+|mv\s+\S+\s+)(\/[^\s;|&]+)/)
+          if (pathMatch) {
+            const targetPath = path.resolve(pathMatch[1])
+            if (targetPath.startsWith(tmpDir + path.sep) || targetPath === tmpDir) {
+              continue // /tmp 是允许的
+            }
+            if (targetPath.startsWith(resolvedCwd + path.sep) || targetPath === resolvedCwd) {
+              continue // 项目目录内是允许的
+            }
+            return `命令尝试写入项目目录外的路径: ${pathMatch[1]}`
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
+  // PreToolUse hook：路径边界检查 + 权限审批
+  // 路径检查始终启用（独立于 skipPermissions 设置）
   const preToolUseHook: HookCallback = async (input) => {
     if (input.hook_event_name !== 'PreToolUse') return {}
     const { tool_name, tool_input } = input as { tool_name: string; tool_input: unknown; hook_event_name: string }
 
-    // 非危险工具直接放行
-    if (!DANGEROUS_TOOLS.has(tool_name)) {
+    const toolInput = (tool_input ?? {}) as Record<string, unknown>
+
+    // 路径边界检查：所有写/删除操作必须在项目 cwd 内（始终启用）
+    const pathError = validateToolPath(tool_name, toolInput)
+    if (pathError) {
+      console.warn(`[GClaw] Blocked operation outside project dir: ${pathError}`)
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse' as const,
+          permissionDecision: 'deny' as const,
+          permissionDecisionReason: pathError,
+        },
+      }
+    }
+
+    // 非危险工具或跳过权限模式时直接放行
+    if (!DANGEROUS_TOOLS.has(tool_name) || skipPermissions) {
       return {}
     }
 
-    const toolInput = (tool_input ?? {}) as Record<string, unknown>
     const reqId = randomUUID()
 
     console.log(`[GClaw] PreToolUse permission request: ${tool_name} | reqId=${reqId}`)
@@ -244,15 +327,17 @@ export async function* executeChat(
     hooks: (() => {
       const hooks: Record<string, Array<{ hooks: HookCallback[] }>> = {}
 
-      // 权限 Hook（已有逻辑不变）
+      // 路径安全 + 权限 Hook（始终注册，路径检查独立于权限设置）
+      hooks.PreToolUse = [{ hooks: [preToolUseHook] }]
+
+      // PermissionRequest hook：兜底拦截（仅非跳过权限模式）
       if (!skipPermissions) {
-        hooks.PreToolUse = [{ hooks: [preToolUseHook] }]
+        hooks.PermissionRequest = [{ hooks: [permissionRequestHook] }]
       }
 
       // 技能 Hook（从 gclaw-hooks.json 加载）
       for (const [event, matchers] of Object.entries(skillHookMatchers)) {
         if (hooks[event]) {
-          // 合并到已有的 matcher 列表
           hooks[event].push(...matchers)
         } else {
           hooks[event] = matchers

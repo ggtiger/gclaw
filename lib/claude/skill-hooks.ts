@@ -68,6 +68,14 @@ const VALID_ACTIONS = new Set(['notify', 'script', 'log'])
 
 const SKILLS_DIR = path.join(process.cwd(), 'skills')
 
+/**
+ * 验证解析后的路径是否在指定基目录内（防止路径遍历）
+ */
+function isPathWithin(resolvedPath: string, baseDir: string): boolean {
+  return resolvedPath.startsWith(path.resolve(baseDir) + path.sep) ||
+         resolvedPath === path.resolve(baseDir)
+}
+
 // ── 核心加载函数 ─────────────────────────────────────────
 
 /**
@@ -257,6 +265,12 @@ function handleScript(
     }
 
     const scriptPath = path.resolve(entry.skillDir, entry.script)
+    // 安全校验：脚本路径必须在技能目录内
+    if (!isPathWithin(scriptPath, entry.skillDir)) {
+      console.warn(`[SkillHooks] Script path escapes skill directory: ${scriptPath}`)
+      resolve()
+      return
+    }
     if (!fs.existsSync(scriptPath)) {
       console.warn(`[SkillHooks] Script not found: ${scriptPath}`)
       resolve()
@@ -310,6 +324,12 @@ function handleLog(
   const logFile = entry.logFile
     ? path.resolve(entry.skillDir, entry.logFile)
     : path.resolve(entry.skillDir, '.learnings', 'hook-events.log')
+
+  // 安全校验：日志文件路径必须在技能目录内
+  if (!isPathWithin(logFile, entry.skillDir)) {
+    console.warn(`[SkillHooks] Log file path escapes skill directory: ${logFile}`)
+    return
+  }
 
   const logDir = path.dirname(logFile)
   if (!fs.existsSync(logDir)) {

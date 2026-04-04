@@ -7,6 +7,7 @@ import {
   toggleStar,
   getStarredMessages,
 } from '@/lib/store/messages'
+import { isValidProjectId } from '@/lib/store/projects'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,10 @@ export async function GET(request: NextRequest) {
 /** 添加/移除标签，或切换收藏 */
 export async function POST(request: NextRequest) {
   const projectId = getProjectId(request)
+  if (!projectId || !isValidProjectId(projectId)) {
+    return Response.json({ error: 'Invalid projectId' }, { status: 400 })
+  }
+
   const body = await request.json()
   const { action, messageId, tag } = body as {
     action: 'addTag' | 'removeTag' | 'toggleStar'

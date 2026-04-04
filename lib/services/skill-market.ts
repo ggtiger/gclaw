@@ -100,9 +100,23 @@ export async function searchMarketSkills(
 }
 
 /**
+ * 验证技能名称是否安全（无路径遍历）
+ * 合法的技能名只包含字母、数字、连字符和下划线
+ */
+function isValidSkillName(name: string): boolean {
+  if (!name || typeof name !== 'string') return false
+  return /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name) && name.length <= 128
+}
+
+/**
  * 从市场安装技能（CDN 直接下载 zip）
  */
 export async function installSkill(skillName: string): Promise<{ success: boolean; error?: string }> {
+  // 安全校验：技能名不能包含路径遍历字符
+  if (!isValidSkillName(skillName)) {
+    return { success: false, error: `无效的技能名称: "${skillName}"` }
+  }
+
   fs.mkdirSync(SKILLS_DIR, { recursive: true })
 
   const targetDir = path.join(SKILLS_DIR, skillName)
@@ -199,6 +213,10 @@ async function extractZip(zipBuffer: Buffer, targetDir: string): Promise<void> {
       try { fs.unlinkSync(tmpZip) } catch { /* ignore */ }
     }
 
+    // 安全校验：验证解压后的所有文件都在目标目录内（防止 zip slip）
+    const resolvedTarget = path.resolve(targetDir)
+    validateExtractedPaths(targetDir, resolvedTarget)
+
     // 如果解压后只有一个子目录，把内容提升上来
     const entries = fs.readdirSync(targetDir)
     if (entries.length === 1) {
@@ -212,5 +230,28 @@ async function extractZip(zipBuffer: Buffer, targetDir: string): Promise<void> {
     }
   } catch (err) {
     throw new Error(`解压失败: ${err instanceof Error ? err.message : err}`)
+  }
+}
+
+/**
+ * 递归验证解压后的所有文件路径都在目标目录内（防止 zip slip 攻击）
+ * 发现逃逸文件则直接删除
+ */
+function validateExtractedPaths(dir: string, allowedBase: string): void {
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name)
+    const resolved = path.resolve(fullPath)
+    if (!resolved.startsWith(allowedBase + path.sep) && resolved !== allowedBase) {
+      console.warn(`[SkillMarket] Removing zip-slip file: ${fullPath}`)
+      try {
+        if (entry.isDirectory()) fs.rmSync(fullPath, { recursive: true, force: true })
+        else fs.unlinkSync(fullPath)
+      } catch { /* ignore */ }
+      continue
+    }
+    if (entry.isDirectory()) {
+      validateExtractedPaths(fullPath, allowedBase)
+    }
   }
 }

@@ -66,7 +66,27 @@ export function saveProjects(list: ProjectInfo[]) {
   fs.writeFileSync(PROJECTS_FILE, JSON.stringify({ projects: list }, null, 2), 'utf-8')
 }
 
+/**
+ * 验证 projectId 是否安全（无路径遍历）
+ * 合法的 projectId 只包含字母、数字、连字符
+ */
+export function isValidProjectId(id: string): boolean {
+  if (!id || typeof id !== 'string') return false
+  // projectId 由 randomUUID().slice(0, 8) 生成，只包含十六进制字符
+  return /^[a-f0-9]{8}$/.test(id)
+}
+
+/**
+ * 断言 projectId 合法，否则抛出错误
+ */
+export function assertValidProjectId(id: string): void {
+  if (!isValidProjectId(id)) {
+    throw new Error(`Invalid projectId: ${id}`)
+  }
+}
+
 export function getProjectDir(projectId: string): string {
+  assertValidProjectId(projectId)
   return path.join(PROJECTS_DIR, projectId)
 }
 

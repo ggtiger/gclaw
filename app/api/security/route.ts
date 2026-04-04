@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { getGlobalSettings, updateGlobalSettings } from '@/lib/store/settings'
 import { requireAdmin } from '@/lib/auth/helpers'
 import { getMessages } from '@/lib/store/messages'
-import { getProjectDir } from '@/lib/store/projects'
+import { getProjectDir, isValidProjectId } from '@/lib/store/projects'
 import fs from 'fs'
 import path from 'path'
 
@@ -70,6 +70,10 @@ export async function PUT(request: NextRequest) {
 
   // 执行过期清理
   if (executeCleanup && retentionDays && retentionDays > 0 && projectId) {
+    // 安全校验：验证 projectId 格式
+    if (!isValidProjectId(projectId)) {
+      return Response.json({ error: 'Invalid projectId' }, { status: 400 })
+    }
     const { messages: allMessages } = getMessages(projectId, Number.MAX_SAFE_INTEGER)
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000
     const before = allMessages.filter(m => new Date(m.createdAt).getTime() >= cutoff)

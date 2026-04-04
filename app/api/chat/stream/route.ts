@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { executeChat } from '@/lib/claude/process-manager'
 import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { addMessage } from '@/lib/store/messages'
+import { assertValidProjectId } from '@/lib/store/projects'
 import type { ChatMessage, PermissionRequest } from '@/types/chat'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,16 @@ export async function POST(request: NextRequest) {
 
   if (!message || typeof message !== 'string') {
     return new Response(JSON.stringify({ error: 'message is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // 安全校验：验证 projectId 格式
+  try {
+    assertValidProjectId(projectId)
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid projectId' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
