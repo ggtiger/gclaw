@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square, Paperclip } from 'lucide-react'
+import { Send, Square, Paperclip, Zap, Bot } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
 
 interface Template {
@@ -20,9 +20,11 @@ interface ChatInputProps {
   disabled?: boolean
   projectId?: string
   onTemplateSelect?: (template: Template) => void
+  onOpenSkills?: () => void
+  onOpenAgents?: () => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -93,6 +95,22 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
               type="button"
             >
               <Paperclip size={18} />
+            </button>
+            <button
+              className="p-2 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors"
+              title="技能管理"
+              type="button"
+              onClick={onOpenSkills}
+            >
+              <Zap size={18} />
+            </button>
+            <button
+              className="p-2 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors"
+              title="智能体管理"
+              type="button"
+              onClick={onOpenAgents}
+            >
+              <Bot size={18} />
             </button>
             <div className="h-4 w-px bg-[var(--color-border)] mx-1" />
           </div>

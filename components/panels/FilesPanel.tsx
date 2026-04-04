@@ -180,6 +180,8 @@ export default function FilesPanel({ projectId }: FilesPanelProps) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* 顶部拖拽区域 */}
+      <div data-tauri-drag-region className="h-1 flex-shrink-0 select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
       {/* 顶部 Tab 栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
         <div className="flex items-center gap-1">

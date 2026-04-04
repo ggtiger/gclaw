@@ -133,7 +133,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
 
   return (
     <div
-      className={`flex gap-3 max-w-3xl group relative ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+      className={`flex gap-3 w-full group relative ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setShowTagInput(false); setTagQuery('') }}
     >

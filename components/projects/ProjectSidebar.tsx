@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FolderOpen, Plus, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Loader2, Bot, Monitor, FileText } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Loader2, Bot, Monitor, FileText, Settings } from 'lucide-react'
 import type { ProjectInfo, ProjectType } from '@/types/skills'
 
 interface ProjectSidebarProps {
@@ -16,11 +16,17 @@ interface ProjectSidebarProps {
   onDelete: (id: string) => void
   glass?: boolean
   userRole?: 'admin' | 'user'
+  onOpenSettings?: () => void
+  onCycleTheme?: () => void
+  themeIcon?: React.ReactNode
+  user?: { username: string; role?: string }
+  onUserMenu?: () => void
 }
 
 export function ProjectSidebar({
   projects, currentId, activeProjectIds, collapsed, onToggleCollapse,
   onSwitch, onCreate, onRename, onDelete, userRole,
+  onOpenSettings, onCycleTheme, themeIcon, user, onUserMenu,
 }: ProjectSidebarProps) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -56,7 +62,7 @@ export function ProjectSidebar({
   if (collapsed) {
     return (
       <div
-        className="w-10 flex flex-col items-center py-2 flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06]"
+        className="w-10 h-full flex flex-col items-center py-2 flex-shrink-0 rounded-2xl glass border border-white/40 dark:border-white/[0.06] shadow-sm"
       >
         <button
           onClick={onToggleCollapse}
@@ -65,15 +71,45 @@ export function ProjectSidebar({
         >
           <ChevronRight size={16} />
         </button>
+        {/* 底部工具栏 - 收起态 */}
+        <div className="mt-auto border-t border-gray-200 dark:border-white/[0.06] py-2 flex flex-col items-center gap-1">
+          <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
+            <Settings size={16} />
+          </button>
+          <button onClick={onCycleTheme} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="切换主题">
+            {themeIcon}
+          </button>
+          {user && (
+            <button onClick={onUserMenu} className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-colors cursor-pointer" title={user.username}>
+              {user.username.charAt(0).toUpperCase()}
+            </button>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
     <div
-      className="w-56 flex flex-col flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06]"
+      className="w-56 h-full flex flex-col flex-shrink-0 rounded-2xl glass border border-white/40 dark:border-white/[0.06] shadow-sm"
     >
-      {/* Header */}
+      {/* macOS 红绿灯空间 + GClaw 品牌区域 */}
+      <div
+        data-tauri-drag-region
+        className="pt-3 px-3 pb-2 select-none"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
+        {/* GClaw 图标 + 名称 + 版本 */}
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+            <span className="text-white text-[10px] font-bold">G</span>
+          </div>
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">GClaw</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v0.1.0</span>
+        </div>
+      </div>
+
+      {/* Header - 项目标题 */}
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
         <div className="flex items-center gap-1.5">
           <FolderOpen size={14} className="text-purple-600 dark:text-purple-400" />
@@ -251,6 +287,22 @@ export function ProjectSidebar({
             </div>
           )
         })}
+      </div>
+
+      {/* 底部工具栏 - 展开态 */}
+      <div className="mt-auto border-t border-gray-200 dark:border-white/[0.06] px-3 py-2 flex items-center gap-1">
+        <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
+          <Settings size={16} />
+        </button>
+        <button onClick={onCycleTheme} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="切换主题">
+          {themeIcon}
+        </button>
+        <div className="flex-1" />
+        {user && (
+          <button onClick={onUserMenu} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-colors cursor-pointer" title={user.username}>
+            {user.username.charAt(0).toUpperCase()}
+          </button>
+        )}
       </div>
     </div>
   )

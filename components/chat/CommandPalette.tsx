@@ -26,7 +26,7 @@ interface CommandPaletteProps {
   onSwitchProject?: (projectId: string) => void
   projects?: Array<{ id: string; name: string }>
   currentProjectId?: string
-  onToggleSidePanel?: (panel: string) => void
+  onOpenModal?: (panel: 'skills' | 'agents' | 'channels' | 'settings') => void
 }
 
 /**
@@ -76,7 +76,7 @@ export function CommandPalette({
   onSwitchProject,
   projects = [],
   currentProjectId,
-  onToggleSidePanel,
+  onOpenModal,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -138,7 +138,7 @@ export function CommandPalette({
         icon: <Hash size={16} />,
         category: '面板',
         keywords: ['skills', '技能', '管理', '面板'],
-        action: () => { onToggleSidePanel?.('skills'); onClose() },
+        action: () => { onOpenModal?.('skills'); onClose() },
       },
       {
         id: 'agents',
@@ -147,7 +147,7 @@ export function CommandPalette({
         icon: <Hash size={16} />,
         category: '面板',
         keywords: ['agents', '智能体', '管理', '面板', 'agent'],
-        action: () => { onToggleSidePanel?.('agents'); onClose() },
+        action: () => { onOpenModal?.('agents'); onClose() },
       },
       {
         id: 'channels',
@@ -156,7 +156,16 @@ export function CommandPalette({
         icon: <Hash size={16} />,
         category: '面板',
         keywords: ['channels', '渠道', '管理', '面板', '钉钉', '飞书', '微信'],
-        action: () => { onToggleSidePanel?.('channels'); onClose() },
+        action: () => { onOpenModal?.('channels'); onClose() },
+      },
+      {
+        id: 'settings',
+        label: '/settings',
+        description: '打开设置面板',
+        icon: <Hash size={16} />,
+        category: '面板',
+        keywords: ['settings', '设置', '配置', '面板'],
+        action: () => { onOpenModal?.('settings'); onClose() },
       },
     ]
 
@@ -174,7 +183,7 @@ export function CommandPalette({
     }
 
     return cmds
-  }, [onClearChat, onCycleTheme, onSwitchProject, onToggleSidePanel, onClose, projects, currentProjectId])
+  }, [onClearChat, onCycleTheme, onSwitchProject, onOpenModal, onClose, projects, currentProjectId])
 
   // ---- 模糊过滤 ----
   const filtered = useMemo(() => {

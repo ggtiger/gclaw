@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -9,7 +9,7 @@ import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
-import { BranchSwitcher } from './BranchSwitcher'
+// BranchSwitcher 已隐藏
 import type { ChatMessage, ToolSummary, PermissionRequest } from '@/types/chat'
 
 interface ChatPanelProps {
@@ -24,8 +24,12 @@ interface ChatPanelProps {
   onSend: (message: string) => void
   onAbort: () => void
   onClearChat?: () => void
+  onOpenChannels?: () => void
+  onOpenSkills?: () => void
+  onOpenAgents?: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
   onUpdateMessage?: (message: ChatMessage) => void
+  projectName?: string
 }
 
 function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
@@ -142,7 +146,7 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onClearChat, onRespondPermission, onUpdateMessage }: ChatPanelProps) {
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onRespondPermission, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
@@ -154,7 +158,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
   const [tagNameList, setTagNameList] = useState<string[]>([])
 
   // 分支状态
-  const [activeBranch, setActiveBranch] = useState('main')
+  // activeBranch removed (branch feature hidden)
 
   // 加载标签列表
   const loadTags = useCallback(async () => {
@@ -220,18 +224,25 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
   return (
     <div className="relative flex flex-col h-full">
+      {/* 顶部拖拽区域 */}
+      <div data-tauri-drag-region className="h-1 flex-shrink-0 select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
       {/* 固定工具栏：分支 + 搜索 + 导出 + 清空 */}
       {!isEmpty && (
-        <div className="flex items-center gap-2 px-4 lg:px-8 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0">
-          <BranchSwitcher
-            projectId={projectId}
-            activeBranch={activeBranch}
-            onSwitch={setActiveBranch}
-            lastMessageId={filteredMessages.length > 0 ? filteredMessages[filteredMessages.length - 1].id : undefined}
-          />
-          <div className="flex-1" />
+        <div className="flex items-center pt-0 gap-2 px-3 lg:px-4 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0">
+          {/* 项目名称 */}
+          <span className="text-sm font-medium truncate max-w-[160px] text-slate-600 dark:text-slate-400">
+            {projectName || projectId.slice(0, 8)}
+          </span>
+          <div className="flex-1" data-tauri-drag-region style={{ WebkitAppRegion: 'drag', minHeight: '100%' } as React.CSSProperties} />
           <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
           <ExportButton projectId={projectId} />
+          <button
+            onClick={() => onOpenChannels?.()}
+            className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+            title="渠道管理"
+          >
+            <Link2 size={16} />
+          </button>
           <button
             onClick={() => onClearChat?.()}
             className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
@@ -250,9 +261,9 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-4 pt-4 pb-48 lg:px-8 lg:pt-6"
+          className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6"
         >
-          <div className="max-w-[800px] mx-auto flex flex-col gap-4">
+          <div className="w-full mx-auto flex flex-col gap-4">
             {/* 筛选栏 */}
             <FilterBar
               tags={allTags}
@@ -361,16 +372,16 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
 
       {/* 权限审批对话框 */}
       {permissionRequest && (
-        <div className="absolute bottom-48 left-0 right-0 z-30 px-4 lg:px-8 flex justify-center">
-          <div className="w-full max-w-3xl">
+        <div className="absolute bottom-48 left-0 right-0 z-30 px-3 lg:px-4 flex justify-center">
+          <div className="w-full">
             <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
           </div>
         </div>
       )}
 
       {/* 浮动输入区域 */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white/70 via-white/40 to-transparent dark:from-[#1a1a2e]/90 dark:via-[#1a1a2e]/60 dark:to-transparent pt-6 pb-4 px-4 lg:px-8 flex justify-center z-20">
-        <div className="w-full max-w-3xl">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white/70 via-white/40 to-transparent dark:from-[#1a1a2e]/90 dark:via-[#1a1a2e]/60 dark:to-transparent pt-6 pb-4 px-3 lg:px-4 flex justify-center z-20">
+        <div className="w-full">
           <ChatInput
             onSend={onSend}
             onAbort={onAbort}
@@ -381,6 +392,8 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
                 onSend(template.firstMessage)
               }
             }}
+            onOpenSkills={onOpenSkills}
+            onOpenAgents={onOpenAgents}
           />
         </div>
       </div>

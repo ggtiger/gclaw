@@ -239,20 +239,26 @@ body {
   overflow: hidden;
 }
 
+/* ═══════════════ 自定义标题栏 ═══════════════ */
+[data-tauri-drag-region] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] [style*="no-drag"] {
+  -webkit-app-region: no-drag;
+}
+
 /* ═══════════════ 滚动条样式 ═══════════════ */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-text-muted) 40%, transparent);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
+  display: none;
 }
 
 /* ═══════════════ Markdown 渲染样式 ═══════════════ */

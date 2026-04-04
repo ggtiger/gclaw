@@ -298,8 +298,10 @@ function MiniCalendar() {
 export default function FocusPanel() {
   return (
     <div className="flex flex-col overflow-y-auto h-full bg-white dark:bg-transparent">
+      {/* 顶部拖拽区域 */}
+      <div data-tauri-drag-region className="h-1 flex-shrink-0 select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
       {/* 专注模式 Section */}
-      <div className="px-5 py-4 border-b border-gray-200/60 dark:border-white/[0.06]">
+      <div className="pt-2 px-5 py-4 border-b border-gray-200/60 dark:border-white/[0.06]">
         <SidebarFocusSection />
       </div>
       
