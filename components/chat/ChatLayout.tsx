@@ -31,6 +31,7 @@ export function ChatLayout() {
   const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'channels' | 'settings' | null>(null)
+  const [filesFullscreen, setFilesFullscreen] = useState(false)
 
   // 右侧面板拖拽调整宽度
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
@@ -45,13 +46,18 @@ export function ChatLayout() {
     startWidth.current = rightPanelWidth
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+    // 创建透明遮罩层阻止 iframe 捕获鼠标事件
+    const overlay = document.createElement('div')
+    overlay.id = 'panel-resize-overlay'
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize;'
+    document.body.appendChild(overlay)
   }, [rightPanelWidth])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return
       const diff = startX.current - e.clientX
-      const newWidth = Math.min(480, Math.max(200, startWidth.current + diff))
+      const newWidth = Math.max(200, startWidth.current + diff)
       setRightPanelWidth(newWidth)
     }
     const handleMouseUp = () => {
@@ -59,6 +65,8 @@ export function ChatLayout() {
       isDragging.current = false
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      // 移除遮罩层
+      document.getElementById('panel-resize-overlay')?.remove()
     }
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
@@ -140,7 +148,7 @@ export function ChatLayout() {
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥960px) */}
-        {!projectSidebarHidden && (
+        {!projectSidebarHidden && !filesFullscreen && (
         <div className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <ProjectSidebar
             projects={project.projects}
@@ -165,6 +173,7 @@ export function ChatLayout() {
         )}
 
         {/* Chat area - 圆角毛玻璃卡片 */}
+        {!filesFullscreen && (
         <main
           className={`flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
@@ -198,21 +207,28 @@ export function ChatLayout() {
             onOpenAgents={() => setModalOpen('agents')}
           />
         </main>
+        )}
 
         {/* Right side panel - 可拖拽调整宽度 */}
         <aside
-          className="flex-shrink-0 hidden [@media(min-width:1024px)]:flex relative"
-          style={{ WebkitAppRegion: 'no-drag', width: rightPanelWidth } as React.CSSProperties}
+          className={`relative min-h-0 ${filesFullscreen ? 'flex-1' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
+          style={{ WebkitAppRegion: 'no-drag', width: filesFullscreen ? undefined : rightPanelWidth } as React.CSSProperties}
         >
-          {/* 拖拽手柄 - 绝对定位在左边缘，不占空间 */}
+          {/* 拖拽手柄 - 全屏时隐藏 */}
+          {!filesFullscreen && (
           <div
             onMouseDown={handleResizeStart}
-            className="absolute top-0 bottom-0 -left-1.5 w-3 cursor-col-resize z-10 hover:bg-purple-500/10 active:bg-purple-500/20 transition-colors"
+            className="absolute top-0 bottom-0 -left-1.5 w-3 cursor-col-resize z-50 hover:bg-purple-500/10 active:bg-purple-500/20 transition-colors"
             title="拖拽调整宽度"
           />
+          )}
           {/* 面板内容 */}
-          <div className={`w-full overflow-y-auto scrollbar-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
-            {isSecretary ? <FocusPanel /> : <FilesPanel projectId={project.currentId} />}
+          <div className={`w-full h-full overflow-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
+            {isSecretary ? <FocusPanel /> : <FilesPanel
+              projectId={project.currentId}
+              isFullscreen={filesFullscreen}
+              onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)}
+            />}
           </div>
         </aside>
       </div>

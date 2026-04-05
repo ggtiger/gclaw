@@ -230,7 +230,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
       {!isEmpty && (
         <div
           data-tauri-drag-region
-          className="flex items-center pt-1 gap-2 px-3 lg:px-4 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0"
+          className="flex items-center pt-1 pb-1 gap-2 px-3 lg:px-4 py-2 border-b border-white/10 dark:border-white/[0.06] flex-shrink-0"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           {/* 展开侧边栏按钮（项目名左侧） */}

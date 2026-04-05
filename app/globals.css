@@ -260,8 +260,75 @@ body {
 ::-webkit-scrollbar {
   display: none;
 }
+/* 需要显示滚动条的容器 */
+.thin-scrollbar {
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  display: initial !important;
+  width: 6px !important;
+  height: 6px !important;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25) !important;
+  border-radius: 3px !important;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.4) !important;
+}
+
+/* ═══════════════ CodeMirror 编辑器样式 ═══════════════ */
+.cm-editor {
+  height: 100% !important;
+  font-size: 12px !important;
+}
+.cm-editor .cm-scroller {
+  overflow: auto !important;
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+}
+.cm-editor .cm-scroller::-webkit-scrollbar {
+  display: initial !important;
+  width: 6px !important;
+  height: 6px !important;
+}
+/* 暗色模式滚动条 */
+.dark .cm-editor .cm-scroller::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 3px !important;
+}
+.dark .cm-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+/* 亮色模式滚动条 */
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15) !important;
+  border-radius: 3px !important;
+}
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+/* 亮色模式编辑器背景 */
+:not(.dark) .cm-editor {
+  background-color: var(--color-bg-secondary) !important;
+}
+:not(.dark) .cm-editor .cm-gutters {
+  background-color: var(--color-bg-tertiary) !important;
+  border-right: 1px solid var(--color-border) !important;
+}
+/* 暗色模式 */
+.dark .cm-editor .cm-gutters {
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
 
 /* ═══════════════ Markdown 渲染样式 ═══════════════ */
+.markdown-body h1 { font-size: 1.5em; font-weight: 700; margin: 0.75em 0 0.5em; }
+.markdown-body h2 { font-size: 1.3em; font-weight: 600; margin: 0.75em 0 0.5em; }
+.markdown-body h3 { font-size: 1.15em; font-weight: 600; margin: 0.5em 0 0.25em; }
+.markdown-body h4 { font-size: 1.05em; font-weight: 600; margin: 0.5em 0 0.25em; }
+.markdown-body h5, .markdown-body h6 { font-size: 1em; font-weight: 600; margin: 0.5em 0 0.25em; }
+.markdown-body p { margin: 0.5em 0; line-height: 1.6; }
 .markdown-body pre {
   background-color: var(--color-code-bg) !important;
   color: #E2E8F0 !important;
