@@ -3,17 +3,16 @@ import path from 'path'
 import { randomUUID } from 'crypto'
 import type { ChatMessage, BranchInfo } from '@/types/chat'
 import { MAX_BRANCHES } from '@/types/chat'
-import { getProjectDir } from './projects'
+import { getProjectDataDir } from './projects'
 
 const MAX_MESSAGES = 500
 
 function getMessagesFile(projectId: string): string {
-  return path.join(getProjectDir(projectId), 'messages.json')
+  return path.join(getProjectDataDir(projectId), 'messages.json')
 }
 
 function ensureProjectDir(projectId: string) {
-  const dir = getProjectDir(projectId)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  getProjectDataDir(projectId)
 }
 
 function readMessages(projectId: string): ChatMessage[] {

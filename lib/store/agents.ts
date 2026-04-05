@@ -1,15 +1,14 @@
 import fs from 'fs'
 import path from 'path'
 import type { AgentInfo } from '@/types/skills'
-import { getProjectDir } from './projects'
+import { getProjectDataDir } from './projects'
 
 function getAgentsFile(projectId: string): string {
-  return path.join(getProjectDir(projectId), 'agents.json')
+  return path.join(getProjectDataDir(projectId), 'agents.json')
 }
 
 function ensureProjectDir(projectId: string) {
-  const dir = getProjectDir(projectId)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  getProjectDataDir(projectId)
 }
 
 export function getAgents(projectId: string): AgentInfo[] {

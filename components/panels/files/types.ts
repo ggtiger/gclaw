@@ -48,6 +48,14 @@ export interface MenuItem {
   icon: React.ReactNode
   onClick: () => void
   danger?: boolean
+  disabled?: boolean
+}
+
+export interface ClipboardState {
+  mode: 'copy' | 'cut'
+  sourcePath: string
+  sourceName: string
+  sourceType: 'file' | 'directory'
 }
 
 // ─── 文件类型分类 ───

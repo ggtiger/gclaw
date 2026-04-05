@@ -8,7 +8,7 @@ import {
   DEFAULT_PROJECT,
   DEFAULT_SETTINGS,
 } from '@/types/skills'
-import { getProjectDir } from './projects'
+import { getProjectDataDir } from './projects'
 import { encrypt, decrypt, isEncrypted } from '@/lib/crypto'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
@@ -60,7 +60,7 @@ export function updateGlobalSettings(partial: Partial<GlobalSettings>): GlobalSe
 // ── 项目设置 ──
 
 export function getProjectSettings(projectId: string): ProjectSettings {
-  const dir = getProjectDir(projectId)
+  const dir = getProjectDataDir(projectId)
   const file = path.join(dir, 'settings.json')
   try {
     if (!fs.existsSync(file)) return { ...DEFAULT_PROJECT }
@@ -73,8 +73,7 @@ export function getProjectSettings(projectId: string): ProjectSettings {
 }
 
 export function updateProjectSettings(projectId: string, partial: Partial<ProjectSettings>): ProjectSettings {
-  const dir = getProjectDir(projectId)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  const dir = getProjectDataDir(projectId)
   const current = getProjectSettings(projectId)
   const updated = { ...current, ...partial }
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(updated, null, 2), 'utf-8')

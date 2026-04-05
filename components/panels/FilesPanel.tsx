@@ -18,13 +18,18 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
+  Copy,
+  Scissors,
+  ClipboardPaste,
+  ExternalLink,
 } from 'lucide-react'
-import type { TreeEntry, FilesPanelProps, MenuItem } from './files/types'
+import type { TreeEntry, FilesPanelProps, MenuItem, ClipboardState } from './files/types'
 import { getFileCategory } from './files/types'
 import { ContextMenu, TreeView } from './files/FileTree'
 import { FileIconSm } from './files/FileTree'
 import { ImagePreview, PDFPreview, WordPreview, ExcelPreview, PPTPreview } from './files/previews'
 import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor } from './files/editors'
+import { isTauri, openWithSystemApp, revealInFinder } from '@/lib/tauri'
 
 // ─── 主组件 ───
 
@@ -63,12 +68,33 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
   const [uploading, setUploading] = useState(false)
   const uploadDirRef = useRef('')
 
-  // 分栏拖拽
+  // 剪贴板
+  const [clipboard, setClipboard] = useState<ClipboardState | null>(null)
+
+  // 拖拽（鼠标事件方式）
+  const [draggedPath, setDraggedPath] = useState<string | null>(null)
+  const draggedPathRef = useRef<string | null>(null)
+  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null)
+  const dropTargetRef = useRef<string | null>(null)
+  const mouseDragRef = useRef<{ sourcePath: string; startX: number; startY: number; active: boolean } | null>(null)
+  const dragJustEndedRef = useRef(false)
+
+  // 删除确认
+  const [pendingDelete, setPendingDelete] = useState<TreeEntry | null>(null)
   const [treeWidth, setTreeWidth] = useState(180)
   const [isDraggingSplit, setIsDraggingSplit] = useState(false)
   const splitDragRef = useRef(false)
   const splitStartXRef = useRef(0)
   const splitStartWidthRef = useRef(0)
+
+  // 全屏切换时自动调整树宽度
+  useEffect(() => {
+    if (isFullscreen) {
+      setTreeWidth(300)
+    } else if (treeWidth > 220) {
+      setTreeWidth(180)
+    }
+  }, [isFullscreen])
 
   // ─── 加载文件树 ───
   const fetchTree = useCallback(async () => {
@@ -138,12 +164,15 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
 
   // ─── 文件操作 ───
   const fileAction = async (action: string, filePath?: string, newPath?: string, name?: string) => {
+    const payload = { action, path: filePath, newPath, name }
+    console.log('[FilesPanel] fileAction 请求:', payload)
     const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, path: filePath, newPath, name }),
+      body: JSON.stringify(payload),
     })
     const data = await res.json()
+    console.log('[FilesPanel] fileAction 响应:', res.status, data)
     if (!res.ok) throw new Error(data.error || '操作失败')
     return data
   }
@@ -218,21 +247,208 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
     }
   }
 
+  // ─── 本地打开 / 打开所在目录 ───
+  const handleOpenLocal = async (entryPath: string) => {
+    try {
+      const data = await fileAction('resolve', entryPath)
+      if (data.absolutePath) {
+        await openWithSystemApp(data.absolutePath)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '打开失败')
+    }
+  }
+
+  const handleRevealInDir = async (entryPath: string) => {
+    try {
+      const data = await fileAction('resolve', entryPath)
+      if (data.absolutePath) {
+        await revealInFinder(data.absolutePath)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '打开目录失败')
+    }
+  }
+
+  // ─── 粘贴操作 ───
+  const handlePaste = async (targetDir: string) => {
+    if (!clipboard) return
+    const { mode, sourcePath, sourceName, sourceType } = clipboard
+    const destPath = targetDir ? `${targetDir}/${sourceName}` : sourceName
+
+    // 检查是否粘贴到自身目录
+    if (sourcePath === destPath) {
+      setClipboard(null)
+      return
+    }
+
+    try {
+      if (mode === 'copy') {
+        await fileAction('copy', sourcePath, destPath)
+      } else {
+        // 剪切 = 移动（使用 rename API）
+        await fileAction('rename', sourcePath, destPath)
+        setClipboard(null)
+        // 如果剪切的是当前选中的文件，更新选中状态
+        if (selectedFile?.path === sourcePath) {
+          setSelectedFile({ ...selectedFile, path: destPath })
+          setSelectedPath(destPath)
+        }
+      }
+      if (targetDir) {
+        setExpandedFolders(prev => new Set(prev).add(targetDir))
+      }
+      fetchTree()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '粘贴失败')
+    }
+  }
+
+  // ─── 拖拽移动文件（鼠标事件方式）───
+  const moveFileCallbackRef = useRef<(srcPath: string, targetDir: string) => void>(() => {})
+  moveFileCallbackRef.current = (srcPath: string, targetDir: string) => {
+    const fileName = srcPath.split('/').pop()!
+    const destPath = targetDir ? `${targetDir}/${fileName}` : fileName
+    if (srcPath === destPath) return
+    // 已在目标目录中
+    const srcDir = srcPath.includes('/') ? srcPath.substring(0, srcPath.lastIndexOf('/')) : ''
+    if (srcDir === targetDir) return
+
+    fileAction('rename', srcPath, destPath)
+      .then(() => {
+        if (targetDir) setExpandedFolders(prev => new Set(prev).add(targetDir))
+        if (selectedFile?.path === srcPath) {
+          setSelectedFile({ ...selectedFile, path: destPath })
+          setSelectedPath(destPath)
+        }
+        fetchTree()
+      })
+      .catch(err => {
+        console.error('[FilesPanel] 移动失败:', err)
+        setError(err instanceof Error ? err.message : '移动失败')
+      })
+  }
+
+  // 文件树容器的 mousedown —— 启动拖拽跟踪
+  const handleTreeMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return // 只响应左键
+    const el = (e.target as HTMLElement).closest('[data-entry-path]') as HTMLElement | null
+    if (!el) return
+    if ((e.target as HTMLElement).tagName === 'INPUT') return // 重命名输入框不触发
+    const entryPath = el.dataset.entryPath!
+    mouseDragRef.current = { sourcePath: entryPath, startX: e.clientX, startY: e.clientY, active: false }
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const drag = mouseDragRef.current
+      if (!drag) return
+
+      if (!drag.active) {
+        const dx = Math.abs(e.clientX - drag.startX)
+        const dy = Math.abs(e.clientY - drag.startY)
+        if (dx + dy < 8) return // 阈值，避免误触发
+        drag.active = true
+        draggedPathRef.current = drag.sourcePath
+        setDraggedPath(drag.sourcePath)
+        document.body.style.cursor = 'grabbing'
+        document.body.style.userSelect = 'none'
+      }
+
+      // 找到光标下方的目录元素
+      const el = document.elementFromPoint(e.clientX, e.clientY)
+      const dirEl = el?.closest('[data-entry-type="directory"]') as HTMLElement | null
+      const treeContainer = el?.closest('[data-tree-container]') as HTMLElement | null
+
+      let targetPath: string | null = null
+      if (dirEl) {
+        const dirPath = dirEl.dataset.entryPath!
+        // 不能拖放到自身或子目录
+        if (dirPath !== drag.sourcePath && !dirPath.startsWith(drag.sourcePath + '/')) {
+          targetPath = dirPath
+        }
+      } else if (treeContainer) {
+        targetPath = '' // 空白区域 = 根目录
+      }
+
+      if (dropTargetRef.current !== targetPath) {
+        dropTargetRef.current = targetPath
+        setDropTargetPath(targetPath)
+      }
+    }
+
+    const handleMouseUp = () => {
+      const drag = mouseDragRef.current
+      mouseDragRef.current = null
+
+      if (!drag?.active) return
+
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      dragJustEndedRef.current = true
+      setTimeout(() => { dragJustEndedRef.current = false }, 50) // 短暂标记阻止 click
+
+      const targetDir = dropTargetRef.current
+
+      // 重置视觉状态
+      draggedPathRef.current = null
+      setDraggedPath(null)
+      dropTargetRef.current = null
+      setDropTargetPath(null)
+
+      if (targetDir === null) return
+      moveFileCallbackRef.current(drag.sourcePath, targetDir)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
   // ─── 右键菜单 ───
   const handleContextMenu = (e: React.MouseEvent, entry: TreeEntry) => {
     e.preventDefault()
     e.stopPropagation()
     const items: MenuItem[] = []
+    const tauriMode = isTauri()
 
     if (entry.type === 'file') {
+      // 文件菜单
+      if (tauriMode) {
+        items.push({ label: '打开', icon: <ExternalLink size={12} />, onClick: () => handleOpenLocal(entry.path) })
+        items.push({ label: '打开所在目录', icon: <FolderOpen size={12} />, onClick: () => handleRevealInDir(entry.path) })
+      }
       items.push({ label: '下载', icon: <Download size={12} />, onClick: () => {
         const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(entry.path)}`
         const a = document.createElement('a'); a.href = url; a.download = entry.name; a.click()
       }})
+      items.push({ label: '复制', icon: <Copy size={12} />, onClick: () => {
+        setClipboard({ mode: 'copy', sourcePath: entry.path, sourceName: entry.name, sourceType: entry.type })
+      }})
+      items.push({ label: '剪切', icon: <Scissors size={12} />, onClick: () => {
+        setClipboard({ mode: 'cut', sourcePath: entry.path, sourceName: entry.name, sourceType: entry.type })
+      }})
     } else {
+      // 文件夹菜单
+      if (tauriMode) {
+        items.push({ label: '打开', icon: <ExternalLink size={12} />, onClick: () => handleOpenLocal(entry.path) })
+        items.push({ label: '打开所在目录', icon: <FolderOpen size={12} />, onClick: () => handleRevealInDir(entry.path) })
+      }
       items.push({ label: '新建文件', icon: <FilePlus size={12} />, onClick: () => startCreate('file', entry.path) })
       items.push({ label: '新建文件夹', icon: <FolderPlus size={12} />, onClick: () => startCreate('folder', entry.path) })
       items.push({ label: '上传文件', icon: <Upload size={12} />, onClick: () => { uploadDirRef.current = entry.path; fileInputRef.current?.click() } })
+      if (clipboard) {
+        items.push({ label: '粘贴', icon: <ClipboardPaste size={12} />, onClick: () => handlePaste(entry.path) })
+      }
+      items.push({ label: '复制', icon: <Copy size={12} />, onClick: () => {
+        setClipboard({ mode: 'copy', sourcePath: entry.path, sourceName: entry.name, sourceType: entry.type })
+      }})
+      items.push({ label: '剪切', icon: <Scissors size={12} />, onClick: () => {
+        setClipboard({ mode: 'cut', sourcePath: entry.path, sourceName: entry.name, sourceType: entry.type })
+      }})
     }
     items.push({
       label: '重命名', icon: <Pencil size={12} />, onClick: () => {
@@ -242,17 +458,9 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       }
     })
     items.push({
-      label: '删除', icon: <Trash2 size={12} />, danger: true, onClick: async () => {
-        if (!confirm(`确定删除 "${entry.name}"${entry.type === 'directory' ? ' 及其所有内容' : ''}？`)) return
-        try {
-          await fileAction('delete', entry.path)
-          if (selectedFile?.path === entry.path) {
-            setSelectedFile(null)
-            setSelectedPath(null)
-            setPreviewContent(null)
-          }
-          fetchTree()
-        } catch (err) { setError(err instanceof Error ? err.message : '删除失败') }
+      label: '删除', icon: <Trash2 size={12} />, danger: true, onClick: () => {
+        console.log('[FilesPanel] 删除点击:', entry.path)
+        setPendingDelete(entry)
       }
     })
 
@@ -261,14 +469,15 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
 
   const handleBgContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    setContextMenu({
-      x: e.clientX, y: e.clientY,
-      items: [
-        { label: '新建文件', icon: <FilePlus size={12} />, onClick: () => startCreate('file', '') },
-        { label: '新建文件夹', icon: <FolderPlus size={12} />, onClick: () => startCreate('folder', '') },
-        { label: '上传文件', icon: <Upload size={12} />, onClick: () => { uploadDirRef.current = ''; fileInputRef.current?.click() } },
-      ]
-    })
+    const items: MenuItem[] = [
+      { label: '新建文件', icon: <FilePlus size={12} />, onClick: () => startCreate('file', '') },
+      { label: '新建文件夹', icon: <FolderPlus size={12} />, onClick: () => startCreate('folder', '') },
+      { label: '上传文件', icon: <Upload size={12} />, onClick: () => { uploadDirRef.current = ''; fileInputRef.current?.click() } },
+    ]
+    if (clipboard) {
+      items.push({ label: '粘贴', icon: <ClipboardPaste size={12} />, onClick: () => handlePaste('') })
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, items })
   }
 
   // ─── 重命名 ───
@@ -374,6 +583,16 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
               <Download size={15} />
             </button>
           )}
+          {selectedFile && isTauri() && (
+            <button onClick={() => handleOpenLocal(selectedFile.path)} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="本地打开">
+              <ExternalLink size={15} />
+            </button>
+          )}
+          {selectedFile && isTauri() && (
+            <button onClick={() => handleRevealInDir(selectedFile.path)} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="打开所在目录">
+              <FolderOpen size={15} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -404,7 +623,13 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
             </div>
           </div>
           {/* 文件树列表 */}
-          <div className="flex-1 overflow-y-auto py-1" onContextMenu={handleBgContextMenu}>
+          <div
+            data-tree-container
+            className="flex-1 overflow-y-auto py-1"
+            onContextMenu={handleBgContextMenu}
+            onMouseDown={handleTreeMouseDown}
+            style={dropTargetPath === '' ? { backgroundColor: 'var(--color-primary-subtle)', outline: '1.5px dashed var(--color-primary)', borderRadius: 3 } : undefined}
+          >
             {tree.length === 0 && !loading ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
                 <FolderOpen size={28} style={{ color: 'var(--color-text-muted)' }} />
@@ -426,6 +651,8 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
                 renameInputRef={renameInputRef}
                 searchQuery={searchQuery}
                 level={0}
+                draggedPath={draggedPath}
+                dropTargetPath={dropTargetPath}
               />
             )}
             {/* 新建项输入 */}
@@ -521,6 +748,51 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       {/* 隐藏的上传 input */}
       <input ref={fileInputRef} type="file" multiple className="hidden"
         onChange={e => { if (e.target.files) handleUpload(e.target.files); e.target.value = '' }} />
+
+      {/* 删除确认对话框 */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setPendingDelete(null)} />
+          <div className="relative rounded-xl shadow-2xl border p-5 w-80" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--panel-border)' }}>
+            <p className="text-sm mb-1" style={{ color: 'var(--color-text)' }}>
+              确定删除 <strong>"{pendingDelete.name}"</strong>{pendingDelete.type === 'directory' ? ' 及其所有内容' : ''}？
+            </p>
+            <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>此操作不可撤销</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingDelete(null)}
+                className="px-3 py-1.5 text-xs rounded-lg cursor-pointer transition-colors"
+                style={{ color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-bg-tertiary)' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const entry = pendingDelete
+                  setPendingDelete(null)
+                  fileAction('delete', entry.path)
+                    .then(() => {
+                      if (selectedFile?.path === entry.path) {
+                        setSelectedFile(null)
+                        setSelectedPath(null)
+                        setPreviewContent(null)
+                      }
+                      fetchTree()
+                    })
+                    .catch((err) => {
+                      console.error('[FilesPanel] 删除失败:', err)
+                      setError(err instanceof Error ? err.message : '删除失败')
+                    })
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg cursor-pointer transition-colors text-white"
+                style={{ backgroundColor: 'var(--color-error)' }}
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 右键菜单 */}
       {contextMenu && <ContextMenu x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={() => setContextMenu(null)} />}

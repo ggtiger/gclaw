@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, memo } from 'react'
+import { useEffect, useRef, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import type { TreeEntry, MenuItem } from './types'
 
@@ -24,27 +25,34 @@ function ContextMenu({
   x: number; y: number; items: MenuItem[]; onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('mousedown', h)
-    document.addEventListener('keydown', k)
-    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k) }
-  }, [onClose])
 
-  return (
-    <div ref={ref} className="fixed z-50 rounded-lg shadow-xl border py-1 animate-fade-in" style={{ left: x, top: y, minWidth: 150, backgroundColor: 'var(--color-surface)' }} onClick={e => e.stopPropagation()}>
-      {items.map((item, i) => (
-        <button key={i} onClick={() => { item.onClick(); onClose() }}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors cursor-pointer"
-          style={{ color: item.danger ? 'var(--color-error)' : 'var(--color-text)' }}
-          onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
-          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          {item.icon} {item.label}
-        </button>
-      ))}
-    </div>
+  // 位置修正：防止超出视口
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    if (rect.right > window.innerWidth) el.style.left = `${window.innerWidth - rect.width - 8}px`
+    if (rect.bottom > window.innerHeight) el.style.top = `${window.innerHeight - rect.height - 8}px`
+  }, [x, y])
+
+  return createPortal(
+    <>
+      {/* 全屏透明遮罩：点击/右键关闭菜单 */}
+      <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={onClose} onContextMenu={e => { e.preventDefault(); onClose() }} />
+      {/* 菜单面板 */}
+      <div ref={ref} className="fixed rounded-lg shadow-xl border py-1 animate-fade-in" style={{ left: x, top: y, minWidth: 150, zIndex: 9999, backgroundColor: 'var(--color-surface)' }}>
+        {items.map((item, i) => (
+          <button key={i}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+            style={{ color: item.danger ? 'var(--color-error)' : 'var(--color-text)' }}
+            onClick={e => { e.stopPropagation(); item.onClick(); onClose() }}
+          >
+            {item.icon} {item.label}
+          </button>
+        ))}
+      </div>
+    </>,
+    document.body
   )
 }
 
@@ -67,6 +75,9 @@ interface TreeViewProps {
   renameInputRef: React.RefObject<HTMLInputElement | null>
   searchQuery: string
   level: number
+  // 拖拽视觉反馈
+  draggedPath: string | null
+  dropTargetPath: string | null
 }
 
 function matchesSearch(entry: TreeEntry, query: string): boolean {
@@ -83,6 +94,7 @@ export const TreeView = memo(function TreeView({
   entries, selectedPath, expandedFolders, onToggleFolder, onSelectFile,
   onContextMenu, renamingPath, renameValue, onRenameChange, onRenameConfirm,
   onRenameCancel, renameInputRef, searchQuery, level,
+  draggedPath, dropTargetPath,
 }: TreeViewProps) {
   const filtered = searchQuery ? entries.filter(e => matchesSearch(e, searchQuery)) : entries
 
@@ -93,17 +105,29 @@ export const TreeView = memo(function TreeView({
         const isSelected = selectedPath === entry.path
         const isRenaming = renamingPath === entry.path
         const paddingLeft = 8 + level * 14
+        const isDragged = draggedPath === entry.path
 
         if (entry.type === 'directory') {
+          const isDropTarget = dropTargetPath === entry.path && draggedPath !== entry.path
           return (
             <div key={entry.path}>
               <div
+                data-entry-path={entry.path}
+                data-entry-type="directory"
                 className="flex items-center gap-1 py-[3px] pr-2 cursor-pointer transition-colors group"
-                style={{ paddingLeft, backgroundColor: isSelected ? 'var(--color-primary-subtle)' : 'transparent' }}
+                style={{
+                  paddingLeft,
+                  backgroundColor: isDropTarget
+                    ? 'var(--color-primary-subtle)'
+                    : isSelected ? 'var(--color-primary-subtle)' : 'transparent',
+                  outline: isDropTarget ? '1.5px dashed var(--color-primary)' : 'none',
+                  borderRadius: isDropTarget ? 3 : 0,
+                  opacity: isDragged ? 0.4 : 1,
+                }}
                 onClick={() => onToggleFolder(entry.path)}
                 onContextMenu={e => onContextMenu(e, entry)}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)' }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent' }}
+                onMouseEnter={e => { if (!isSelected && !isDropTarget) e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)' }}
+                onMouseLeave={e => { if (!isSelected && !isDropTarget) e.currentTarget.style.backgroundColor = 'transparent' }}
               >
                 {isExpanded
                   ? <ChevronDown size={12} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />
@@ -128,6 +152,8 @@ export const TreeView = memo(function TreeView({
                   renameInputRef={renameInputRef}
                   searchQuery={searchQuery}
                   level={level + 1}
+                  draggedPath={draggedPath}
+                  dropTargetPath={dropTargetPath}
                 />
               )}
             </div>
@@ -137,8 +163,14 @@ export const TreeView = memo(function TreeView({
         return (
           <div
             key={entry.path}
+            data-entry-path={entry.path}
+            data-entry-type="file"
             className="flex items-center gap-1 py-[3px] pr-2 cursor-pointer transition-colors group"
-            style={{ paddingLeft: paddingLeft + 12, backgroundColor: isSelected ? 'var(--color-primary-subtle)' : 'transparent' }}
+            style={{
+              paddingLeft: paddingLeft + 12,
+              backgroundColor: isSelected ? 'var(--color-primary-subtle)' : 'transparent',
+              opacity: isDragged ? 0.4 : 1,
+            }}
             onClick={() => onSelectFile(entry)}
             onContextMenu={e => onContextMenu(e, entry)}
             onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)' }}

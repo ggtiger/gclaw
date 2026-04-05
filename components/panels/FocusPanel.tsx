@@ -143,9 +143,9 @@ function SidebarNotesSection() {
   const [notes] = useState<Note[]>(initialNotes);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col min-h-0 flex-1">
       {/* Section 标题行 */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <span className="text-amber-500">📝</span> 近期笔记
         </h2>
@@ -155,8 +155,8 @@ function SidebarNotesSection() {
         </button>
       </div>
 
-      {/* 笔记列表 - 最多显示5个 */}
-      <div className="max-h-[240px] overflow-y-auto thin-scrollbar">
+      {/* 笔记列表 - 弹性高度，自动滚动 */}
+      <div className="flex-1 overflow-y-auto thin-scrollbar min-h-0">
         <div className="flex flex-col gap-2.5">
           {notes.length === 0 ? (
             <div className="bg-gray-100 dark:bg-white/5 rounded-lg p-3 text-xs text-gray-400 text-center">
@@ -319,17 +319,17 @@ export default function FocusPanel() {
       </div>
 
       {/* 专注模式 Section */}
-      <div className="px-5 py-3  border-gray-200/60 dark:border-white/[0.06] shrink-0">
+      <div className="px-5 py-3 shrink-0">
         <SidebarFocusSection />
       </div>
 
-      {/* 近期笔记 Section */}
-      <div className="px-5 py-3  border-gray-200/60 dark:border-white/[0.06] shrink-0">
+      {/* 近期笔记 Section - 弹性高度，填充剩余空间 */}
+      <div className="px-5 py-3 flex-1 min-h-0 overflow-hidden flex flex-col">
         <SidebarNotesSection />
       </div>
 
-      {/* 日历 Section */}
-      <div className="px-5 py-3 mt-auto">
+      {/* 日历 Section - 固定高度 */}
+      <div className="px-5 pt-3 pb-4 shrink-0">
         <MiniCalendar />
       </div>
     </div>

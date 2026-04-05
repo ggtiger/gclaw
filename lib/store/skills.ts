@@ -1,14 +1,13 @@
 import fs from 'fs'
 import path from 'path'
-import { getProjectDir } from './projects'
+import { getProjectDataDir } from './projects'
 
 function getSkillsFile(projectId: string): string {
-  return path.join(getProjectDir(projectId), 'enabled-skills.json')
+  return path.join(getProjectDataDir(projectId), 'enabled-skills.json')
 }
 
 function ensureProjectDir(projectId: string) {
-  const dir = getProjectDir(projectId)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  getProjectDataDir(projectId)
 }
 
 export function getEnabledSkills(projectId: string): string[] {

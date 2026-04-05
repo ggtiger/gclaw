@@ -2,15 +2,14 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import type { ChannelConfig, ChannelType } from '@/types/channels'
-import { getProjectDir } from './projects'
+import { getProjectDataDir } from './projects'
 
 function getChannelsFile(projectId: string): string {
-  return path.join(getProjectDir(projectId), 'channels.json')
+  return path.join(getProjectDataDir(projectId), 'channels.json')
 }
 
 function ensureProjectDir(projectId: string) {
-  const dir = getProjectDir(projectId)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  getProjectDataDir(projectId)
 }
 
 export function getChannels(projectId: string): ChannelConfig[] {

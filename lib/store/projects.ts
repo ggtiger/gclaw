@@ -90,6 +90,13 @@ export function getProjectDir(projectId: string): string {
   return path.join(PROJECTS_DIR, projectId)
 }
 
+/** 项目数据目录（.data 子目录），存放 messages/settings/agents 等运行时数据 */
+export function getProjectDataDir(projectId: string): string {
+  const dir = path.join(getProjectDir(projectId), '.data')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
 export function getProjectById(id: string): ProjectInfo | undefined {
   return getProjects().find(p => p.id === id)
 }
@@ -288,13 +295,14 @@ export function ensureDefaultProject(ownerId?: string): string {
   const project = createProject('默认项目', ownerId, 'secretary')
   const projectDir = getProjectDir(project.id)
 
-  // 迁移旧数据文件
+  // 迁移旧数据文件到 .data 子目录
+  const dataDir = getProjectDataDir(project.id)
   const oldFiles = ['messages.json', 'enabled-skills.json', 'agents.json']
   for (const file of oldFiles) {
     const oldPath = path.join(DATA_DIR, file)
     if (fs.existsSync(oldPath)) {
       try {
-        fs.copyFileSync(oldPath, path.join(projectDir, file))
+        fs.copyFileSync(oldPath, path.join(dataDir, file))
         fs.unlinkSync(oldPath)
       } catch (err) {
         console.error(`[GClaw] Failed to migrate ${file}:`, err)
@@ -329,7 +337,7 @@ export function ensureDefaultProject(ownerId?: string): string {
         dangerouslySkipPermissions: raw.dangerouslySkipPermissions ?? true,
       }
       fs.writeFileSync(
-        path.join(projectDir, 'settings.json'),
+        path.join(dataDir, 'settings.json'),
         JSON.stringify(projectSettings, null, 2),
         'utf-8'
       )
@@ -337,6 +345,28 @@ export function ensureDefaultProject(ownerId?: string): string {
       fs.unlinkSync(oldSettingsPath)
     } catch (err) {
       console.error('[GClaw] Failed to migrate settings:', err)
+    }
+  }
+
+  // 迁移项目目录下已有的旧数据文件到 .data 子目录
+  for (const file of oldFiles) {
+    const oldPath = path.join(projectDir, file)
+    if (fs.existsSync(oldPath)) {
+      try {
+        fs.copyFileSync(oldPath, path.join(dataDir, file))
+        fs.unlinkSync(oldPath)
+      } catch (err) {
+        console.error(`[GClaw] Failed to move ${file} to .data:`, err)
+      }
+    }
+  }
+  const oldProjectSettings = path.join(projectDir, 'settings.json')
+  if (fs.existsSync(oldProjectSettings)) {
+    try {
+      fs.copyFileSync(oldProjectSettings, path.join(dataDir, 'settings.json'))
+      fs.unlinkSync(oldProjectSettings)
+    } catch (err) {
+      console.error('[GClaw] Failed to move settings.json to .data:', err)
     }
   }
 

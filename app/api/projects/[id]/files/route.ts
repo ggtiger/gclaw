@@ -371,6 +371,46 @@ export async function POST(
         return Response.json({ success: true })
       }
 
+      case 'copy': {
+        if (!targetPath || !newPath) {
+          return Response.json({ error: '缺少路径参数' }, { status: 400 })
+        }
+        const srcPath = path.join(projectDir, targetPath)
+        const dstPath = path.join(projectDir, newPath)
+        const resolvedSrc = path.resolve(srcPath)
+        const resolvedDst = path.resolve(dstPath)
+        if (!resolvedSrc.startsWith(path.resolve(projectDir)) ||
+            !resolvedDst.startsWith(path.resolve(projectDir))) {
+          return Response.json({ error: '非法路径' }, { status: 400 })
+        }
+        if (!fs.existsSync(srcPath)) {
+          return Response.json({ error: '源文件不存在' }, { status: 404 })
+        }
+        if (fs.existsSync(dstPath)) {
+          return Response.json({ error: '目标已存在' }, { status: 409 })
+        }
+        const copyStat = fs.statSync(srcPath)
+        if (copyStat.isDirectory()) {
+          fs.cpSync(srcPath, dstPath, { recursive: true })
+        } else {
+          fs.copyFileSync(srcPath, dstPath)
+        }
+        return Response.json({ success: true })
+      }
+
+      case 'resolve': {
+        if (!targetPath) return Response.json({ error: '缺少路径' }, { status: 400 })
+        const resolvePath = path.join(projectDir, targetPath)
+        const resolvedAbs = path.resolve(resolvePath)
+        if (!resolvedAbs.startsWith(path.resolve(projectDir))) {
+          return Response.json({ error: '非法路径' }, { status: 400 })
+        }
+        if (!fs.existsSync(resolvePath)) {
+          return Response.json({ error: '路径不存在' }, { status: 404 })
+        }
+        return Response.json({ absolutePath: resolvedAbs })
+      }
+
       case 'save': {
         if (!targetPath) return Response.json({ error: '缺少路径' }, { status: 400 })
         const savePath = path.join(projectDir, targetPath)
