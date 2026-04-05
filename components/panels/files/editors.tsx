@@ -202,7 +202,7 @@ export function MarkdownEditor({ content, fileName, onSave, saving }: MarkdownEd
         )}
         {(mode === 'preview' || mode === 'split') && (
           <div className={`${mode === 'split' ? 'w-1/2' : 'w-full'} h-full overflow-auto p-3`}>
-            <div className="markdown-body text-xs leading-[1.6]"><MarkdownRenderer content={editContent} /></div>
+            <div className="markdown-body text-sm leading-[1.6]"><MarkdownRenderer content={editContent} /></div>
           </div>
         )}
       </div>

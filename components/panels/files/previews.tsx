@@ -92,7 +92,7 @@ export function WordPreview({ projectId, filePath }: { projectId: string; filePa
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 size={18} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-        <span className="text-xs ml-2" style={{ color: 'var(--color-text-muted)' }}>解析 Word 文档...</span>
+        <span className="text-sm ml-2" style={{ color: 'var(--color-text-muted)' }}>解析 Word 文档...</span>
       </div>
     )
   }
@@ -105,7 +105,7 @@ export function WordPreview({ projectId, filePath }: { projectId: string; filePa
         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Word 文档</span>
       </div>
       <div className="flex-1 overflow-auto p-3 thin-scrollbar">
-        <div className="markdown-body text-xs leading-[1.6]"><MarkdownRenderer content={markdown} /></div>
+        <div className="markdown-body text-sm leading-[1.6]"><MarkdownRenderer content={markdown} /></div>
       </div>
     </div>
   )
@@ -184,7 +184,7 @@ export function ExcelPreview({ projectId, filePath }: { projectId: string; fileP
       )}
       <div className="flex-1 overflow-auto p-2">
         {sheet.data.length > 0 ? (
-          <table className="w-full border-collapse text-xs">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
                 {sheet.data[0].map((header, ci) => (
