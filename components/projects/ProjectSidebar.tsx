@@ -73,7 +73,7 @@ export function ProjectSidebar({
           <ChevronRight size={16} />
         </button>
         {/* 底部工具栏 - 收起态 */}
-        <div className="mt-auto border-t border-gray-200 dark:border-white/[0.06] py-2 flex flex-col items-center gap-1">
+        <div className="mt-auto  border-gray-200 dark:border-white/[0.06] py-2 flex flex-col items-center gap-1">
           <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
             <Settings size={16} />
           </button>
@@ -119,7 +119,7 @@ export function ProjectSidebar({
       </div>
 
       {/* Header - 项目标题 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--panel-border)' }}>
+      <div className="flex items-center justify-between px-3 py-2 " style={{ borderColor: 'var(--panel-border)' }}>
         <div className="flex items-center gap-1.5">
           <FolderOpen size={14} className="text-purple-600 dark:text-purple-400" />
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>项目</span>
@@ -292,7 +292,7 @@ export function ProjectSidebar({
       </div>
 
       {/* 底部工具栏 - 展开态 */}
-      <div className="mt-auto border-t border-gray-200 dark:border-white/[0.06] px-3 py-2 flex items-center gap-1">
+      <div className="mt-auto  border-gray-200 dark:border-white/[0.06] px-3 py-2 flex items-center gap-1">
         <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
           <Settings size={16} />
         </button>

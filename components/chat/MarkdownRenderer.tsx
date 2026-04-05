@@ -7,6 +7,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import hljs from 'highlight.js'
 import { Copy, Check } from 'lucide-react'
 import { useState } from 'react'
+import { MermaidBlock } from './MermaidBlock'
 
 interface MarkdownRendererProps {
   content: string
@@ -86,9 +87,14 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
             if (isInline) {
               return <code className={className} {...props}>{children}</code>
             }
+            const lang = className?.replace('language-', '') || ''
+            const codeText = String(children).replace(/\n$/, '')
+            if (lang === 'mermaid') {
+              return <MermaidBlock chart={codeText} />
+            }
             return (
               <HighlightedCodeBlock className={className} isStreaming={isStreaming}>
-                {String(children).replace(/\n$/, '')}
+                {codeText}
               </HighlightedCodeBlock>
             )
           },

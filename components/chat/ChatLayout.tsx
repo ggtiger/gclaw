@@ -175,7 +175,7 @@ export function ChatLayout() {
         {/* Chat area - 圆角毛玻璃卡片 */}
         {!filesFullscreen && (
         <main
-          className={`flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
+          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {/* 移动端菜单按钮 */}
@@ -209,13 +209,13 @@ export function ChatLayout() {
         </main>
         )}
 
-        {/* Right side panel - 可拖拽调整宽度 */}
+        {/* Right side panel */}
         <aside
-          className={`relative min-h-0 ${filesFullscreen ? 'flex-1' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
-          style={{ WebkitAppRegion: 'no-drag', width: filesFullscreen ? undefined : rightPanelWidth } as React.CSSProperties}
+          className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[320px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
+          style={{ WebkitAppRegion: 'no-drag', width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
         >
-          {/* 拖拽手柄 - 全屏时隐藏 */}
-          {!filesFullscreen && (
+          {/* 拖拽手柄 - 仅 FilesPanel 且非全屏时显示 */}
+          {!isSecretary && !filesFullscreen && (
           <div
             onMouseDown={handleResizeStart}
             className="absolute top-0 bottom-0 -left-1.5 w-3 cursor-col-resize z-50 hover:bg-purple-500/10 active:bg-purple-500/20 transition-colors"
