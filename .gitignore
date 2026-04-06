@@ -40,7 +40,15 @@ next-env.d.ts
 
 # tauri
 /src-tauri/target/
-/src-tauri/server/
+/src-tauri/server/*
+!/src-tauri/server/package.json
+!/src-tauri/server/server.js
+!/src-tauri/server/.next/
+/src-tauri/server/.next/*
+!/src-tauri/server/.next/.gitkeep
+!/src-tauri/server/skills/
+/src-tauri/server/skills/*
+!/src-tauri/server/skills/.gitkeep
 /src-tauri/python/
 /src-tauri/node/
 /src-tauri/icons/*.icns
