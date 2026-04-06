@@ -1,0 +1,7 @@
+{
+  "name": "tauri-cross-platform-build",
+  "displayName": "Tauri 跨平台构建",
+  "description": "Tauri v2 桌面应用跨平台适配、macOS 签名公证、GitHub Actions CI/CD 发布的完整指南与排错手册",
+  "version": "1.0.0",
+  "author": "GClaw"
+}
