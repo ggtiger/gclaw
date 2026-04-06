@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 // ============================================================
 // 模块级 per-project 流状态缓冲
@@ -263,8 +263,8 @@ export function useChat(projectId: string) {
   }, [projectId, updateState])
 
   // 发送消息
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim()) return
+  const sendMessage = useCallback(async (text: string, attachments?: ChatAttachment[]) => {
+    if (!text.trim() && (!attachments || attachments.length === 0)) return
 
     // 捕获发送时的 projectId（闭包绑定）
     const sendProjectId = currentProjectIdRef.current
@@ -277,9 +277,10 @@ export function useChat(projectId: string) {
     const userMsg: ChatMessage = {
       id: `msg_${Date.now()}_user`,
       role: 'user',
-      content: text.trim(),
+      content: text.trim() || '(附件)',
       messageType: 'text',
       createdAt: new Date().toISOString(),
+      attachments: attachments || undefined,
     }
     setMessages(prev => [...prev, userMsg])
 
@@ -306,7 +307,11 @@ export function useChat(projectId: string) {
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), projectId: sendProjectId }),
+        body: JSON.stringify({
+          message: text.trim() || '(附件)',
+          projectId: sendProjectId,
+          attachments: attachments || undefined,
+        }),
         signal: controller.signal,
       })
 

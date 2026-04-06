@@ -1,3 +1,16 @@
+// ── 附件 ──
+
+export interface ChatAttachment {
+  id: string                // 唯一ID
+  filename: string          // 原始文件名
+  mimeType: string          // MIME 类型
+  size: number              // 文件大小（bytes）
+  url: string               // 下载/预览 URL
+  type: 'image' | 'document' | 'code' | 'file'  // 分类
+}
+
+// ── 消息 ──
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
@@ -9,6 +22,7 @@ export interface ChatMessage {
   stats?: ConversationStats
   tags?: string[]       // 消息标签
   isStarred?: boolean   // 是否收藏
+  attachments?: ChatAttachment[]  // 附件列表
 }
 
 export interface ToolCallItem {

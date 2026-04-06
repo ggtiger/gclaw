@@ -1,15 +1,93 @@
+import fs from 'fs'
+import path from 'path'
 import { NextRequest } from 'next/server'
-import { executeChat } from '@/lib/claude/process-manager'
+import { executeChat, type AttachmentData } from '@/lib/claude/process-manager'
 import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { addMessage } from '@/lib/store/messages'
 import { assertValidProjectId } from '@/lib/store/projects'
-import type { ChatMessage, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 export const dynamic = 'force-dynamic'
 
+const DATA_DIR = process.env.GCLAW_DATA_DIR
+  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
+  : path.join(process.cwd(), 'data')
+
+const IMAGE_MIME_PREFIX = 'image/'
+
+const CODE_EXTENSIONS = new Set([
+  '.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.go', '.rs', '.java', '.kt',
+  '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.swift', '.m', '.sh', '.bash',
+  '.zsh', '.sql', '.html', '.css', '.scss', '.less', '.json', '.xml', '.yaml',
+  '.yml', '.toml', '.ini', '.cfg', '.conf', '.md', '.txt', '.csv', '.log',
+  '.r', '.lua', '.pl', '.ex', '.exs', '.erl', '.hs', '.ml', '.scala',
+  '.clj', '.vue', '.svelte',
+])
+
+const TEXT_MIME_TYPES = new Set([
+  'text/plain', 'text/html', 'text/css', 'text/javascript', 'text/xml',
+  'application/json', 'application/xml', 'application/javascript',
+  'application/x-yaml', 'application/yaml',
+  'text/markdown', 'text/csv', 'text/x-python', 'text/x-shellscript',
+])
+
+/**
+ * 根据附件元数据从磁盘读取文件内容，构造 AttachmentData
+ */
+function loadAttachmentData(att: ChatAttachment, projectId: string): AttachmentData | null {
+  // 从 url 提取文件路径: /api/chat/attachments/{projectId}/{filename}
+  const urlParts = att.url.split('/')
+  const filename = urlParts.slice(5).join('/')
+  if (!filename || filename.includes('..')) return null
+
+  const filePath = path.join(DATA_DIR, 'projects', projectId, 'attachments', filename)
+  const resolvedPath = path.resolve(filePath)
+  const attachDir = path.resolve(path.join(DATA_DIR, 'projects', projectId, 'attachments'))
+  if (!resolvedPath.startsWith(attachDir)) return null
+
+  if (!fs.existsSync(resolvedPath)) return null
+
+  const isImage = att.mimeType.startsWith(IMAGE_MIME_PREFIX)
+
+  if (isImage) {
+    const buffer = fs.readFileSync(resolvedPath)
+    return {
+      filename: att.filename,
+      mimeType: att.mimeType,
+      content: buffer.toString('base64'),
+      isImage: true,
+    }
+  }
+
+  // 文本/代码文件：读取为 UTF-8 文本
+  const ext = path.extname(att.filename).toLowerCase()
+  const isText = TEXT_MIME_TYPES.has(att.mimeType) || CODE_EXTENSIONS.has(ext)
+  if (isText) {
+    const content = fs.readFileSync(resolvedPath, 'utf-8')
+    return {
+      filename: att.filename,
+      mimeType: att.mimeType,
+      content,
+      isImage: false,
+    }
+  }
+
+  // 其他二进制文件：标注为不可读
+  return {
+    filename: att.filename,
+    mimeType: att.mimeType,
+    content: `[Binary file: ${att.filename}, size: ${att.size} bytes, type: ${att.mimeType}]`,
+    isImage: false,
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { message, projectId = '' } = body
+  const { message, projectId = '', attachments }: {
+    message: string
+    projectId: string
+    attachments?: ChatAttachment[]
+  } = body
 
   if (!message || typeof message !== 'string') {
     return new Response(JSON.stringify({ error: 'message is required' }), {
@@ -28,6 +106,14 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // 加载附件数据
+  let attachmentData: AttachmentData[] | undefined
+  if (attachments && attachments.length > 0) {
+    attachmentData = attachments
+      .map(att => loadAttachmentData(att, projectId))
+      .filter((d): d is AttachmentData => d !== null)
+  }
+
   // 持久化用户消息
   const userMsg: ChatMessage = {
     id: `msg_${Date.now()}_user`,
@@ -35,6 +121,7 @@ export async function POST(request: NextRequest) {
     content: message,
     messageType: 'text',
     createdAt: new Date().toISOString(),
+    attachments: attachments || undefined,
   }
   addMessage(projectId, userMsg)
 
@@ -73,7 +160,7 @@ export async function POST(request: NextRequest) {
       })
 
       try {
-        for await (const event of executeChat(message, { projectId, onAskUserQuestion }, onPermissionRequest)) {
+        for await (const event of executeChat(message, { projectId, onAskUserQuestion, attachments: attachmentData }, onPermissionRequest)) {
           // 累积完整内容
           if (event.event === 'delta' && typeof event.data.content === 'string') {
             fullContent += event.data.content

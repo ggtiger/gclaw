@@ -1,10 +1,10 @@
 'use client'
 
 import { memo, useState, useRef, useEffect, useCallback } from 'react'
-import { User, Bot, AlertCircle, Star, Tag, X, Check } from 'lucide-react'
+import { User, Bot, AlertCircle, Star, Tag, X, Check, FileText, Download } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
-import type { ChatMessage } from '@/types/chat'
+import type { ChatMessage, ChatAttachment } from '@/types/chat'
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -160,7 +160,15 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
 
         {isUser ? (
           <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-2xl rounded-tr-md shadow-lg shadow-purple-500/20">
-            {message.content}
+            {message.content !== '(附件)' && message.content}
+            {/* 附件预览 */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className={`flex flex-wrap gap-2 ${message.content !== '(附件)' ? 'mt-3 pt-3 border-t border-white/20' : ''}`}>
+                {message.attachments.map(att => (
+                  <AttachmentPreview key={att.id} attachment={att} />
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-white/80 dark:bg-white/5 rounded-2xl rounded-tl-md border border-gray-200/60 dark:border-white/10 text-[var(--color-text)] shadow-sm">
@@ -299,3 +307,66 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
     </div>
   )
 })
+
+// ── 附件预览组件 ──
+
+function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (attachment.type === 'image') {
+    return (
+      <>
+        <div
+          className="cursor-pointer rounded-lg overflow-hidden max-w-[200px] max-h-[150px] border border-white/20"
+          onClick={() => setExpanded(true)}
+        >
+          <img
+            src={attachment.url}
+            alt={attachment.filename}
+            className="w-full h-full object-cover"
+          />
+        </div>
+        {expanded && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => setExpanded(false)}
+          >
+            <div className="relative max-w-[90vw] max-h-[90vh]">
+              <img
+                src={attachment.url}
+                alt={attachment.filename}
+                className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              />
+              <button
+                onClick={() => setExpanded(false)}
+                className="absolute -top-3 -right-3 w-8 h-8 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-lg"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // 非图片附件
+  return (
+    <a
+      href={attachment.url}
+      download={attachment.filename}
+      target="_blank"
+      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/15 hover:bg-white/25 transition-colors max-w-[220px]"
+    >
+      <FileText size={16} className="flex-shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs truncate">{attachment.filename}</div>
+        <div className="text-[10px] opacity-70">
+          {(attachment.size / 1024).toFixed(attachment.size > 1024 * 1024 ? 1 : 0)}
+          {attachment.size > 1024 * 1024 ? ' MB' : ' KB'}
+        </div>
+      </div>
+      <Download size={12} className="flex-shrink-0 opacity-60" />
+    </a>
+  )
+}

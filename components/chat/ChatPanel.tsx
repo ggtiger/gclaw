@@ -10,7 +10,7 @@ import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
 // BranchSwitcher 已隐藏
-import type { ChatMessage, ToolSummary, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, ToolSummary, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
@@ -22,7 +22,7 @@ interface ChatPanelProps {
   askQuestion: AskUserQuestionRequest | null
   statusText?: string | null
   projectId: string
-  onSend: (message: string) => void
+  onSend: (message: string, attachments?: ChatAttachment[]) => void
   onAbort: () => void
   onClearChat?: () => void
   onOpenChannels?: () => void
@@ -36,7 +36,7 @@ interface ChatPanelProps {
   projectName?: string
 }
 
-function EmptyState({ onSend }: { onSend: (msg: string) => void }) {
+function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttachment[]) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in-up">
       <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 bg-gradient-to-br from-purple-500/20 to-purple-600/10">
@@ -227,7 +227,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
   const isEmpty = messages.length === 0 && !streamingContent
 
   return (
-    <div className="relative flex flex-col h-full">
+    <div className="relative flex flex-col h-full bg-white dark:bg-transparent">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
       {!isEmpty && (
         <div

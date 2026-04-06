@@ -1,5 +1,5 @@
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk'
-import type { HookCallback } from '@anthropic-ai/claude-agent-sdk'
+import type { HookCallback, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'crypto'
 import path from 'path'
 import { convertSDKMessage, createConvertContext } from './stream-parser'
@@ -67,6 +67,14 @@ function describeToolAction(toolName: string, toolInput: Record<string, unknown>
   }
 }
 
+// 附件数据（服务端内部使用）
+export interface AttachmentData {
+  filename: string
+  mimeType: string
+  content: string           // base64（图片）或 纯文本（文档/代码）
+  isImage: boolean
+}
+
 export interface ExecuteOptions {
   projectId?: string
   model?: string
@@ -75,6 +83,7 @@ export interface ExecuteOptions {
   cwd?: string
   dangerouslySkipPermissions?: boolean
   onAskUserQuestion?: (req: AskUserQuestionRequest) => void
+  attachments?: AttachmentData[]
 }
 
 /**
@@ -424,11 +433,57 @@ export async function* executeChat(
     },
   })
 
+  // 构建 prompt：有附件时使用 AsyncIterable<SDKUserMessage>，否则保持 string
+  const buildPrompt = (resumeId?: string): string | AsyncIterable<SDKUserMessage> => {
+    if (!options.attachments || options.attachments.length === 0) {
+      return message
+    }
+
+    // 构建多模态 content blocks
+    const contentBlocks: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = []
+
+    // 主文本
+    if (message) {
+      contentBlocks.push({ type: 'text', text: message })
+    }
+
+    // 附件内容
+    for (const att of options.attachments) {
+      if (att.isImage) {
+        contentBlocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: att.mimeType,
+            data: att.content,
+          },
+        })
+      } else {
+        contentBlocks.push({
+          type: 'text',
+          text: `--- File: ${att.filename} ---\n${att.content}\n--- End of ${att.filename} ---`,
+        })
+      }
+    }
+
+    // 使用 AsyncIterable 模式
+    async function* messageStream(): AsyncIterable<SDKUserMessage> {
+      yield {
+        type: 'user',
+        session_id: resumeId || '',
+        message: { role: 'user', content: contentBlocks },
+        parent_tool_use_id: null,
+      }
+    }
+    return messageStream()
+  }
+
   // 启动 SDK 查询，支持 sessionId 失效时自动重试
   let retried = false
 
   async function* runQuery(resumeId?: string): AsyncGenerator<SSEEvent> {
-    const qi = sdkQuery({ prompt: message, options: buildSdkOptions(resumeId) })
+    const prompt = buildPrompt(resumeId)
+    const qi = sdkQuery({ prompt, options: buildSdkOptions(resumeId) })
     let msgIdx = 0
 
     for await (const msg of qi) {
