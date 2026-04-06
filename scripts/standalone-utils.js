@@ -51,6 +51,29 @@ function rmSync(p) {
 }
 
 /**
+ * 递归搜索文件（跨平台，替代 Unix find 命令）
+ * @param {string} dir - 搜索根目录
+ * @param {string} filename - 目标文件名
+ * @param {number} maxDepth - 最大搜索深度
+ * @returns {string|null} 找到的文件绝对路径，未找到返回 null
+ */
+function findFileSync(dir, filename, maxDepth = 10) {
+  if (maxDepth <= 0 || !fs.existsSync(dir)) return null
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue
+        const result = findFileSync(path.join(dir, entry.name), filename, maxDepth - 1)
+        if (result) return result
+      } else if (entry.name === filename) {
+        return path.join(dir, entry.name)
+      }
+    }
+  } catch { /* ignore permission errors */ }
+  return null
+}
+
+/**
  * 执行 next build 并定位 standalone root
  * @returns {string} standalone root 路径（包含 server.js 的目录）
  */
@@ -64,10 +87,7 @@ function buildAndLocateStandalone() {
   }
 
   console.log('[standalone] Locating standalone server.js...')
-  const serverJsPath = execSync(
-    `find "${STANDALONE}" -maxdepth 10 -name "server.js" -not -path "*/node_modules/*" -type f`,
-    { encoding: 'utf-8' }
-  ).trim().split('\n')[0]
+  const serverJsPath = findFileSync(STANDALONE, 'server.js')
 
   if (!serverJsPath) {
     console.error('[standalone] ERROR: server.js not found in standalone output')

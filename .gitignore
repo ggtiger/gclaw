@@ -46,6 +46,7 @@ next-env.d.ts
 /src-tauri/icons/*.icns
 /src-tauri/icons/*.ico
 /src-tauri/icons/*.png
+!/src-tauri/icons/icon-source.png
 
 # deploy
 /dist/

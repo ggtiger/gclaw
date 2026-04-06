@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.gclaw.desktop",
   "build": {
-    "beforeBuildCommand": "bash src-tauri/scripts/setup-runtimes.sh && npm run build",
+    "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:3100",
     "frontendDist": "./frontend"
@@ -33,17 +33,14 @@
       "server/package.json",
       "server/.next/**/*",
       "server/node_modules/**/*",
-      "server/skills/**/*",
-      "python/bin/**/*",
-      "python/lib/**/*",
-      "python/include/**/*",
-      "node/bin/**/*",
-      "node/lib/**/*"
+      "server/skills/**/*"
     ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png"
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   }
 }
