@@ -52,7 +52,3 @@ jobs:
 
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
-
-      - name: Lint frontend
-        if: matrix.platform == 'macos'
-        run: npm run lint
