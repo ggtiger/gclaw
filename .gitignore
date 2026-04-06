@@ -46,6 +46,9 @@ next-env.d.ts
 !/src-tauri/server/.next/
 /src-tauri/server/.next/*
 !/src-tauri/server/.next/.gitkeep
+!/src-tauri/server/node_modules/
+/src-tauri/server/node_modules/*
+!/src-tauri/server/node_modules/.gitkeep
 !/src-tauri/server/skills/
 /src-tauri/server/skills/*
 !/src-tauri/server/skills/.gitkeep
