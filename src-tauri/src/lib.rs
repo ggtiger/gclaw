@@ -120,6 +120,21 @@ fn curl_cmd() -> &'static str {
     if cfg!(target_os = "windows") { "curl.exe" } else { "curl" }
 }
 
+/// 创建隐藏窗口的子进程（Windows 不弹出控制台窗口）
+#[cfg(target_os = "windows")]
+fn hidden_command(program: &str) -> Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut cmd = Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hidden_command(program: &str) -> Command {
+    Command::new(program)
+}
+
 // ============ 工具函数 ============
 
 fn find_available_port() -> u16 {
@@ -220,7 +235,7 @@ fn find_python3(app: &tauri::AppHandle) -> Option<String> {
 
 fn which_node() -> Option<String> {
     let cmd = if cfg!(target_os = "windows") { "where" } else { "which" };
-    if let Ok(output) = Command::new(cmd).arg("node").output() {
+    if let Ok(output) = hidden_command(cmd).arg("node").output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
             if !path.is_empty() { return Some(path); }
@@ -237,7 +252,7 @@ fn which_node() -> Option<String> {
 fn which_python3() -> Option<String> {
     let cmd = if cfg!(target_os = "windows") { "where" } else { "which" };
     let bin_name = if cfg!(target_os = "windows") { "python" } else { "python3" };
-    if let Ok(output) = Command::new(cmd).arg(bin_name).output() {
+    if let Ok(output) = hidden_command(cmd).arg(bin_name).output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
             if !path.is_empty() { return Some(path); }
@@ -284,7 +299,7 @@ fn python_download_url() -> String {
 
 /// 获取文件大小（Content-Length）
 fn get_remote_size(url: &str) -> u64 {
-    let output = Command::new(curl_cmd())
+    let output = hidden_command(curl_cmd())
         .args(&["-sI", "-L", url])
         .output();
     match output {
@@ -343,7 +358,7 @@ fn download_runtime(
     splash_check(app, name, "downloading");
 
     // 启动 curl 下载
-    let mut child = Command::new(curl_cmd())
+    let mut child = hidden_command(curl_cmd())
         .args(&["-L", "-f", "--progress-bar", "-o"])
         .arg(&archive)
         .arg(url)
@@ -387,20 +402,20 @@ fn download_runtime(
     std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
 
     let extract_status = if url.ends_with(".tar.xz") {
-        Command::new("tar")
+        hidden_command("tar")
             .args(&["-xJf", archive.to_str().unwrap_or(""), "--strip-components=1"])
             .arg("-C").arg(&target_dir)
             .status()
             .map_err(|e| format!("解压失败: {}", e))?
     } else if url.ends_with(".zip") {
         // Windows tar.exe 支持 .zip
-        Command::new("tar")
+        hidden_command("tar")
             .args(&["-xf", archive.to_str().unwrap_or("")])
             .arg("-C").arg(&target_dir)
             .status()
             .map_err(|e| format!("解压失败: {}", e))?
     } else {
-        Command::new("tar")
+        hidden_command("tar")
             .args(&["-xzf", archive.to_str().unwrap_or(""), "--strip-components=1"])
             .arg("-C").arg(&target_dir)
             .status()
@@ -440,7 +455,7 @@ fn install_python_pip(app: &tauri::AppHandle) -> Result<(), String> {
     if !python_bin.exists() { return Ok(()); }
 
     // 检查 requests 是否已安装
-    let check = Command::new(&python_bin)
+    let check = hidden_command(python_bin.to_str().unwrap_or(""))
         .args(&["-c", "import requests, yaml"])
         .status();
     if check.map(|s| s.success()).unwrap_or(false) {
@@ -450,12 +465,12 @@ fn install_python_pip(app: &tauri::AppHandle) -> Result<(), String> {
     splash_update(app, "正在安装 Python 依赖包...", 100, "requests, pyyaml");
 
     // 安装 pip（如果缺失）
-    Command::new(&python_bin)
+    hidden_command(python_bin.to_str().unwrap_or(""))
         .args(&["-m", "ensurepip", "--default-pip"])
         .status().ok();
 
     // 用清华镜像安装
-    let status = Command::new(&python_bin)
+    let status = hidden_command(python_bin.to_str().unwrap_or(""))
         .args(&["-m", "pip", "install", "--no-cache-dir", "--no-compile",
                 "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
                 "requests", "pyyaml"])
@@ -526,7 +541,7 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
 
     println!("[GClaw] Starting server: node {} (port={})", server_js.display(), port);
 
-    let mut cmd = Command::new(&node_bin);
+    let mut cmd = hidden_command(&node_bin);
     cmd.arg(&server_js)
         .env("PORT", port.to_string())
         .env("HOSTNAME", "127.0.0.1")
