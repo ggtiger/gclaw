@@ -1,11 +1,13 @@
 'use client'
 
-import { memo, useState } from 'react'
-import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Circle, Clock, Ban } from 'lucide-react'
-import type { ToolSummary, ToolCallItem } from '@/types/chat'
+import { memo, useState, useEffect, useRef } from 'react'
+import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Circle, Clock, Ban, HelpCircle, MessageSquare, CheckCircle2, Send, Pencil } from 'lucide-react'
+import type { ToolSummary, ToolCallItem, AskUserQuestionRequest } from '@/types/chat'
 
 interface ToolCallSummaryProps {
   summary: ToolSummary
+  askQuestion?: AskUserQuestionRequest | null
+  onRespondAskQuestion?: (requestId: string, answers: Record<string, string>) => void
 }
 
 // ── TodoWrite 专用渲染 ──
@@ -147,6 +149,322 @@ function TodoWriteView({ tools }: { tools: ToolCallItem[] }) {
   )
 }
 
+// ── AskUserQuestion 专用行 ──
+
+interface AskQuestion {
+  question: string
+  header?: string
+  options?: { label: string; description?: string; preview?: string }[]
+  multiSelect?: boolean
+}
+
+// 解析 SDK 返回的 output: "User has answered your questions: "Q1"="A1". "Q2"="A2". You can now continue..."
+function parseQAOutput(output: string): { question: string; answer: string }[] {
+  const qaPairs: { question: string; answer: string }[] = []
+  const regex = /"([^"]+)"="([^"]*)"/g
+  let match
+  while ((match = regex.exec(output)) !== null) {
+    qaPairs.push({ question: match[1], answer: match[2] })
+  }
+  return qaPairs
+}
+
+function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
+  tool: ToolCallItem
+  askQuestion?: AskUserQuestionRequest | null
+  onRespondAskQuestion?: (requestId: string, answers: Record<string, string>) => void
+}) {
+  const [expanded, setExpanded] = useState(true) // 默认展开
+  const [selections, setSelections] = useState<Record<number, string | string[]>>({})
+  const [customInputs, setCustomInputs] = useState<Record<number, string>>({})
+  const [customMode, setCustomMode] = useState<Record<number, boolean>>({})
+  const customInputRef = useRef<HTMLInputElement>(null)
+
+  const isInteractive = !!askQuestion && !tool.output
+  const questions: AskQuestion[] = (tool.input?.questions as AskQuestion[]) || []
+  const qaPairs = tool.output ? parseQAOutput(tool.output) : []
+
+  // 初始化交互默认选择
+  useEffect(() => {
+    if (!askQuestion) return
+    const defaults: Record<number, string | string[]> = {}
+    askQuestion.questions.forEach((q, i) => {
+      if (q.options.length > 0) {
+        defaults[i] = q.multiSelect ? [] : ''
+      }
+    })
+    setSelections(defaults)
+    setCustomMode({})
+    setCustomInputs({})
+  }, [askQuestion?.requestId])
+
+  const statusIcon = () => {
+    switch (tool.status) {
+      case 'pending':
+        return <Loader size={14} className="animate-spin text-[var(--color-primary)]" />
+      case 'completed':
+        return <Check size={14} className="text-[var(--color-success)]" />
+      case 'error':
+        return <XCircle size={14} className="text-[var(--color-error)]" />
+    }
+  }
+
+  // ── 交互逻辑 ──
+  const handleSingleSelect = (qIndex: number, label: string) => {
+    setSelections(prev => ({ ...prev, [qIndex]: label }))
+  }
+
+  const handleMultiSelect = (qIndex: number, label: string) => {
+    setSelections(prev => {
+      const current = (prev[qIndex] as string[]) || []
+      const updated = current.includes(label)
+        ? current.filter(l => l !== label)
+        : [...current, label]
+      return { ...prev, [qIndex]: updated }
+    })
+  }
+
+  const handleEnableCustomMode = (qIndex: number) => {
+    setCustomMode(prev => ({ ...prev, [qIndex]: true }))
+    setCustomInputs(prev => ({ ...prev, [qIndex]: '' }))
+    setSelections(prev => ({ ...prev, [qIndex]: '' }))
+    setTimeout(() => customInputRef.current?.focus(), 50)
+  }
+
+  const handleCustomInputConfirm = (qIndex: number) => {
+    const val = customInputs[qIndex]?.trim()
+    if (val) {
+      setSelections(prev => ({ ...prev, [qIndex]: val }))
+    }
+    setCustomMode(prev => ({ ...prev, [qIndex]: false }))
+  }
+
+  const handleCancelCustomMode = (qIndex: number) => {
+    setCustomMode(prev => ({ ...prev, [qIndex]: false }))
+    setCustomInputs(prev => ({ ...prev, [qIndex]: '' }))
+    setSelections(prev => ({ ...prev, [qIndex]: '' }))
+  }
+
+  const handleSubmit = () => {
+    if (!askQuestion || !onRespondAskQuestion) return
+    const answers: Record<string, string> = {}
+    askQuestion.questions.forEach((q, i) => {
+      if (customMode[i]) {
+        answers[q.question] = customInputs[i]?.trim() || ''
+      } else {
+        const sel = selections[i]
+        if (Array.isArray(sel)) {
+          answers[q.question] = sel.join(', ')
+        } else {
+          answers[q.question] = sel || ''
+        }
+      }
+    })
+    onRespondAskQuestion(askQuestion.requestId, answers)
+  }
+
+  const canSubmit = isInteractive && askQuestion
+    ? askQuestion.questions.every((q, i) => {
+        if (customMode[i]) return (customInputs[i]?.trim() || '').length > 0
+        const sel = selections[i]
+        if (q.multiSelect) return Array.isArray(sel) && sel.length > 0
+        return typeof sel === 'string' && sel !== ''
+      })
+    : false
+
+  // 交互模式的问题来源用 askQuestion（SSE 实时数据比 tool.input 更完整）
+  const displayQuestions = isInteractive && askQuestion ? askQuestion.questions : questions
+
+  return (
+    <div className="border-b last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
+      {/* Header — 与 ToolCallRow 同结构 */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/20 dark:hover:bg-white/5 transition-colors cursor-pointer"
+      >
+        {statusIcon()}
+        <HelpCircle size={14} className="text-[var(--color-text-muted)]" />
+        <span className="text-xs flex-1 text-left truncate" style={{ color: 'var(--color-text)' }}>
+          AskUserQuestion
+        </span>
+        {qaPairs.length > 0 && !isInteractive && (
+          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+            {qaPairs.length} 个回答
+          </span>
+        )}
+        {isInteractive && (
+          <span className="text-[10px]" style={{ color: 'var(--color-primary, #7c3aed)' }}>
+            待回答
+          </span>
+        )}
+        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-2 space-y-1.5">
+          {/* Input: 问题选项 */}
+          {displayQuestions.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Input
+              </div>
+              <div className="space-y-2">
+                {displayQuestions.map((q, qIdx) => (
+                  <div key={qIdx} className="rounded-lg p-2" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {q.header && (
+                        <span
+                          className="inline-block px-1.5 py-px rounded text-[10px] font-medium"
+                          style={{
+                            backgroundColor: 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)',
+                            color: 'var(--color-primary, #7c3aed)',
+                          }}
+                        >
+                          {q.header}
+                        </span>
+                      )}
+                      {q.multiSelect && (
+                        <span className="text-[10px] px-1.5 py-px rounded-full" style={{
+                          backgroundColor: 'var(--color-surface-hover)',
+                          color: 'var(--color-text-muted)',
+                        }}>
+                          多选
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+                      {q.question}
+                    </div>
+                    {/* 交互 or 只读 */}
+                    {isInteractive ? (
+                      customMode[qIdx] ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            ref={customInputRef}
+                            type="text"
+                            value={customInputs[qIdx] || ''}
+                            onChange={e => setCustomInputs(prev => ({ ...prev, [qIdx]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') handleCustomInputConfirm(qIdx) }}
+                            placeholder="输入你的回答..."
+                            className="flex-1 text-xs px-2 py-1 rounded-md border outline-none"
+                            style={{
+                              borderColor: 'var(--color-primary, #7c3aed)',
+                              backgroundColor: 'var(--color-surface)',
+                              color: 'var(--color-text)',
+                            }}
+                          />
+                          <button
+                            onClick={() => handleCustomInputConfirm(qIdx)}
+                            disabled={!customInputs[qIdx]?.trim()}
+                            className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
+                          >
+                            确认
+                          </button>
+                          <button
+                            onClick={() => handleCancelCustomMode(qIdx)}
+                            className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {(q.options || []).map((opt, oIdx) => {
+                            const isSelected = q.multiSelect
+                              ? ((selections[qIdx] as string[]) || []).includes(opt.label)
+                              : selections[qIdx] === opt.label
+                            return (
+                              <button
+                                key={oIdx}
+                                onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label)}
+                                title={opt.description}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
+                                style={{
+                                  borderColor: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
+                                  backgroundColor: isSelected
+                                    ? 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)'
+                                    : 'transparent',
+                                  color: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text)',
+                                }}
+                              >
+                                {isSelected ? <CheckCircle2 size={10} /> : <Circle size={10} />}
+                                {opt.label}
+                              </button>
+                            )
+                          })}
+                          <button
+                            onClick={() => handleEnableCustomMode(qIdx)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
+                            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                          >
+                            <Pencil size={10} />
+                            其他...
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      q.options && q.options.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {q.options.map((opt, j) => (
+                            <span
+                              key={j}
+                              title={opt.description}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium"
+                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                            >
+                              {opt.label}
+                            </span>
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+              {/* 提交按钮 */}
+              {isInteractive && (
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!canSubmit}
+                    className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
+                  >
+                    <Send size={11} />
+                    提交
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Output: Q&A 回答 */}
+          {qaPairs.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Output
+              </div>
+              <div className="space-y-1 p-2 rounded" style={{ backgroundColor: 'var(--color-code-bg)' }}>
+                {qaPairs.map((qa, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-xs">
+                    <MessageSquare size={12} className="mt-0.5 shrink-0 text-[var(--color-primary)]" />
+                    <div>
+                      <span style={{ color: 'var(--color-text-muted)' }}>{qa.question}: </span>
+                      <span className="font-medium" style={{ color: '#e2e8f0' }}>{qa.answer}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── 通用工具行 ──
 
 function ToolCallRow({ tool }: { tool: ToolCallItem }) {
@@ -214,31 +532,41 @@ function ToolCallRow({ tool }: { tool: ToolCallItem }) {
   )
 }
 
-export const ToolCallSummary = memo(function ToolCallSummary({ summary }: ToolCallSummaryProps) {
+// ── 判断工具名 ──
+
+function isAskUserQuestion(name: string) {
+  return name === 'AskUserQuestion' || name === 'ask_user_question'
+}
+
+function isTodoWrite(name: string) {
+  return name === 'TodoWrite' || name === 'todo_write'
+}
+
+export const ToolCallSummary = memo(function ToolCallSummary({ summary, askQuestion, onRespondAskQuestion }: ToolCallSummaryProps) {
   const [collapsed, setCollapsed] = useState(false)
   const allTools = [...summary.pendingTools, ...summary.completedTools]
 
   if (allTools.length === 0) return null
 
-  // 分离 todo_write 和其他工具
-  const todoTools = allTools.filter(t => t.toolName === 'TodoWrite' || t.toolName === 'todo_write')
-  const otherTools = allTools.filter(t => t.toolName !== 'TodoWrite' && t.toolName !== 'todo_write')
+  // 只分离 todo_write；AskUserQuestion 留在 generalTools 里
+  const todoTools = allTools.filter(t => isTodoWrite(t.toolName))
+  const generalTools = allTools.filter(t => !isTodoWrite(t.toolName))
 
-  const pendingCount = summary.pendingTools.filter(t => t.toolName !== 'TodoWrite' && t.toolName !== 'todo_write').length
-  const completedCount = summary.completedTools.filter(t => t.toolName !== 'TodoWrite' && t.toolName !== 'todo_write').length
-  const errorCount = summary.completedTools.filter(t => t.isError && t.toolName !== 'TodoWrite' && t.toolName !== 'todo_write').length
+  const pendingCount = generalTools.filter(t => t.status === 'pending').length
+  const completedCount = generalTools.filter(t => t.status === 'completed').length
+  const errorCount = generalTools.filter(t => t.isError).length
 
   return (
     <div className="space-y-2">
-      {/* TodoWrite 专用卡片 — 只显示最新一次的 todo 列表 */}
+      {/* TodoWrite 专用卡片 */}
       {todoTools.length > 0 && (
         <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5 backdrop-blur-md">
           <TodoWriteView tools={todoTools} />
         </div>
       )}
 
-      {/* 其他工具调用 */}
-      {otherTools.length > 0 && (
+      {/* 工具调用（含 AskUserQuestion） */}
+      {generalTools.length > 0 && (
         <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5 backdrop-blur-md">
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -259,9 +587,18 @@ export const ToolCallSummary = memo(function ToolCallSummary({ summary }: ToolCa
           </button>
           {!collapsed && (
             <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-              {otherTools.map(tool => (
-                <ToolCallRow key={tool.toolUseId} tool={tool} />
-              ))}
+              {generalTools.map(tool =>
+                isAskUserQuestion(tool.toolName) ? (
+                  <AskUserQuestionRow
+                    key={tool.toolUseId}
+                    tool={tool}
+                    askQuestion={askQuestion}
+                    onRespondAskQuestion={onRespondAskQuestion}
+                  />
+                ) : (
+                  <ToolCallRow key={tool.toolUseId} tool={tool} />
+                )
+              )}
             </div>
           )}
         </div>

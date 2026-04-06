@@ -3,7 +3,7 @@ import { executeChat } from '@/lib/claude/process-manager'
 import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { addMessage } from '@/lib/store/messages'
 import { assertValidProjectId } from '@/lib/store/projects'
-import type { ChatMessage, PermissionRequest } from '@/types/chat'
+import type { ChatMessage, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +50,12 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(sseData))
       }
 
+      // AskUserQuestion 回调：通过 SSE 推送问题到前端
+      const onAskUserQuestion = (req: AskUserQuestionRequest) => {
+        const sseData = `event: ask_user_question\ndata: ${JSON.stringify(req)}\n\n`
+        controller.enqueue(encoder.encode(sseData))
+      }
+
       // 订阅 GClaw 事件总线：将技能通知转发为 SSE
       const unsubscribe = gclawEventBus.subscribe(projectId, (event) => {
         try {
@@ -67,7 +73,7 @@ export async function POST(request: NextRequest) {
       })
 
       try {
-        for await (const event of executeChat(message, { projectId }, onPermissionRequest)) {
+        for await (const event of executeChat(message, { projectId, onAskUserQuestion }, onPermissionRequest)) {
           // 累积完整内容
           if (event.event === 'delta' && typeof event.data.content === 'string') {
             fullContent += event.data.content

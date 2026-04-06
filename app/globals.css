@@ -331,7 +331,7 @@ body {
 .markdown-body p { margin: 0.5em 0; line-height: 1.6; }
 .markdown-body pre {
   background-color: var(--color-code-bg) !important;
-  color: #E2E8F0 !important;
+  color: #E2E8F0;
   border-radius: 8px;
   padding: 1rem;
   overflow-x: auto;
@@ -342,7 +342,7 @@ body {
 }
 
 .markdown-body pre code {
-  color: #E2E8F0 !important;
+  color: #E2E8F0;
 }
 
 .markdown-body code {

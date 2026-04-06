@@ -47,6 +47,24 @@ export interface PermissionRequest {
   description: string
 }
 
+export interface AskUserQuestionOption {
+  label: string
+  description: string
+  preview?: string
+}
+
+export interface AskUserQuestionItem {
+  question: string
+  header: string
+  options: AskUserQuestionOption[]
+  multiSelect: boolean
+}
+
+export interface AskUserQuestionRequest {
+  requestId: string
+  questions: AskUserQuestionItem[]
+}
+
 export type SSEEventType =
   | 'start'
   | 'init'
@@ -57,6 +75,7 @@ export type SSEEventType =
   | 'tool_progress'
   | 'status'
   | 'permission_request'
+  | 'ask_user_question'
   | 'skill_notify'
   | 'done'
   | 'error'

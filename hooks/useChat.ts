@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest } from '@/types/chat'
+import type { ChatMessage, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 // ============================================================
 // 模块级 per-project 流状态缓冲
@@ -16,6 +16,7 @@ interface StreamBuffer {
   sessionId: string | null
   lastStats: ConversationStats | null
   permissionRequest: PermissionRequest | null
+  askQuestion: AskUserQuestionRequest | null
   pendingMessages: ChatMessage[] // 流结束后产生的消息（assistant/error）
   statusText: string | null     // 当前状态文本（如 'compacting'）
 }
@@ -37,6 +38,7 @@ function getBuffer(projectId: string): StreamBuffer {
       sessionId: null,
       lastStats: null,
       permissionRequest: null,
+      askQuestion: null,
       pendingMessages: [],
       statusText: null,
     }
@@ -82,6 +84,7 @@ export function useChat(projectId: string) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [lastStats, setLastStats] = useState<ConversationStats | null>(null)
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
+  const [askQuestion, setAskQuestion] = useState<AskUserQuestionRequest | null>(null)
   const [statusText, setStatusText] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
 
@@ -123,6 +126,7 @@ export function useChat(projectId: string) {
       setSessionId(buf.sessionId)
       setLastStats(buf.lastStats)
       setPermissionRequest(buf.permissionRequest)
+      setAskQuestion(buf.askQuestion)
       setStatusText(buf.statusText)
 
       // 如果 buffer 中有待合并的消息
@@ -150,6 +154,7 @@ export function useChat(projectId: string) {
       setSessionId(buf.sessionId)
       setLastStats(buf.lastStats)
       setPermissionRequest(buf.permissionRequest)
+      setAskQuestion(buf.askQuestion)
       setStatusText(buf.statusText)
     }
   }, [])
@@ -286,6 +291,7 @@ export function useChat(projectId: string) {
       buf.toolSummary = null
       buf.lastStats = null
       buf.permissionRequest = null
+      buf.askQuestion = null
       buf.pendingMessages = []
       buf.statusText = null
     })
@@ -387,10 +393,14 @@ export function useChat(projectId: string) {
                 if (!b.toolSummary) return
                 const pending = b.toolSummary.pendingTools.filter(t => t.toolUseId !== resultId)
                 const completedTool = b.toolSummary.pendingTools.find(t => t.toolUseId === resultId)
+                // AskUserQuestion 被前端拦截后 SDK 返回 isError=true，
+                // 但实际是用户回答而非错误，前端不显示为错误
+                const isAskQuestion = completedTool?.toolName === 'AskUserQuestion'
+                const effectiveIsError = isAskQuestion ? false : isError
                 const completed = [
                   ...b.toolSummary.completedTools,
                   ...(completedTool
-                    ? [{ ...completedTool, status: isError ? 'error' as const : 'completed' as const, output: resultContent, isError }]
+                    ? [{ ...completedTool, status: effectiveIsError ? 'error' as const : 'completed' as const, output: resultContent, isError: effectiveIsError }]
                     : []),
                 ]
                 b.toolSummary = { pendingTools: pending, completedTools: completed }
@@ -426,6 +436,15 @@ export function useChat(projectId: string) {
                   toolName: data.toolName as string,
                   toolInput: (data.toolInput as Record<string, unknown>) || {},
                   description: data.description as string,
+                }
+              })
+              break
+
+            case 'ask_user_question':
+              updateState(sendProjectId, b => {
+                b.askQuestion = {
+                  requestId: data.requestId as string,
+                  questions: data.questions as AskUserQuestionRequest['questions'],
                 }
               })
               break
@@ -578,6 +597,20 @@ export function useChat(projectId: string) {
     updateState(currentProjectIdRef.current, b => { b.permissionRequest = null })
   }, [updateState])
 
+  // 回复 AskUserQuestion
+  const respondAskQuestion = useCallback(async (requestId: string, answers: Record<string, string>) => {
+    try {
+      await fetch('/api/chat/ask-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, answers }),
+      })
+    } catch (err) {
+      console.error('Failed to respond ask question:', err)
+    }
+    updateState(currentProjectIdRef.current, b => { b.askQuestion = null })
+  }, [updateState])
+
   // 清空对话
   const clearChat = useCallback(async () => {
     try {
@@ -605,12 +638,14 @@ export function useChat(projectId: string) {
     sessionId,
     lastStats,
     permissionRequest,
+    askQuestion,
     statusText,
     sendMessage,
     abortChat,
     clearChat,
     loadHistory,
     respondPermission,
+    respondAskQuestion,
     updateMessage,
   }
 }

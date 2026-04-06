@@ -231,6 +231,7 @@ export function ChatLayout() {
             toolSummary={chat.toolSummary}
             sending={chat.sending}
             permissionRequest={chat.permissionRequest}
+            askQuestion={chat.askQuestion}
             statusText={chat.statusText}
             projectId={project.currentId}
             projectName={currentProject?.name}
@@ -240,6 +241,7 @@ export function ChatLayout() {
             onAbort={chat.abortChat}
             onClearChat={chat.clearChat}
             onRespondPermission={chat.respondPermission}
+            onRespondAskQuestion={chat.respondAskQuestion}
             onUpdateMessage={chat.updateMessage}
             onOpenChannels={() => setModalOpen('channels')}
             onOpenSkills={() => setModalOpen('skills')}

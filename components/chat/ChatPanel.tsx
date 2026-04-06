@@ -10,7 +10,7 @@ import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
 // BranchSwitcher 已隐藏
-import type { ChatMessage, ToolSummary, PermissionRequest } from '@/types/chat'
+import type { ChatMessage, ToolSummary, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
@@ -19,6 +19,7 @@ interface ChatPanelProps {
   toolSummary: ToolSummary | null
   sending: boolean
   permissionRequest: PermissionRequest | null
+  askQuestion: AskUserQuestionRequest | null
   statusText?: string | null
   projectId: string
   onSend: (message: string) => void
@@ -30,6 +31,7 @@ interface ChatPanelProps {
   sidebarHidden?: boolean
   onToggleSidebar?: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
+  onRespondAskQuestion: (requestId: string, answers: Record<string, string>) => void
   onUpdateMessage?: (message: ChatMessage) => void
   projectName?: string
 }
@@ -148,7 +150,7 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, statusText, projectId, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onRespondPermission, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
@@ -335,7 +337,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
             {/* 工具调用摘要 */}
             {toolSummary && (toolSummary.pendingTools.length > 0 || toolSummary.completedTools.length > 0) && (
               <div className="px-4 py-2">
-                <ToolCallSummary summary={toolSummary} />
+                <ToolCallSummary summary={toolSummary} askQuestion={askQuestion} onRespondAskQuestion={onRespondAskQuestion} />
               </div>
             )}
 

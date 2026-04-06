@@ -10,13 +10,23 @@ import { getSettings, updateProjectSettings } from '@/lib/store/settings'
 import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
-import type { SSEEvent, PermissionRequest } from '@/types/chat'
+import type { SSEEvent, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
-// 模块级状态：per-project AbortController，支持多项目并发执行
-const projectAbortControllers = new Map<string, AbortController>()
+// 全局单例状态：挂载到 globalThis 防止 Next.js HMR / 模块实例隔离导致 Map 丢失
+// 参考 gclaw-events.ts 同一模式
+const g = globalThis as Record<string, unknown>
 
-// 权限等待机制：requestId -> resolve 函数
-const pendingPermissions = new Map<string, (decision: 'allow' | 'deny') => void>()
+const projectAbortControllers =
+  (g.__gclaw_abort_controllers__ as Map<string, AbortController>) ??
+  ((g.__gclaw_abort_controllers__ = new Map<string, AbortController>()) as Map<string, AbortController>)
+
+const pendingPermissions =
+  (g.__gclaw_pending_permissions__ as Map<string, (decision: 'allow' | 'deny') => void>) ??
+  ((g.__gclaw_pending_permissions__ = new Map<string, (decision: 'allow' | 'deny') => void>()) as Map<string, (decision: 'allow' | 'deny') => void>)
+
+const pendingAskQuestions =
+  (g.__gclaw_pending_ask_questions__ as Map<string, (answers: Record<string, string>) => void>) ??
+  ((g.__gclaw_pending_ask_questions__ = new Map<string, (answers: Record<string, string>) => void>()) as Map<string, (answers: Record<string, string>) => void>)
 
 /**
  * 外部调用此函数回传用户的权限决策
@@ -26,6 +36,18 @@ export function resolvePermission(requestId: string, decision: 'allow' | 'deny')
   if (resolve) {
     resolve(decision)
     pendingPermissions.delete(requestId)
+  }
+}
+
+/**
+ * 外部调用此函数回传用户对 AskUserQuestion 的回答
+ */
+export function resolveAskQuestion(requestId: string, answers: Record<string, string>) {
+  const resolve = pendingAskQuestions.get(requestId)
+  console.log(`[GClaw] resolveAskQuestion | requestId=${requestId} | found=${!!resolve} | mapKeys=[${Array.from(pendingAskQuestions.keys()).join(',')}]`)
+  if (resolve) {
+    resolve(answers)
+    pendingAskQuestions.delete(requestId)
   }
 }
 
@@ -52,6 +74,7 @@ export interface ExecuteOptions {
   sessionId?: string
   cwd?: string
   dangerouslySkipPermissions?: boolean
+  onAskUserQuestion?: (req: AskUserQuestionRequest) => void
 }
 
 /**
@@ -62,6 +85,8 @@ export async function* executeChat(
   options: ExecuteOptions = {},
   onPermissionRequest?: (req: PermissionRequest) => void
 ): AsyncGenerator<SSEEvent> {
+  const onAskUserQuestion = options.onAskUserQuestion
+
   // 终止同一项目的已有查询（不影响其他项目）
   const projectId = options.projectId || ''
   const existingController = projectAbortControllers.get(projectId)
@@ -349,6 +374,54 @@ export async function* executeChat(
     stderr: (data: string) => {
       stderrBuffer += sanitizeForLog(data)
     },
+    // AskUserQuestion 处理：SDK 原生回调，在 canUseTool 中拦截
+    // 参考：https://platform.claude.com/docs/en/agent-sdk/user-input
+    canUseTool: async (toolName: string, input: Record<string, unknown>): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }> => {
+      if (toolName === 'AskUserQuestion') {
+        const questions = Array.isArray(input.questions) ? input.questions : []
+        const reqId = randomUUID()
+        console.log(`[GClaw] canUseTool: AskUserQuestion | reqId=${reqId} | questions=${questions.length}`)
+
+        // 通知前端展示问题对话框
+        if (onAskUserQuestion) {
+          onAskUserQuestion({ requestId: reqId, questions: questions as AskUserQuestionRequest['questions'] })
+        }
+
+        // 等待用户回答（5 分钟超时）
+        const answers = await new Promise<Record<string, string>>((resolve) => {
+          pendingAskQuestions.set(reqId, resolve)
+          setTimeout(() => {
+            if (pendingAskQuestions.has(reqId)) {
+              // 超时：默认选第一个选项
+              const defaultAnswers: Record<string, string> = {}
+              for (const q of questions as Array<{ question: string; options: Array<{ label: string }> }>) {
+                defaultAnswers[q.question] = q.options[0]?.label || ''
+              }
+              resolve(defaultAnswers)
+              pendingAskQuestions.delete(reqId)
+              console.log(`[GClaw] AskUserQuestion timeout, auto-responded: ${reqId}`)
+            }
+          }, 300000)
+        })
+
+        console.log(`[GClaw] AskUserQuestion answered | reqId=${reqId}`)
+
+        // SDK 要求：返回 allow + updatedInput（带 questions 和 answers）
+        return {
+          behavior: 'allow' as const,
+          updatedInput: {
+            questions,
+            answers,
+          },
+        }
+      }
+
+      // 其他工具放行（权限控制由 hooks.PreToolUse 处理）
+      return {
+        behavior: 'allow' as const,
+        updatedInput: input,
+      }
+    },
   })
 
   // 启动 SDK 查询，支持 sessionId 失效时自动重试
@@ -356,9 +429,11 @@ export async function* executeChat(
 
   async function* runQuery(resumeId?: string): AsyncGenerator<SSEEvent> {
     const qi = sdkQuery({ prompt: message, options: buildSdkOptions(resumeId) })
+    let msgIdx = 0
 
     for await (const msg of qi) {
       if (abortController.signal.aborted) break
+      msgIdx++
 
       const events = convertSDKMessage(msg, ctx)
       for (const parsed of events) {

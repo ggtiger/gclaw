@@ -5,6 +5,20 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 import hljs from 'highlight.js'
+
+// hljs 不支持的语言标记映射到相近语言
+const LANG_ALIASES: Record<string, string> = {
+  vue: 'html',
+  svelte: 'html',
+  jsx: 'javascript',
+  tsx: 'typescript',
+  shell: 'bash',
+  zsh: 'bash',
+  conda: 'yaml',
+  dockerfile: 'dockerfile',
+  make: 'makefile',
+  ml: 'ocaml',
+}
 import { Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 import { MermaidBlock } from './MermaidBlock'
@@ -14,10 +28,17 @@ interface MarkdownRendererProps {
   isStreaming?: boolean
 }
 
+function resolveLanguage(lang: string): string {
+  const lower = lang.toLowerCase()
+  if (hljs.getLanguage(lower)) return lower
+  return LANG_ALIASES[lower] || lower
+}
+
 function HighlightedCodeBlock({ className, children, isStreaming }: { className?: string; children: string; isStreaming?: boolean }) {
   const [copied, setCopied] = useState(false)
   const codeRef = useRef<HTMLElement>(null)
   const language = className?.replace('language-', '') || ''
+  const resolvedLang = resolveLanguage(language)
   const codeText = children
   const highlightedRef = useRef(false)
 
@@ -34,15 +55,16 @@ function HighlightedCodeBlock({ className, children, isStreaming }: { className?
       return
     }
     if (highlightedRef.current) return
-    if (codeRef.current && language) {
+    if (codeRef.current && resolvedLang && hljs.getLanguage(resolvedLang)) {
       highlightedRef.current = true
       try {
-        hljs.highlightElement(codeRef.current)
+        const result = hljs.highlight(codeText, { language: resolvedLang })
+        codeRef.current.innerHTML = result.value
       } catch {
         // highlight.js 可能不支持某些语言，忽略
       }
     }
-  }, [isStreaming, language, codeText])
+  }, [isStreaming, resolvedLang, codeText])
 
   return (
     <div className="relative group">
@@ -60,7 +82,7 @@ function HighlightedCodeBlock({ className, children, isStreaming }: { className?
         </div>
       )}
       <pre className={language ? '!rounded-t-none !mt-0' : ''}>
-        <code ref={codeRef} className={className}>{codeText}</code>
+        <code ref={codeRef} className={resolvedLang ? `language-${resolvedLang} hljs` : className}>{codeText}</code>
       </pre>
       {!language && (
         <button
@@ -83,12 +105,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
         rehypePlugins={[rehypeSanitize]}
         components={{
           code({ className, children, ...props }) {
-            const isInline = !className
+            const codeText = String(children).replace(/\n$/, '')
+            // 没有语言标记 + 单行内容 → 行内 code；其余都是代码块
+            const isInline = !className && !codeText.includes('\n')
             if (isInline) {
               return <code className={className} {...props}>{children}</code>
             }
             const lang = className?.replace('language-', '') || ''
-            const codeText = String(children).replace(/\n$/, '')
             if (lang === 'mermaid') {
               return <MermaidBlock chart={codeText} />
             }
