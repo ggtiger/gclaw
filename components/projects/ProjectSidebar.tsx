@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { FolderOpen, Plus, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Loader2, Bot, Monitor, FileText, Settings } from 'lucide-react'
 import type { ProjectInfo, ProjectType } from '@/types/skills'
+import { TrafficLight } from '@/components/ui/TrafficLight'
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[]
@@ -100,6 +101,8 @@ export function ProjectSidebar({
         className="pt-3 pl-[16px] pr-3 pb-2 select-none"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
+        {/* Windows 红绿灯按钮 */}
+        <TrafficLight />
         {/* GClaw 图标 + 名称 + 版本 */}
         <div className="flex items-center gap-2" >
           <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">

@@ -590,6 +590,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
+            // Windows: 移除原生标题栏，使用前端模拟红绿灯按钮
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                }
+            }
+
             if let Some(ref url) = remote_url {
                 // ---- 远程模式 ----
                 println!("[GClaw] Remote mode — connecting to {}", url);
