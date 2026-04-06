@@ -65,6 +65,18 @@ jobs:
       - name: Generate icons from source
         run: npx tauri icon src-tauri/icons/icon-source.png
 
+      - name: Debug certificate
+        if: matrix.platform == 'macos-arm64'
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "CERT length: ${#CERT}"
+          echo "PASS length: ${#PASS}"
+          echo "$CERT" | base64 --decode > /tmp/debug.p12
+          echo "Decoded size: $(wc -c < /tmp/debug.p12)"
+          openssl pkcs12 -in /tmp/debug.p12 -passin pass:"$PASS" -nokeys 2>&1 | head -5 || echo "openssl verify failed"
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
