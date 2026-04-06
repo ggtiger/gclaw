@@ -65,26 +65,36 @@ jobs:
       - name: Generate icons from source
         run: npx tauri icon src-tauri/icons/icon-source.png
 
-      - name: Import Apple certificate (        if: matrix.platform == 'macos-arm64' || matrix.platform == 'macos-x64'
+      - name: Import Apple certificate
+        if: matrix.platform == 'macos-arm64' || matrix.platform == 'macos-x64'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           CERT_PATH=$RUNNER_TEMP/signing_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain
-          KEYCHAIN_PASSWORD=actions.default password for keychain
-          security unlock-keychain -p "$KEYCHAIN_PATH" -p "$KEYCHAIN_PASSWORD"
-          security set-keychain-settings -t "$KEYCHAIN_PATH" -default
-          security import-certificates -k "$CERT_PATH" -k "$KEYCHAIN_PATH" -P12_PASSWORD
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=default
+
+          # Decode certificate
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PATH" "$KEYCHAIN_PASSWORD"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_PATH"
+          security list-keychains -d "$KEYCHAIN_PATH"
+
+          # Import certificate
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /dev/null
+
           # Find signing identity
-          APPLE_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" -p "$CERT_PATH" |max 1 | grep "Developer ID" | head -1)
+          APPLE_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID" | head -1 | awk -F'"' '{print $1}' | cut -d'"' -f2-)
           if [ -z "$APPLE_IDENTITY" ]; then
             echo "No identity found"
             exit 1
-          else
-            export APPLE_SIGNING_IDENTITY="$APPLE_IDENTITY"
-            echo "APPLE_SIGNING_IDENTITY=$APPLE_IDENTITY"
           fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_IDENTITY"
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
