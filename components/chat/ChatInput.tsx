@@ -27,6 +27,7 @@ interface ChatInputProps {
 export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isComposingRef = useRef(false)
 
   // 自动调整 textarea 高度
   const adjustHeight = useCallback(() => {
@@ -59,13 +60,25 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
         e.preventDefault()
         handleSubmit()
       }
     },
     [handleSubmit]
   )
+
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true
+  }, [])
+
+  const handleCompositionEnd = useCallback(() => {
+    // 延迟重置：compositionend 在 keydown 之前触发，
+    // 需要等一帧才能让 keydown 正确检测到 composing 状态
+    requestAnimationFrame(() => {
+      isComposingRef.current = false
+    })
+  }, [])
 
   return (
     <div className="px-4 py-3">
@@ -81,6 +94,8 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
           rows={1}
           disabled={disabled}
