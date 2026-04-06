@@ -27,6 +27,7 @@ jobs:
           - platform: linux-x64
             runner: ubuntu-22.04
             target: ''
+            bundles: deb,rpm
 
     runs-on: ${{ matrix.runner }}
     steps:
@@ -74,7 +75,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           tauriScript: npx tauri
-          args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
+          args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }} ${{ matrix.bundles != '' && format('--bundles {0}', matrix.bundles) || '' }}
 
   release:
     needs: build
