@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Eye, EyeOff, Loader, LogIn } from 'lucide-react'
 
 interface LoginFormProps {
-  onSuccess: () => void
+  onSuccess: (data?: { token?: string; maxAge?: number }) => void
   onSwitchToRegister: () => void
 }
 
@@ -43,7 +43,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         return
       }
 
-      onSuccess()
+      onSuccess({ token: data.token, maxAge: data.maxAge })
     } catch {
       setError('网络错误，请重试')
     } finally {

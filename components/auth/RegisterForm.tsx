@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Eye, EyeOff, Loader, UserPlus } from 'lucide-react'
 
 interface RegisterFormProps {
-  onSuccess: () => void
+  onSuccess: (data?: { token?: string; maxAge?: number }) => void
   onSwitchToLogin: () => void
 }
 
@@ -67,7 +67,8 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
       })
 
       if (loginRes.ok) {
-        onSuccess()
+        const loginData = await loginRes.json()
+        onSuccess({ token: loginData.token, maxAge: loginData.maxAge })
       } else {
         // 注册成功但登录失败，跳转到登录页
         onSwitchToLogin()

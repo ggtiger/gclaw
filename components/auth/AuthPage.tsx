@@ -1,28 +1,36 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { LoginForm } from './LoginForm'
 import { RegisterForm } from './RegisterForm'
 
 export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'register' }) {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
   const [checking, setChecking] = useState(true)
-  const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
     // 检查是否已登录，已登录则跳转主页
     fetch('/api/auth/me')
-      .then(res => {
+      .then(async res => {
         if (res.ok) {
           const redirect = searchParams.get('redirect') || '/'
-          router.replace(redirect)
+          if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+            try {
+              const { invoke } = await import('@tauri-apps/api/core')
+              await invoke('navigate_to', { path: redirect })
+            } catch {
+              window.location.href = redirect
+            }
+          } else {
+            window.location.href = redirect
+          }
         }
       })
       .catch(() => {})
       .finally(() => setChecking(false))
-  }, [router, searchParams])
+  }, [searchParams])
 
   if (checking) {
     return (
@@ -32,9 +40,27 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
     )
   }
 
-  const handleSuccess = () => {
+  const handleSuccess = async (data?: { token?: string; maxAge?: number }) => {
     const redirect = searchParams.get('redirect') || '/'
-    router.push(redirect)
+
+    // 写入 cookie（确保客户端立即可用）
+    if (data?.token) {
+      const maxAge = data.maxAge || 7 * 24 * 60 * 60
+      document.cookie = `gclaw_token=${data.token}; path=/; max-age=${maxAge}; SameSite=Lax`
+    }
+
+    // Tauri 桌面端：通过 Rust 端导航
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('navigate_to', { path: redirect })
+        return
+      } catch {
+        // fallthrough to window.location
+      }
+    }
+
+    window.location.href = redirect
   }
 
   return (

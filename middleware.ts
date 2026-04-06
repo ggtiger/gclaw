@@ -34,7 +34,6 @@ export async function middleware(request: NextRequest) {
   // 内部 API Key 认证（用于技能环境）
   const internalApiKey = request.headers.get('x-internal-api-key')
   if (internalApiKey === INTERNAL_API_KEY) {
-    // 验证通过，允许访问，但标记为内部调用
     const requestHeaders = new Headers(request.headers)
     requestHeaders.set('x-internal-call', 'true')
     return NextResponse.next({
@@ -46,14 +45,20 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value
 
   if (!token) {
-    return handleUnauthorized(request, pathname)
+    // API 路由返回 401，页面路由放行（由客户端处理认证跳转）
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: '未登录' }, { status: 401 })
+    }
+    return NextResponse.next()
   }
 
   const payload = await verifyToken(token)
 
   if (!payload) {
     // token 无效，清除 cookie
-    const response = handleUnauthorized(request, pathname)
+    const response = pathname.startsWith('/api/')
+      ? NextResponse.json({ error: '未登录' }, { status: 401 })
+      : NextResponse.next()
     response.cookies.set(TOKEN_COOKIE_NAME, '', { maxAge: 0, path: '/' })
     return response
   }
@@ -69,25 +74,8 @@ export async function middleware(request: NextRequest) {
   })
 }
 
-function handleUnauthorized(request: NextRequest, pathname: string) {
-  // API 路由返回 401
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: '未登录' }, { status: 401 })
-  }
-
-  // 页面路由重定向到登录页
-  const loginUrl = new URL('/login', request.url)
-  loginUrl.searchParams.set('redirect', pathname)
-  return NextResponse.redirect(loginUrl)
-}
-
 export const config = {
   matcher: [
-    /*
-     * 匹配所有路径，除了：
-     * - _next/static (静态文件)
-     * - _next/image (图片优化)
-     */
     '/((?!_next/static|_next/image).*)',
   ],
 }

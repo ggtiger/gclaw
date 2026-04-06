@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser } from '@/lib/store/users'
 import { generateToken, getTokenMaxAge, TOKEN_COOKIE_NAME } from '@/lib/auth/jwt'
 import { addAuditLog } from '@/lib/store/audit-log'
@@ -35,12 +35,15 @@ export async function POST(request: NextRequest) {
   addAuditLog('user:login', user.username, { userId: user.id })
 
   const { passwordHash: _, ...safe } = user
+  const maxAge = getTokenMaxAge(rememberMe)
 
-  return new Response(JSON.stringify({ user: safe }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Set-Cookie': `${TOKEN_COOKIE_NAME}=${token}; HttpOnly; Path=/; Max-Age=${getTokenMaxAge(rememberMe)}; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
-    },
+  // 使用 NextResponse + cookies.set 确保在 standalone 模式下可靠设置 Cookie
+  const response = NextResponse.json({ user: safe, token, maxAge })
+  response.cookies.set(TOKEN_COOKIE_NAME, token, {
+    httpOnly: true,
+    path: '/',
+    maxAge,
+    sameSite: 'lax',
   })
+  return response
 }

@@ -43,16 +43,70 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         .expect("Failed to get app data dir");
     std::fs::create_dir_all(&data_dir).ok();
 
-    // 查找系统 node 二进制路径
-    let node_bin = which_node().unwrap_or_else(|| "node".into());
+    // 查找 Node：优先内嵌，fallback 系统
+    let node_bin = find_bundled_node(&resource_dir)
+        .or_else(|| which_node())
+        .unwrap_or_else(|| "node".into());
+
+    let node_dir = std::path::Path::new(&node_bin)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let current_path = std::env::var("PATH").unwrap_or_default();
+
+    // 构建 PATH：内嵌 Node/Python 优先，系统备选
+    let mut path_parts = vec![];
+
+    // 1. Node.js 目录（内嵌或系统）
+    if !node_dir.is_empty() && !current_path.contains(&node_dir) {
+        path_parts.push(node_dir.clone());
+    }
+
+    // 2. 内嵌 Python（优先使用）
+    if let Some(bundled_python) = find_bundled_python(&resource_dir) {
+        if let Some(py_dir) = std::path::Path::new(&bundled_python).parent() {
+            let py_dir_str = py_dir.to_string_lossy().to_string();
+            if !current_path.contains(&py_dir_str) && !path_parts.contains(&py_dir_str) {
+                path_parts.push(py_dir_str);
+            }
+        }
+    }
+
+    // 3. 系统 Python（内嵌不存在时的备选）
+    if find_bundled_python(&resource_dir).is_none() {
+        if let Some(sys_python) = which_python3() {
+            if let Some(py_dir) = std::path::Path::new(&sys_python).parent() {
+                let py_dir_str = py_dir.to_string_lossy().to_string();
+                if !current_path.contains(&py_dir_str) && py_dir_str != node_dir {
+                    path_parts.push(py_dir_str);
+                }
+            }
+        }
+    }
+
+    let enhanced_path = if path_parts.is_empty() {
+        current_path.clone()
+    } else {
+        format!("{}:{}", path_parts.join(":"), current_path)
+    };
 
     println!("[GClaw] Starting server: node {} (port={})", server_js.display(), port);
 
-    let child = Command::new(node_bin)
-        .arg(&server_js)
+    let mut cmd = Command::new(&node_bin);
+    cmd.arg(&server_js)
         .env("PORT", port.to_string())
         .env("HOSTNAME", "127.0.0.1")
         .env("GCLAW_DATA_DIR", data_dir.to_string_lossy().as_ref())
+        .env("PATH", &enhanced_path);
+
+    // 使用内嵌 Python 时设置 PYTHONHOME
+    if find_bundled_python(&resource_dir).is_some() {
+        let python_home = resource_dir.join("python");
+        cmd.env("PYTHONHOME", python_home.to_string_lossy().as_ref());
+        println!("[GClaw] Using bundled Python, PYTHONHOME={}", python_home.display());
+    }
+
+    let child = cmd
         .current_dir(resource_dir.join("server"))
         .spawn()
         .expect("Failed to start Next.js server");
@@ -84,10 +138,70 @@ fn which_node() -> Option<String> {
     None
 }
 
+/// 查找内嵌的 Node.js 路径（resource_dir/node/bin/node）
+fn find_bundled_node(resource_dir: &std::path::Path) -> Option<String> {
+    let node_bin = resource_dir.join("node").join("bin").join("node");
+    if node_bin.exists() {
+        println!("[GClaw] Found bundled Node: {}", node_bin.display());
+        Some(node_bin.to_string_lossy().to_string())
+    } else {
+        None
+    }
+}
+
+/// 查找系统中的 python3 可执行文件路径
+fn which_python3() -> Option<String> {
+    // 尝试通过 which 查找
+    if let Ok(output) = Command::new("which").arg("python3").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(path);
+            }
+        }
+    }
+    // 常见路径 fallback
+    for path in &[
+        "/usr/local/bin/python3",
+        "/opt/homebrew/bin/python3",
+        "/opt/homebrew/bin/python3.12",
+        "/usr/bin/python3",
+    ] {
+        if std::path::Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+    None
+}
+
+/// 查找内嵌的 Python 路径（resource_dir/python/bin/python3）
+fn find_bundled_python(resource_dir: &std::path::Path) -> Option<String> {
+    let python_bin = resource_dir.join("python").join("bin").join("python3");
+    if python_bin.exists() {
+        println!("[GClaw] Found bundled Python: {}", python_bin.display());
+        Some(python_bin.to_string_lossy().to_string())
+    } else {
+        None
+    }
+}
+
 /// Tauri command: 获取服务器 URL
 #[tauri::command]
 fn get_server_url(state: tauri::State<ServerState>) -> String {
     format!("http://127.0.0.1:{}", state.port)
+}
+
+/// Tauri command: 通过 Rust 端导航（绕过 WebView 导航限制）
+#[tauri::command]
+fn navigate_to(path: String, state: tauri::State<ServerState>, app: tauri::AppHandle) -> Result<(), String> {
+    let url = format!("http://127.0.0.1:{}{}", state.port, path);
+    println!("[GClaw] Navigating to: {}", url);
+    if let Some(window) = app.get_webview_window("main") {
+        window.navigate(url.parse().map_err(|e| format!("Invalid URL: {}", e))?);
+        Ok(())
+    } else {
+        Err("Window not found".into())
+    }
 }
 
 pub fn run() {
@@ -113,6 +227,8 @@ pub fn run() {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                     if let Some(window) = handle.get_webview_window("main") {
                         let _ = window.navigate(remote.parse().unwrap());
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
                 });
             } else if is_dev {
@@ -124,7 +240,11 @@ pub fn run() {
                     port: 3100,
                 });
 
-                // 开发模式: Cmd+Shift+I 可手动打开 DevTools
+                // 开发模式：直接显示窗口（devUrl 自动加载）
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             } else {
                 // 生产模式：启动 Node.js sidecar
                 let (child, port) = start_server(app.handle());
@@ -133,13 +253,16 @@ pub fn run() {
                     port,
                 });
 
-                // 等待服务器就绪后导航 WebView
+                // 等待服务器就绪后导航 WebView 并显示窗口
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     wait_for_server(port);
                     if let Some(window) = handle.get_webview_window("main") {
                         let url = format!("http://127.0.0.1:{}", port);
                         let _ = window.navigate(url.parse().unwrap());
+                        // 导航成功后显示窗口（避免闪屏和 404）
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
                 });
             }
@@ -149,7 +272,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_url])
+        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

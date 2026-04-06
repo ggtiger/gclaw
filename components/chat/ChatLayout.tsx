@@ -25,7 +25,7 @@ export function ChatLayout() {
   const chat = useChat(project.currentId)
   const activeProjectIds = useActiveProjects()
   const { theme, setTheme, backgroundImage, setBackgroundImage } = useTheme()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
   const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
@@ -103,6 +103,32 @@ export function ChatLayout() {
     setTheme(next)
   }
 
+  // Tauri 窗口拖拽：每次 mousedown 检查 __TAURI_INTERNALS__，兼容打包后注入时机
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (e: MouseEvent) => {
+      // 每次检查，因为打包后 __TAURI_INTERNALS__ 可能在页面加载后才注入
+      const ti = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ as { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } | undefined
+      if (!ti?.invoke) return
+      const target = e.target as HTMLElement
+      // 交互元素不拖动
+      if (target.closest('button, a, input, textarea, select, [role="button"]')) return
+      // 向上查找 drag region
+      let el: HTMLElement | null = target
+      let foundDrag = false
+      while (el) {
+        if (el.hasAttribute('data-tauri-no-drag')) return
+        if (el.hasAttribute('data-tauri-drag-region')) { foundDrag = true; break }
+        el = el.parentElement
+      }
+      if (!foundDrag) return
+      e.preventDefault()
+      ti.invoke('plugin:window|start_dragging', { label: 'main' }).catch(() => {})
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   // 键盘快捷键
   useKeyboardShortcuts({
     onEscape: () => {
@@ -118,6 +144,18 @@ export function ChatLayout() {
       input?.focus()
     },
   })
+
+  // 客户端认证检查：未登录则跳转到登录页
+  if (!authLoading && !user) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
+    return (
+      <div className="h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg)' }}>
+        <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
+      </div>
+    )
+  }
 
   // 等待项目加载
   if (project.loading) {
@@ -149,7 +187,7 @@ export function ChatLayout() {
       >
         {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥960px) */}
         {!projectSidebarHidden && !filesFullscreen && (
-        <div className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div data-tauri-no-drag className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <ProjectSidebar
             projects={project.projects}
             currentId={project.currentId}
@@ -175,6 +213,7 @@ export function ChatLayout() {
         {/* Chat area - 圆角毛玻璃卡片 */}
         {!filesFullscreen && (
         <main
+          data-tauri-no-drag
           className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
@@ -213,6 +252,7 @@ export function ChatLayout() {
         <aside
           className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[320px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
           style={{ WebkitAppRegion: 'no-drag', width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
+                    data-tauri-no-drag
         >
           {/* 拖拽手柄 - 仅 FilesPanel 且非全屏时显示 */}
           {!isSecretary && !filesFullscreen && (
