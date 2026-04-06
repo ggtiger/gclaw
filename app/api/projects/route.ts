@@ -18,10 +18,17 @@ export async function GET(request: NextRequest) {
   const user = getAuthUser(request)
 
   // admin 可看到所有项目；普通用户只看自己的和参与的
-  // 仅普通用户在无项目时自动创建默认项目
+  // 任何用户无项目时自动创建默认秘书项目
   let projects = user
     ? (user.role === 'admin'
-        ? getProjects()
+        ? (() => {
+            const list = getProjects()
+            if (list.length === 0) {
+              ensureDefaultProject(user.userId)
+              return getProjects()
+            }
+            return list
+          })()
         : (() => {
             const list = getProjectsForUser(user.userId)
             if (list.length === 0) {
