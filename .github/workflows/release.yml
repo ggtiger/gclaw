@@ -30,6 +30,7 @@ jobs:
             bundles: deb,rpm
 
     runs-on: ${{ matrix.runner }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,10 +65,38 @@ jobs:
       - name: Generate icons from source
         run: npx tauri icon src-tauri/icons/icon-source.png
 
+      - name: Import Apple certificate (        if: matrix.platform == 'macos-arm64' || matrix.platform == 'macos-x64'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/signing_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain
+          KEYCHAIN_PASSWORD=actions.default password for keychain
+          security unlock-keychain -p "$KEYCHAIN_PATH" -p "$KEYCHAIN_PASSWORD"
+          security set-keychain-settings -t "$KEYCHAIN_PATH" -default
+          security import-certificates -k "$CERT_PATH" -k "$KEYCHAIN_PATH" -P12_PASSWORD
+          # Find signing identity
+          APPLE_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" -p "$CERT_PATH" |max 1 | grep "Developer ID" | head -1)
+          if [ -z "$APPLE_IDENTITY" ]; then
+            echo "No identity found"
+            exit 1
+          else
+            export APPLE_SIGNING_IDENTITY="$APPLE_IDENTITY"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_IDENTITY"
+          fi
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: matrix.platform == 'macos-arm64' || matrix.platform == 'macos-x64'
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'GClaw ${{ github.ref_name }}'
@@ -90,5 +119,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # Find the draft release for this tag and publish it
           gh release edit "$TAG" --draft=false
