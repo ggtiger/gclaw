@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "tauri:dev": "tauri dev",
-    "tauri:build": "node scripts/bundle-sidecar.js && tauri build",
+    "tauri:build": "tauri build",
     "tauri:bundle": "node scripts/bundle-sidecar.js",
     "deploy:build": "node scripts/deploy-build.js",
     "start:prod": "HOSTNAME=${HOSTNAME:-0.0.0.0} node .next/standalone/$(find .next/standalone -maxdepth 10 -name server.js -not -path '*/node_modules/*' -type f | head -1 | xargs dirname)/server.js"
