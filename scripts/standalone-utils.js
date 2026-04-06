@@ -16,7 +16,7 @@ const STATIC_SRC = path.join(ROOT, '.next', 'static')
 const PUBLIC_SRC = path.join(ROOT, 'public')
 
 // 不需要复制到产物的目录
-const SKIP_DIRS = new Set(['data', '.claude', 'node_modules/.cache'])
+const SKIP_DIRS = new Set(['data', '.claude', 'node_modules/.cache', '@img'])
 
 /**
  * 递归复制目录，处理 symlink 和特殊文件
@@ -139,6 +139,9 @@ function assembleServerBundle(standaloneRoot, destDir) {
 
   // 补充 Claude Agent SDK 遗漏的文件
   patchSdkFiles(destDir)
+
+  // 移除不需要的原生二进制（macOS 公证要求所有二进制签名，排除可避免问题）
+  removeNativeBinaries(destDir)
 }
 
 /**
@@ -163,6 +166,24 @@ function printBundleSize(dir) {
   const size = execSync(`du -sh "${dir}" 2>/dev/null || echo "unknown"`)
     .toString().trim()
   console.log(`[standalone] Bundle size: ${size}`)
+}
+
+/**
+ * 移除不需要的原生二进制文件（macOS 公证要求所有二进制都签名，排除可避免问题）
+ */
+function removeNativeBinaries(dir) {
+  const patterns = [
+    // sharp 的原生库（桌面端不需要服务端图片处理）
+    path.join(dir, 'node_modules', '@img'),
+    // 其他平台的原生模块
+    path.join(dir, 'node_modules', 'sharp-*'),
+  ]
+  for (const pattern of patterns) {
+    if (fs.existsSync(pattern)) {
+      console.log('[standalone] Removing native binary:', pattern)
+      rmSync(pattern)
+    }
+  }
 }
 
 module.exports = {
