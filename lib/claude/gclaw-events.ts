@@ -11,6 +11,8 @@ export type GClawEventType =
   | 'session:end'         // SessionEnd — 会话结束
   | 'skill:notify'        // 技能自定义通知
   | 'hook:error'          // Hook 执行异常（内部诊断）
+  | 'memory:write'        // 记忆写入
+  | 'memory:consolidate'  // 巩固完成
 
 export interface GClawEvent {
   type: GClawEventType

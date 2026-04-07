@@ -21,11 +21,15 @@ const SKILLS_DIR = path.join(process.cwd(), 'skills')
  * @param projectCwd SDK 工作目录（项目数据目录或用户自定义 cwd）
  * @param systemPrompt 用户配置的系统提示词
  * @param enabledSkills 启用的技能名称列表
+ * @param userId 用户 ID（可选，用于注入记忆总纲）
+ * @param projectId 项目 ID（可选，用于项目级记忆）
  */
 export function syncProjectClaudeMd(
   projectCwd: string,
   systemPrompt: string,
-  enabledSkills: string[]
+  enabledSkills: string[],
+  userId?: string,
+  _projectId?: string
 ): void {
   // ── 初始化项目的 .learnings/ 目录（从技能模板复制）──
   initProjectLearnings(projectCwd, enabledSkills)
@@ -37,6 +41,19 @@ export function syncProjectClaudeMd(
   // ── 系统提示词（Soul）──
   if (systemPrompt.trim()) {
     sections.push(systemPrompt.trim())
+  }
+
+  // ── 用户记忆总纲（注入活跃的语义/程序记忆摘要）──
+  if (userId) {
+    try {
+      const { getOverviewForInjection } = require('@/lib/memory/injection')
+      const overview = getOverviewForInjection(userId)
+      if (overview) {
+        sections.push(overview)
+      }
+    } catch {
+      // 记忆模块不可用时跳过
+    }
   }
 
   // ── 技能经验摘要（从项目 cwd/.learnings/ 扫描）──

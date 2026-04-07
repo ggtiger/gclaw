@@ -10,6 +10,7 @@ import { getSettings, updateProjectSettings } from '@/lib/store/settings'
 import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
+import { getProjectById } from '@/lib/store/projects'
 import type { SSEEvent, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 // 全局单例状态：挂载到 globalThis 防止 Next.js HMR / 模块实例隔离导致 Map 丢失
@@ -143,8 +144,10 @@ export async function* executeChat(
     }
   }
 
-  // 同步项目 CLAUDE.md（系统提示词 + .learnings 摘要）和初始化 .learnings/ 模板
-  syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills)
+  // 同步项目 CLAUDE.md（系统提示词 + 用户记忆总纲 + .learnings 摘要）和初始化 .learnings/ 模板
+  const projectInfo = getProjectById(projectId)
+  const userId = projectInfo?.ownerId
+  syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills, userId, projectId)
 
   // 加载技能 .env 环境变量，注入 SDK env
   const skillEnv = loadSkillEnvVars(enabledSkills)
