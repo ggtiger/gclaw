@@ -64,7 +64,7 @@ export function ProjectSidebar({
   if (collapsed) {
     return (
       <div
-        className="w-10 h-full flex flex-col items-center py-2 flex-shrink-0 rounded-2xl glass border border-white/40 dark:border-white/[0.06] shadow-sm"
+        className="w-10 h-full flex flex-col items-center py-2 flex-shrink-0 rounded-2xl glass border border-white/40 dark:border-white/[0.06] shadow-sm bg-white dark:bg-transparent "
       >
         <button
           onClick={onToggleCollapse}
@@ -93,7 +93,7 @@ export function ProjectSidebar({
 
   return (
     <div
-      className="w-56 h-full flex flex-col flex-shrink-0 rounded-2xl glass border border-white/40 dark:border-white/[0.06] shadow-sm"
+      className="  w-56 h-full flex flex-col flex-shrink-0 rounded-2xl glass border border-white/40 dark:border-white/[0.06] shadow-sm bg-white dark:bg-transparent"
     >
       {/* macOS 红绿灯空间 + GClaw 品牌区域 */}
       <div

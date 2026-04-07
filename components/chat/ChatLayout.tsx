@@ -182,7 +182,7 @@ export function ChatLayout() {
       {/* Main Area - flex row */}
       <div
         data-tauri-drag-region
-        className="flex-1 flex gap-2 px-2 pb-2 pt-2 min-h-0 min-w-0 overflow-hidden relative z-10"
+        className="flex-1 flex gap-2 px-2 pb-2 pt-2 min-h-0 min-w-0 overflow-hidden relative z-10 "
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥960px) */}
@@ -252,7 +252,7 @@ export function ChatLayout() {
 
         {/* Right side panel */}
         <aside
-          className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[320px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
+          className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[280px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
           style={{ WebkitAppRegion: 'no-drag', width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
                     data-tauri-no-drag
         >
@@ -266,7 +266,7 @@ export function ChatLayout() {
           )}
           {/* 面板内容 */}
           <div className={`w-full h-full overflow-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
-            {isSecretary ? <FocusPanel /> : <FilesPanel
+            {isSecretary ? <FocusPanel projectId={project.currentId} /> : <FilesPanel
               projectId={project.currentId}
               isFullscreen={filesFullscreen}
               onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)}

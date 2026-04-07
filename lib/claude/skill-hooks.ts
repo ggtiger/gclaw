@@ -33,8 +33,8 @@ export interface SkillHookEntry {
   logFile?: string            // log 时的文件相对路径（相对技能目录）
 }
 
-/** 内部表示：已解析的 Hook 配置，附带技能元信息 */
-interface ResolvedHookEntry extends SkillHookEntry {
+/** 已解析的 Hook 配置，附带技能元信息 */
+export interface ResolvedHookEntry extends SkillHookEntry {
   skillName: string
   skillDir: string
 }
@@ -356,5 +356,61 @@ function handleLog(
     fs.appendFileSync(logFile, logEntry, 'utf-8')
   } catch (err) {
     console.error(`[SkillHooks] Failed to write log:`, err)
+  }
+}
+
+// ── 单技能 Hooks 读取（供 Focus Skill Provider 等外部模块使用）─────────
+
+/**
+ * 读取指定技能的 gclaw-hooks.json，返回按事件分组的 Hook 配置
+ * 与 loadSkillHooks 不同，此函数只读取单个技能，用于 Focus 等按需加载场景
+ */
+export function loadSingleSkillHooks(skillName: string): Map<string, ResolvedHookEntry[]> {
+  const grouped = new Map<string, ResolvedHookEntry[]>()
+  const skillDir = path.join(SKILLS_DIR, skillName)
+  const hooksFile = path.join(skillDir, 'gclaw-hooks.json')
+
+  if (!fs.existsSync(hooksFile)) return grouped
+
+  try {
+    const raw = fs.readFileSync(hooksFile, 'utf-8')
+    const config: SkillHooksConfig = JSON.parse(raw)
+
+    if (!config.hooks || typeof config.hooks !== 'object') return grouped
+
+    for (const [eventName, entries] of Object.entries(config.hooks)) {
+      if (!Array.isArray(entries)) continue
+
+      const resolved: ResolvedHookEntry[] = entries
+        .filter(entry => VALID_ACTIONS.has(entry.action))
+        .map(entry => ({ ...entry, skillName, skillDir }))
+
+      if (resolved.length > 0) {
+        grouped.set(eventName, resolved)
+      }
+    }
+  } catch (err) {
+    console.error(`[SkillHooks] Failed to load gclaw-hooks.json for skill "${skillName}":`, err)
+  }
+
+  return grouped
+}
+
+/**
+ * 获取指定技能的 gclaw-hooks.json 原始配置（不转化为 ResolvedHookEntry）
+ * 用于前端展示 Skill 的 Hook 声明信息
+ */
+export function readSkillHooksConfig(skillName: string): SkillHooksConfig | null {
+  const skillDir = path.join(SKILLS_DIR, skillName)
+  const hooksFile = path.join(skillDir, 'gclaw-hooks.json')
+
+  if (!fs.existsSync(hooksFile)) return null
+
+  try {
+    const raw = fs.readFileSync(hooksFile, 'utf-8')
+    return JSON.parse(raw) as SkillHooksConfig
+  } catch (err) {
+    console.error(`[SkillHooks] Failed to read gclaw-hooks.json for skill "${skillName}":`, err)
+    return null
   }
 }
