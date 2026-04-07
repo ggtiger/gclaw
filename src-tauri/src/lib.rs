@@ -770,14 +770,16 @@ pub fn run() {
                         }
                     }
                 }
-                // macOS: 点击 Dock 图标时重新显示主窗口
-                tauri::RunEvent::Reopen { .. } => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                _ => {
+                    // macOS: 点击 Dock 图标时重新昺示主窗口
+                    #[cfg(target_os = "macos")]
+                    if let tauri::RunEvent::Reopen { .. } = event {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                 }
-                _ => {}
             }
         });
 }
