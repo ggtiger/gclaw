@@ -180,7 +180,15 @@ export default function NoteList({ notes, loading, onAdd, onSave, onRemove }: Pr
       <div className="flex-1 overflow-y-auto thin-scrollbar min-h-0">
         <div className="flex flex-col gap-2">
           {loading ? (
-            <div className="text-xs text-gray-400 text-center py-4">加载中...</div>
+            <div className="flex flex-col gap-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="bg-gray-100 dark:bg-white/5 rounded-lg p-3 animate-pulse">
+                  <div className="h-3.5 w-2/3 rounded bg-gray-200 dark:bg-white/10 mb-2" />
+                  <div className="h-3 w-full rounded bg-gray-200 dark:bg-white/10 mb-1" />
+                  <div className="h-3 w-4/5 rounded bg-gray-200 dark:bg-white/10" />
+                </div>
+              ))}
+            </div>
           ) : notes.length === 0 ? (
             <div className="bg-gray-100 dark:bg-white/5 rounded-lg p-3 text-xs text-gray-400 text-center">
               暂无笔记

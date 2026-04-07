@@ -226,6 +226,9 @@ export function ChatLayout() {
           </button>
           <ChatPanel
             messages={chat.messages}
+            initialLoading={chat.initialLoading}
+            hasMore={chat.hasMore}
+            onLoadMore={chat.loadMoreMessages}
             streamingContent={chat.streamingContent}
             thinkingContent={chat.thinkingContent}
             toolSummary={chat.toolSummary}

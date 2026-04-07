@@ -1,7 +1,7 @@
 // components/panels/FocusPanel.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Settings } from 'lucide-react'
 import { useFocusData } from '@/hooks/useFocusData'
 import TodoList from './focus/TodoList'
@@ -23,6 +23,17 @@ export default function FocusPanel({ projectId }: Props) {
   } = useFocusData(projectId)
 
   const [showSettings, setShowSettings] = useState(false)
+
+  // 延迟显示骨架屏：加载快于 200ms 时跳过骨架屏，避免闪烁
+  const [showSkeleton, setShowSkeleton] = useState(false)
+  useEffect(() => {
+    if (!loading) {
+      setShowSkeleton(false)
+      return
+    }
+    const timer = setTimeout(() => setShowSkeleton(true), 200)
+    return () => clearTimeout(timer)
+  }, [loading])
 
   return (
     <div className="flex flex-col overflow-hidden h-full bg-white dark:bg-transparent">
@@ -47,12 +58,12 @@ export default function FocusPanel({ projectId }: Props) {
 
       {/* Todos */}
       <div className="px-3 py-3 pt-0 pb-3 shrink-0">
-        <TodoList todos={todos} loading={loading} onToggle={toggleTodo} onAdd={addTodo} onRemove={removeTodo} />
+        <TodoList todos={todos} loading={showSkeleton} onToggle={toggleTodo} onAdd={addTodo} onRemove={removeTodo} />
       </div>
 
       {/* Notes */}
       <div className="px-3 py-3 pt-0 pb-0 flex-1 min-h-0 overflow-hidden flex flex-col">
-        <NoteList notes={notes} loading={loading} onAdd={addNote} onSave={saveNote} onRemove={removeNote} />
+        <NoteList notes={notes} loading={showSkeleton} onAdd={addNote} onSave={saveNote} onRemove={removeNote} />
       </div>
 
       {/* Calendar */}

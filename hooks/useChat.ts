@@ -87,6 +87,9 @@ export function useChat(projectId: string) {
   const [askQuestion, setAskQuestion] = useState<AskUserQuestionRequest | null>(null)
   const [statusText, setStatusText] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
 
   // 当前 projectId 的 ref，供闭包内判断
   const currentProjectIdRef = useRef(projectId)
@@ -95,14 +98,42 @@ export function useChat(projectId: string) {
   // 加载历史消息
   const loadHistory = useCallback(async () => {
     if (!projectId) return
+    setInitialLoading(true)
     try {
-      const res = await fetch(`/api/chat/messages?limit=100&projectId=${encodeURIComponent(projectId)}`)
+      const res = await fetch(`/api/chat/messages?limit=20&projectId=${encodeURIComponent(projectId)}`)
       const data = await res.json()
+      // 防止切换后旧请求覆盖
+      if (currentProjectIdRef.current !== projectId) return
       setMessages(data.messages || [])
+      setHasMore(!!data.hasMore)
     } catch (err) {
       console.error('Failed to load messages:', err)
+    } finally {
+      if (currentProjectIdRef.current === projectId) {
+        setInitialLoading(false)
+      }
     }
   }, [projectId])
+
+  // 加载更多历史消息（向上翻页）
+  const loadMoreMessages = useCallback(async () => {
+    if (!projectId || loadingMore || !hasMore || messages.length === 0) return
+    setLoadingMore(true)
+    try {
+      const before = messages[0].id
+      const res = await fetch(`/api/chat/messages?limit=20&before=${before}&projectId=${encodeURIComponent(projectId)}`)
+      const data = await res.json()
+      const older = data.messages || []
+      if (older.length > 0) {
+        setMessages(prev => [...older, ...prev])
+      }
+      setHasMore(!!data.hasMore)
+    } catch (err) {
+      console.error('Failed to load more messages:', err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [projectId, loadingMore, hasMore, messages])
 
   useEffect(() => {
     if (!initialized && projectId) {
@@ -117,6 +148,10 @@ export function useChat(projectId: string) {
     if (prevProjectIdRef.current !== projectId && projectId) {
       prevProjectIdRef.current = projectId
 
+      // 立即清空消息并标记加载中，避免显示旧项目的消息导致抖动
+      setMessages([])
+      setInitialLoading(true)
+
       // 从 buffer 恢复新项目的流状态
       const buf = getBuffer(projectId)
       setStreamingContent(buf.content)
@@ -129,14 +164,16 @@ export function useChat(projectId: string) {
       setAskQuestion(buf.askQuestion)
       setStatusText(buf.statusText)
 
-      // 如果 buffer 中有待合并的消息
-      if (buf.pendingMessages.length > 0) {
-        setMessages(prev => [...prev, ...buf.pendingMessages])
-        buf.pendingMessages = []
-      }
+      // 捕获 pendingMessages（流结束但用户不在该项目时产生的消息）
+      const pendingMsgs = buf.pendingMessages
+      buf.pendingMessages = []
 
-      // 重新加载历史
-      loadHistory()
+      // 重新加载历史，加载完成后合并 pendingMessages
+      loadHistory().then(() => {
+        if (pendingMsgs.length > 0) {
+          setMessages(prev => [...prev, ...pendingMsgs])
+        }
+      })
     }
   }, [projectId, loadHistory])
 
@@ -636,6 +673,7 @@ export function useChat(projectId: string) {
 
   return {
     messages,
+    initialLoading,
     streamingContent,
     thinkingContent,
     toolSummary,
@@ -649,6 +687,8 @@ export function useChat(projectId: string) {
     abortChat,
     clearChat,
     loadHistory,
+    hasMore,
+    loadMoreMessages,
     respondPermission,
     respondAskQuestion,
     updateMessage,

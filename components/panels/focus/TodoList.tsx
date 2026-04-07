@@ -53,13 +53,13 @@ export default function TodoList({ todos, loading, onToggle, onAdd, onRemove }: 
       </div>
 
       {/* 内联添加 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         <input
           value={newTitle}
           onChange={e => setNewTitle(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="添加新待办..."
-          className="flex-1 text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-purple-400 placeholder:text-gray-400"
+          className="flex-1 min-w-0 text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-purple-400 placeholder:text-gray-400"
         />
         <button
           onClick={handleAdd}
@@ -72,7 +72,14 @@ export default function TodoList({ todos, loading, onToggle, onAdd, onRemove }: 
 
       {/* 列表 */}
       {loading ? (
-        <div className="text-xs text-gray-400 text-center py-4">加载中...</div>
+        <div className="flex flex-col gap-2.5">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-gray-200 dark:bg-white/10 animate-pulse shrink-0" />
+              <div className="flex-1 h-4 rounded bg-gray-200 dark:bg-white/10 animate-pulse" style={{ width: `${60 + i * 10}%` }} />
+            </div>
+          ))}
+        </div>
       ) : todos.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-2">暂无待办，添加一个吧</p>
       ) : (

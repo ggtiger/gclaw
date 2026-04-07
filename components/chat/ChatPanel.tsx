@@ -14,6 +14,7 @@ import type { ChatMessage, ChatAttachment, ToolSummary, PermissionRequest, AskUs
 
 interface ChatPanelProps {
   messages: ChatMessage[]
+  initialLoading?: boolean
   streamingContent: string
   thinkingContent?: string
   toolSummary: ToolSummary | null
@@ -22,6 +23,8 @@ interface ChatPanelProps {
   askQuestion: AskUserQuestionRequest | null
   statusText?: string | null
   projectId: string
+  hasMore?: boolean
+  onLoadMore?: () => void
   onSend: (message: string, attachments?: ChatAttachment[]) => void
   onAbort: () => void
   onClearChat?: () => void
@@ -150,10 +153,49 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  // 切换项目时重置自动滚动
+  useEffect(() => {
+    shouldAutoScroll.current = true
+  }, [projectId])
+
+  // 延迟显示骨架屏：加载快于 200ms 时跳过骨架屏，避免闪烁
+  const [showSkeleton, setShowSkeleton] = useState(false)
+  useEffect(() => {
+    if (!initialLoading) {
+      setShowSkeleton(false)
+      return
+    }
+    const timer = setTimeout(() => setShowSkeleton(true), 200)
+    return () => clearTimeout(timer)
+  }, [initialLoading])
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
+
+  // 加载更多历史消息
+  const handleLoadMore = useCallback(async () => {
+    if (!onLoadMore || loadingMore) return
+    const container = scrollContainerRef.current
+    const prevHeight = container?.scrollHeight ?? 0
+    setLoadingMore(true)
+    await onLoadMore()
+    // 加载后恢复滚动位置（不跳到顶部）
+    requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTop = container.scrollHeight - prevHeight
+      }
+      setLoadingMore(false)
+    })
+  }, [onLoadMore, loadingMore])
+
+  // 发送消息时强制自动滚动到底部
+  const handleSend = useCallback((message: string, attachments?: ChatAttachment[]) => {
+    shouldAutoScroll.current = true
+    onSend(message, attachments)
+  }, [onSend])
 
   // 筛选状态
   const [filterTag, setFilterTag] = useState<string | null>(null)
@@ -229,7 +271,7 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
   return (
     <div className="relative flex flex-col h-full bg-white dark:bg-transparent">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
-      {!isEmpty && (
+      {!isEmpty && !initialLoading && (
         <div
           data-tauri-drag-region
           className="flex items-center pt-1 pb-1 gap-2 px-3 lg:px-4 py-2 border-white/10 dark:border-white/[0.06] flex-shrink-0"
@@ -272,9 +314,28 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
         </div>
       )}
 
-      {isEmpty ? (
+      {initialLoading && showSkeleton ? (
+        <div className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6">
+          <div className="w-full mx-auto flex flex-col gap-4">
+            {[0, 1, 2].map(i => (
+              <div key={i} className={`flex gap-3 ${i % 2 === 0 ? '' : 'flex-row-reverse'}`}>
+                <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-white/10 animate-pulse shrink-0" />
+                <div className={`max-w-[70%] flex flex-col gap-2 ${i % 2 === 0 ? '' : 'items-end'}`}>
+                  <div className="h-3 w-16 rounded bg-gray-200 dark:bg-white/10 animate-pulse" />
+                  <div className="rounded-2xl px-4 py-3 bg-gray-200/80 dark:bg-white/[0.06] animate-pulse">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${60 + Math.random() * 40}%` }} />
+                      <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${40 + Math.random() * 30}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : isEmpty ? (
         <div className="flex-1 flex flex-col pb-48">
-          <EmptyState onSend={onSend} />
+          <EmptyState onSend={handleSend} />
         </div>
       ) : (
         <div
@@ -292,6 +353,19 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
               onStarredChange={setFilterStarred}
               onClear={() => { setFilterTag(null); setFilterStarred(false) }}
             />
+
+            {/* 加载更多历史消息 */}
+            {hasMore && (
+              <div className="flex justify-center py-1">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium px-4 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors disabled:opacity-50"
+                >
+                  {loadingMore ? '加载中...' : '加载更早的消息'}
+                </button>
+              </div>
+            )}
 
             {filteredMessages.map(msg => (
               <div key={msg.id} id={`msg-${msg.id}`} className="transition-all duration-300 rounded-lg">
@@ -402,13 +476,13 @@ export function ChatPanel({ messages, streamingContent, thinkingContent, toolSum
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white/70 via-white/40 to-transparent dark:from-[#1a1a2e]/90 dark:via-[#1a1a2e]/60 dark:to-transparent pt-6 pb-4 px-3 lg:px-4 flex justify-center z-20">
         <div className="w-full">
           <ChatInput
-            onSend={onSend}
+            onSend={handleSend}
             onAbort={onAbort}
             sending={sending}
             projectId={projectId}
             onTemplateSelect={(template) => {
               if (template.firstMessage) {
-                onSend(template.firstMessage)
+                handleSend(template.firstMessage)
               }
             }}
             onOpenSkills={onOpenSkills}
