@@ -11,6 +11,7 @@ import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
 import { getProjectById } from '@/lib/store/projects'
+import { runConsolidation } from '@/lib/memory/consolidation'
 import type { SSEEvent, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 // 全局单例状态：挂载到 globalThis 防止 Next.js HMR / 模块实例隔离导致 Map 丢失
@@ -637,11 +638,9 @@ export async function* executeChat(
 
   yield { event: 'end', data: {} }
 
-  // 对话结束后异步触发记忆巩固（不阻塞响应）
+  // 对话结束后触发记忆巩固
   if (gotDone && userId) {
-    triggerMemoryConsolidation(userId, projectId).catch(err => {
-      console.warn('[GClaw] Memory consolidation failed:', err)
-    })
+    triggerMemoryConsolidation(userId, projectId)
   }
 
   // 清理
@@ -691,9 +690,8 @@ export function getRunningProjects(): string[] {
  * 对话结束后异步触发记忆巩固
  * 将情节记忆提炼为语义/程序序记忆，仅在有 ownerId 的项目中触发
  */
-async function triggerMemoryConsolidation(userId: string, projectId: string): Promise<void> {
+function triggerMemoryConsolidation(userId: string, projectId: string): void {
   try {
-    const { runConsolidation } = require('@/lib/memory/consolidation')
     const result = runConsolidation(userId, projectId)
     if (result.semanticCreated > 0 || result.proceduralCreated > 0) {
       console.log(`[GClaw] Memory consolidated: ${result.semanticCreated} semantic, ${result.proceduralCreated} procedural, ${result.episodicPromoted} episodic entries`)

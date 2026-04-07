@@ -43,7 +43,7 @@ export function generateOverview(
 
   const lines: string[] = ['## 用户记忆总纲', '']
 
-  // 按类型分组输出语义记忆
+  // 按类型分组输出语义记忆（全局限制条目数）
   const semanticByType = groupBy(activeSemantic, e => e.type)
   const typeLabels: Record<string, string> = {
     user_profile: '用户画像',
@@ -53,11 +53,15 @@ export function generateOverview(
     entity_relation: '实体关系',
   }
 
+  let semanticUsed = 0
   for (const [type, entries] of semanticByType) {
+    if (semanticUsed >= opts.maxSemantic!) break
     const label = typeLabels[type] || type
     lines.push(`### ${label}`)
-    for (const entry of entries.slice(0, opts.maxSemantic)) {
+    for (const entry of entries) {
+      if (semanticUsed >= opts.maxSemantic!) break
       lines.push(`- **${entry.title}**: ${truncate(entry.content, opts.maxContentLen!)}`)
+      semanticUsed++
     }
     lines.push('')
   }
@@ -72,17 +76,16 @@ export function generateOverview(
       best_practice: '最佳实践',
     }
 
+    let proceduralUsed = 0
     for (const [type, entries] of procByType) {
+      if (proceduralUsed >= opts.maxProcedural!) break
       const label = procTypeLabels[type] || type
-      const verified = entries.filter(e => e.verification === 'verified')
-      const unverified = entries.filter(e => e.verification !== 'verified')
-
       lines.push(`### ${label}`)
-      for (const entry of verified.slice(0, Math.ceil(opts.maxProcedural! / 2))) {
-        lines.push(`- **${entry.title}** (已验证): ${truncate(entry.content, opts.maxContentLen!)}`)
-      }
-      for (const entry of unverified.slice(0, Math.ceil(opts.maxProcedural! / 2))) {
-        lines.push(`- **${entry.title}**: ${truncate(entry.content, opts.maxContentLen!)}`)
+      for (const entry of entries) {
+        if (proceduralUsed >= opts.maxProcedural!) break
+        const suffix = entry.verification === 'verified' ? ' (已验证)' : ''
+        lines.push(`- **${entry.title}**${suffix}: ${truncate(entry.content, opts.maxContentLen!)}`)
+        proceduralUsed++
       }
       lines.push('')
     }

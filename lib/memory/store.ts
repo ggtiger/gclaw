@@ -11,15 +11,28 @@ const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
   : path.join(process.cwd(), 'data')
 
+// ── 安全校验 ──
+
+/** 校验 ID 参数（防止路径遍历） */
+function assertSafeId(id: string, label: string): void {
+  if (!id || typeof id !== 'string') throw new Error(`Invalid ${label}`)
+  // 允许字母、数字、下划线、连字符、点号（如 user_xxx-xxx.prjjo3）
+  if (!/^[a-zA-Z0-9_.\-]+$/.test(id)) {
+    throw new Error(`Invalid ${label}: contains unsafe characters`)
+  }
+}
+
 // ── 路径工具 ──
 
 /** 用户级记忆根目录 */
 function userMemoryDir(userId: string): string {
+  assertSafeId(userId, 'userId')
   return path.join(DATA_DIR, 'memory', userId)
 }
 
 /** 项目级记忆根目录 */
 function projectMemoryDir(projectId: string): string {
+  assertSafeId(projectId, 'projectId')
   return path.join(DATA_DIR, 'projects', projectId, '.data', 'memory')
 }
 

@@ -70,6 +70,10 @@ export async function PUT(request: NextRequest) {
     return Response.json({ error: 'userId, id, and level are required' }, { status: 400 })
   }
 
+  if (body.level !== 'semantic' && body.level !== 'procedural') {
+    return Response.json({ error: 'level must be semantic or procedural' }, { status: 400 })
+  }
+
   try {
     let result: SemanticEntry | ProceduralEntry | null = null
 
@@ -101,6 +105,10 @@ export async function DELETE(request: NextRequest) {
 
   if (!userId || !id || !level) {
     return Response.json({ error: 'userId, id, and level are required' }, { status: 400 })
+  }
+
+  if (level !== 'semantic' && level !== 'procedural') {
+    return Response.json({ error: 'level must be semantic or procedural' }, { status: 400 })
   }
 
   try {

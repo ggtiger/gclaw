@@ -11,6 +11,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { getOverviewForInjection } from '@/lib/memory/injection'
 
 const SKILLS_DIR = path.join(process.cwd(), 'skills')
 
@@ -45,14 +46,9 @@ export function syncProjectClaudeMd(
 
   // ── 用户记忆总纲（注入活跃的语义/程序记忆摘要）──
   if (userId) {
-    try {
-      const { getOverviewForInjection } = require('@/lib/memory/injection')
-      const overview = getOverviewForInjection(userId)
-      if (overview) {
-        sections.push(overview)
-      }
-    } catch {
-      // 记忆模块不可用时跳过
+    const overview = getOverviewForInjection(userId)
+    if (overview) {
+      sections.push(overview)
     }
   }
 
