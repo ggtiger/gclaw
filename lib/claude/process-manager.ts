@@ -637,6 +637,13 @@ export async function* executeChat(
 
   yield { event: 'end', data: {} }
 
+  // 对话结束后异步触发记忆巩固（不阻塞响应）
+  if (gotDone && userId) {
+    triggerMemoryConsolidation(userId, projectId).catch(err => {
+      console.warn('[GClaw] Memory consolidation failed:', err)
+    })
+  }
+
   // 清理
   projectAbortControllers.delete(projectId)
 }
@@ -681,8 +688,21 @@ export function getRunningProjects(): string[] {
 }
 
 /**
- * 获取是否有任何查询在运行
+ * 对话结束后异步触发记忆巩固
+ * 将情节记忆提炼为语义/程序序记忆，仅在有 ownerId 的项目中触发
  */
+async function triggerMemoryConsolidation(userId: string, projectId: string): Promise<void> {
+  try {
+    const { runConsolidation } = require('@/lib/memory/consolidation')
+    const result = runConsolidation(userId, projectId)
+    if (result.semanticCreated > 0 || result.proceduralCreated > 0) {
+      console.log(`[GClaw] Memory consolidated: ${result.semanticCreated} semantic, ${result.proceduralCreated} procedural, ${result.episodicPromoted} episodic entries`)
+    }
+  } catch (err) {
+    console.warn('[GClaw] Memory consolidation trigger failed:', err)
+  }
+}
+
 export function isProcessRunning(): boolean {
   return projectAbortControllers.size > 0
 }
