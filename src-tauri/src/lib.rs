@@ -651,7 +651,7 @@ pub fn run() {
                         .title("")
                         .inner_size(480.0, 320.0)
                         .resizable(false)
-                        .decorations(true)
+                        .decorations(false)
                         .always_on_top(true)
                         .center()
                         .build();

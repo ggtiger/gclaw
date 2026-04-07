@@ -55,7 +55,13 @@
   --detail-color: #475569;
 }
 
-html, body {
+html {
+  width: 100%; height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+body {
   width: 100%; height: 100%;
   background: var(--bg-gradient);
   color: var(--text-color);
@@ -63,7 +69,6 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
-  border-radius: 12px;
 }
 
 /* ═══ 星空粒子（仅暗色模式可见） ═══ */
