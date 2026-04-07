@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use std::sync::Mutex;
 use std::process::{Child, Command};
 use std::net::TcpListener;
@@ -19,89 +19,66 @@ const PYTHON_RELEASE_TAG: &str = "20260325";
 const NODE_MIRROR: &str = "https://cdn.npmmirror.com/binaries/node";
 const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone";
 
-// ============ 启动页 HTML ============
+// ============ 启动页（独立 splash 窗口） ============
 
-const SPLASH_HTML: &str = r##"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body {
-  width: 100%; height: 100%;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
+/// 获取 splash.html 的文件 URL
+fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
+    // 生产模式：从 resource_dir 查找
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let splash = resource_dir.join("splash.html");
+        if splash.exists() {
+            return Some(format!("file://{}", splash.display()));
+        }
+    }
+    // 开发模式 fallback：从 Cargo.toml 所在目录（src-tauri/）查找
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let splash = std::path::Path::new(&manifest_dir).join("splash.html");
+        if splash.exists() {
+            return Some(format!("file://{}", splash.display()));
+        }
+    }
+    None
 }
-.splash-card {
-  width: 420px; padding: 48px 40px;
-  background: rgba(30, 41, 59, 0.35);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 20px;
-  backdrop-filter: blur(20px);
-  text-align: center;
+
+/// 读取应用主题设置（从 global.json）
+fn read_app_theme(app: &tauri::AppHandle) -> String {
+    let data_dir = app.path().app_data_dir().ok();
+    let paths: Vec<std::path::PathBuf> = [
+        data_dir.as_ref().map(|d| d.join("data").join("global.json")),
+        // dev fallback
+        Some(std::path::PathBuf::from("data/global.json")),
+    ].into_iter().flatten().collect();
+
+    for p in paths {
+        if p.exists() {
+            if let Ok(content) = std::fs::read_to_string(&p) {
+                // 简单解析 "theme":"xxx"
+                if let Some(pos) = content.find("\"theme\"") {
+                    let rest = &content[pos..];
+                    if let Some(start) = rest.find(':') {
+                        let val = rest[start+1..].trim().trim_start_matches('"');
+                        if let Some(end) = val.find('"') {
+                            return val[..end].to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    "system".to_string()
 }
-.logo { font-size: 36px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
-.logo span { color: #8b5cf6; }
-.subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 36px; }
-.status { font-size: 14px; color: #cbd5e1; margin-bottom: 16px; min-height: 20px; }
-.progress-track {
-  width: 100%; height: 6px;
-  background: rgba(255,255,255,0.08);
-  border-radius: 3px; overflow: hidden; margin-bottom: 12px;
+
+/// 将主题设置应用到 splash 窗口
+fn apply_splash_theme(app: &tauri::AppHandle) {
+    let theme = read_app_theme(app);
+    // "system" 时不设置 data-theme，让 splash 用 prefers-color-scheme
+    if theme == "light" || theme == "dark" {
+        if let Some(w) = app.get_webview_window("splash") {
+            let js = format!("document.documentElement.setAttribute('data-theme','{}')", theme);
+            let _ = w.eval(&js);
+        }
+    }
 }
-.progress-bar {
-  height: 100%; width: 0%;
-  background: linear-gradient(90deg, #8b5cf6, #6366f1);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-.detail { font-size: 12px; color: #64748b; min-height: 16px; }
-.checks { display: flex; gap: 24px; justify-content: center; margin-bottom: 28px; }
-.check-item { font-size: 13px; color: #475569; }
-.check-item.ok { color: #22c55e; }
-.check-item.downloading { color: #8b5cf6; }
-.check-item::before { margin-right: 4px; }
-.check-item.ok::before { content: "✓ "; }
-.check-item.downloading::before { content: "↓ "; }
-.check-item.pending::before { content: "○ "; }
-.retry-btn {
-  display: none; margin-top: 20px; padding: 10px 28px;
-  background: #8b5cf6; color: #fff; border: none; border-radius: 10px;
-  font-size: 14px; cursor: pointer;
-}
-.retry-btn:hover { background: #7c3aed; }
-</style>
-</head>
-<body>
-<div class="splash-card">
-  <div class="logo">G<span>Claw</span></div>
-  <div class="subtitle">AI 对话助手</div>
-  <div class="checks">
-    <span id="check-node" class="check-item pending">Node.js</span>
-    <span id="check-python" class="check-item pending">Python</span>
-  </div>
-  <div id="status" class="status">正在检查运行环境...</div>
-  <div class="progress-track"><div id="bar" class="progress-bar"></div></div>
-  <div id="detail" class="detail"></div>
-  <button id="retry-btn" class="retry-btn" onclick="location.reload()">重试</button>
-</div>
-<script>
-window.__splashUpdate = function(opts) {
-  if (opts.status !== undefined) document.getElementById('status').textContent = opts.status;
-  if (opts.progress !== undefined) document.getElementById('bar').style.width = opts.progress + '%';
-  if (opts.detail !== undefined) document.getElementById('detail').textContent = opts.detail;
-  if (opts.checkNode) document.getElementById('check-node').className = 'check-item ' + opts.checkNode;
-  if (opts.checkPython) document.getElementById('check-python').className = 'check-item ' + opts.checkPython;
-  if (opts.error) {
-    document.getElementById('retry-btn').style.display = 'inline-block';
-  }
-};
-</script>
-</body>
-</html>"##;
 
 // ============ 平台辅助 ============
 
@@ -158,7 +135,7 @@ fn wait_for_server(port: u16) {
 
 /// 更新启动页状态
 fn splash_update(app: &tauri::AppHandle, status: &str, progress: i32, detail: &str) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window("splash") {
         let js = format!(
             "window.__splashUpdate && window.__splashUpdate({{status:'{}',progress:{},detail:'{}'}})",
             status.replace('\'', "\\'"),
@@ -171,7 +148,7 @@ fn splash_update(app: &tauri::AppHandle, status: &str, progress: i32, detail: &s
 
 /// 更新启动页检查项状态
 fn splash_check(app: &tauri::AppHandle, item: &str, state: &str) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window("splash") {
         let js = format!(
             "window.__splashUpdate && window.__splashUpdate({{check{}:'{}'}})",
             item, state // item: "Node"/"Python", state: "ok"/"downloading"/"pending"
@@ -182,7 +159,7 @@ fn splash_check(app: &tauri::AppHandle, item: &str, state: &str) {
 
 /// 显示启动页错误
 fn splash_error(app: &tauri::AppHandle, msg: &str) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window("splash") {
         let js = format!(
             "window.__splashUpdate && window.__splashUpdate({{status:'❌ {}',error:true}})",
             msg.replace('\'', "\\'")
@@ -581,6 +558,40 @@ fn navigate_to(path: String, state: tauri::State<ServerState>, app: tauri::AppHa
     }
 }
 
+/// 前端页面渲染完成后调用，关闭 splash 并显示主窗口
+#[tauri::command]
+fn app_ready(app: tauri::AppHandle) {
+    println!("[GClaw] Frontend signaled ready");
+    if let Some(splash) = app.get_webview_window("splash") {
+        let _ = splash.close();
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+}
+
+/// 等待前端 app_ready 信号或超时后强制切换
+fn finalize_launch(handle: &tauri::AppHandle, timeout_secs: u64) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    while std::time::Instant::now() < deadline {
+        // splash 已被 app_ready 关闭，说明前端已就绪
+        if handle.get_webview_window("splash").is_none() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    // 超时兜底：强制关闭 splash 并显示主窗口
+    println!("[GClaw] finalize_launch timeout, forcing transition");
+    if let Some(splash) = handle.get_webview_window("splash") {
+        let _ = splash.close();
+    }
+    if let Some(main) = handle.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+}
+
 // ============ 主入口 ============
 
 pub fn run() {
@@ -596,6 +607,17 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_decorations(false);
                 }
+            }
+
+            // 主窗口点击关闭时隐藏而非销毁，保证托盘"显示窗口"能正常恢复
+            if let Some(main_window) = app.get_webview_window("main") {
+                let main_window_clone = main_window.clone();
+                main_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = main_window_clone.hide();
+                    }
+                });
             }
 
             if let Some(ref url) = remote_url {
@@ -615,113 +637,147 @@ pub fn run() {
                         let _ = window.set_focus();
                     }
                 });
-            } else if is_dev {
-                // ---- 开发模式 ----
-                println!("[GClaw] Dev mode");
-                app.manage(ServerState {
-                    child: Mutex::new(None),
-                    port: 3100,
-                });
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
             } else {
-                // ---- 生产模式：启动页 → 下载运行时 → 启动服务 ----
+                // ---- 开发模式 / 生产模式：动态创建 splash 窗口 ----
                 let handle = app.handle().clone();
 
-                // 显示启动页
-                if let Some(window) = handle.get_webview_window("main") {
-                    let splash_path = std::env::temp_dir().join("gclaw-splash.html");
-                    std::fs::write(&splash_path, SPLASH_HTML).ok();
-                    let splash_url = format!("file://{}", splash_path.display());
-                    let _ = window.navigate(splash_url.parse().unwrap());
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                if let Some(url) = splash_file_url(&handle) {
+                    if let Ok(splash_url) = url.parse() {
+                        let _ = WebviewWindowBuilder::new(
+                            &handle,
+                            "splash",
+                            WebviewUrl::External(splash_url),
+                        )
+                        .title("GClaw")
+                        .inner_size(480.0, 320.0)
+                        .resizable(false)
+                        .decorations(false)
+                        .always_on_top(true)
+                        .center()
+                        .build();
+                    }
                 }
 
-                // 后台线程：下载 + 启动
-                std::thread::spawn(move || {
-                    // 等待启动页加载
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                // 应用主题到 splash 窗口
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                apply_splash_theme(&handle);
 
-                    // --- Node.js ---
-                    let node_present = find_node(&handle).is_some();
-                    if !node_present {
-                        splash_check(&handle, "node", "downloading");
-                        match download_runtime(&handle, "node", "Node.js", &node_download_url()) {
-                            Ok(_) => { splash_check(&handle, "node", "ok"); }
-                            Err(e) => {
-                                eprintln!("[GClaw] Node.js download failed: {}", e);
-                                splash_error(&handle, &format!("Node.js 下载失败: {}", e));
-                                return;
-                            }
-                        }
-                    } else {
-                        splash_check(&handle, "node", "ok");
-                    }
-
-                    // --- Python ---
-                    let python_present = find_python3(&handle).is_some();
-                    if !python_present {
-                        splash_check(&handle, "python", "downloading");
-                        match download_runtime(&handle, "python", "Python", &python_download_url()) {
-                            Ok(_) => {
-                                // 安装 pip 包
-                                if let Err(e) = install_python_pip(&handle) {
-                                    eprintln!("[GClaw] pip install failed: {}", e);
-                                }
-                                splash_check(&handle, "python", "ok");
-                            }
-                            Err(e) => {
-                                eprintln!("[GClaw] Python download failed: {}", e);
-                                splash_error(&handle, &format!("Python 下载失败: {}", e));
-                                return;
-                            }
-                        }
-                    } else {
-                        splash_check(&handle, "python", "ok");
-                    }
-
-                    // --- 启动服务器 ---
-                    splash_update(&handle, "正在启动应用...", 100, "");
-
-                    let (child, port) = start_server(&handle);
-                    handle.manage(ServerState {
-                        child: Mutex::new(Some(child)),
-                        port,
+                if is_dev {
+                    // ---- 开发模式 ----
+                    println!("[GClaw] Dev mode");
+                    app.manage(ServerState {
+                        child: Mutex::new(None),
+                        port: 3100,
                     });
 
-                    wait_for_server(port);
+                    let h = handle.clone();
+                    std::thread::spawn(move || {
+                        splash_update(&h, "正在连接服务...", 30, "");
 
-                    // 导航到应用
-                    if let Some(window) = handle.get_webview_window("main") {
-                        let url = format!("http://127.0.0.1:{}", port);
-                        let _ = window.navigate(url.parse().unwrap());
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
-                });
+                        wait_for_server(3100);
+
+                        splash_update(&h, "即将就绪...", 100, "");
+                        // 强制导航，防止 devUrl 首次加载失败
+                        if let Some(main) = h.get_webview_window("main") {
+                            let _ = main.navigate("http://localhost:3100".parse().unwrap());
+                        }
+                        // 等待前端 app_ready 或超时
+                        finalize_launch(&h, 15);
+                    });
+                } else {
+                    // ---- 生产模式：下载运行时 → 启动服务 ----
+                    println!("[GClaw] Production mode");
+
+                    std::thread::spawn(move || {
+                        // 等待启动页加载
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+
+                        // --- 检查/下载运行时环境 ---
+                        splash_update(&handle, "正在检查环境...", 20, "");
+
+                        let node_present = find_node(&handle).is_some();
+                        if !node_present {
+                            splash_update(&handle, "正在准备运行环境...", 30, "首次启动需要下载，请稍候");
+                            match download_runtime(&handle, "node", "Node.js", &node_download_url()) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    eprintln!("[GClaw] Node.js download failed: {}", e);
+                                    splash_error(&handle, "环境准备失败，请检查网络后重试");
+                                    return;
+                                }
+                            }
+                        }
+
+                        let python_present = find_python3(&handle).is_some();
+                        if !python_present {
+                            splash_update(&handle, "正在准备运行环境...", 50, "即将完成");
+                            match download_runtime(&handle, "python", "Python", &python_download_url()) {
+                                Ok(_) => {
+                                    if let Err(e) = install_python_pip(&handle) {
+                                        eprintln!("[GClaw] pip install failed: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[GClaw] Python download failed: {}", e);
+                                    splash_error(&handle, "环境准备失败，请检查网络后重试");
+                                    return;
+                                }
+                            }
+                        }
+
+                        splash_update(&handle, "环境就绪", 70, "");
+
+                        // --- 启动服务器 ---
+                        splash_update(&handle, "正在启动服务...", 85, "");
+
+                        let (child, port) = start_server(&handle);
+                        handle.manage(ServerState {
+                            child: Mutex::new(Some(child)),
+                            port,
+                        });
+
+                        wait_for_server(port);
+
+                        // 导航主窗口到服务器 URL
+                        splash_update(&handle, "即将就绪...", 100, "");
+                        if let Some(main) = handle.get_webview_window("main") {
+                            let url = format!("http://127.0.0.1:{}", port);
+                            let _ = main.navigate(url.parse().unwrap());
+                        }
+                        // 等待前端 app_ready 或超时
+                        finalize_launch(&handle, 15);
+                    });
+                }
             }
 
             setup_tray(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to])
+        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                if let Some(state) = app.try_state::<ServerState>() {
-                    if let Ok(mut guard) = state.child.lock() {
-                        if let Some(child) = guard.as_mut() {
-                            println!("[GClaw] Killing server process...");
-                            let _ = child.kill();
-                            let _ = child.wait();
+            match event {
+                tauri::RunEvent::Exit => {
+                    if let Some(state) = app.try_state::<ServerState>() {
+                        if let Ok(mut guard) = state.child.lock() {
+                            if let Some(child) = guard.as_mut() {
+                                println!("[GClaw] Killing server process...");
+                                let _ = child.kill();
+                                let _ = child.wait();
+                            }
+                            *guard = None;
                         }
-                        *guard = None;
                     }
                 }
+                // macOS: 点击 Dock 图标时重新显示主窗口
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
             }
         });
 }
@@ -749,6 +805,14 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 "quit" => { app.exit(0); }
                 _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
         })
         .build(app)?;

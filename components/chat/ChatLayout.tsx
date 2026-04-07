@@ -19,6 +19,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useAuth } from '@/hooks/useAuth'
 import Modal from '@/components/ui/Modal'
+import { WindowControls } from '@/components/ui/WindowControls'
 
 export function ChatLayout() {
   const project = useProject()
@@ -171,6 +172,8 @@ export function ChatLayout() {
 
   return (
     <div className="h-screen flex flex-col relative" style={{ backgroundColor: 'transparent' }}>
+      {/* Windows 窗口控制按钮（右上角） */}
+      <WindowControls />
       {/* 自定义背景图 */}
       {backgroundImage && (
         <div

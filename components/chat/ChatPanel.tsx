@@ -314,25 +314,29 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
         </div>
       )}
 
-      {initialLoading && showSkeleton ? (
-        <div className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6">
-          <div className="w-full mx-auto flex flex-col gap-4">
-            {[0, 1, 2].map(i => (
-              <div key={i} className={`flex gap-3 ${i % 2 === 0 ? '' : 'flex-row-reverse'}`}>
-                <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-white/10 animate-pulse shrink-0" />
-                <div className={`max-w-[70%] flex flex-col gap-2 ${i % 2 === 0 ? '' : 'items-end'}`}>
-                  <div className="h-3 w-16 rounded bg-gray-200 dark:bg-white/10 animate-pulse" />
-                  <div className="rounded-2xl px-4 py-3 bg-gray-200/80 dark:bg-white/[0.06] animate-pulse">
-                    <div className="flex flex-col gap-1.5">
-                      <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${60 + Math.random() * 40}%` }} />
-                      <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${40 + Math.random() * 30}%` }} />
+      {initialLoading ? (
+        showSkeleton ? (
+          <div className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6">
+            <div className="w-full mx-auto flex flex-col gap-4">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`flex gap-3 ${i % 2 === 0 ? '' : 'flex-row-reverse'}`}>
+                  <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-white/10 animate-pulse shrink-0" />
+                  <div className={`max-w-[70%] flex flex-col gap-2 ${i % 2 === 0 ? '' : 'items-end'}`}>
+                    <div className="h-3 w-16 rounded bg-gray-200 dark:bg-white/10 animate-pulse" />
+                    <div className="rounded-2xl px-4 py-3 bg-gray-200/80 dark:bg-white/[0.06] animate-pulse">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${60 + Math.random() * 40}%` }} />
+                        <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${40 + Math.random() * 30}%` }} />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1" />
+        )
       ) : isEmpty ? (
         <div className="flex-1 flex flex-col pb-48">
           <EmptyState onSend={handleSend} />

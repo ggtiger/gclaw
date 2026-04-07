@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ═══ 主题变量 ═══ */
+:root {
+  --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+  --text-color: #1e293b;
+  --text-muted: #64748b;
+  --text-sub: #94a3b8;
+  --primary: #8b5cf6;
+  --primary-light: #a78bfa;
+  --primary-dark: #6366f1;
+  --ring-inner-bg: linear-gradient(135deg, #f0f0f8, #e8e4f0);
+  --progress-bg: rgba(0,0,0,0.04);
+  --glow-opacity: 0.08;
+  --star-opacity: 0;
+  --detail-color: #94a3b8;
+}
+
+/* 暗色主题变量 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    --text-color: #e2e8f0;
+    --text-muted: #64748b;
+    --text-sub: #94a3b8;
+    --primary: #a78bfa;
+    --primary-light: #c4b5fd;
+    --primary-dark: #8b5cf6;
+    --ring-inner-bg: linear-gradient(135deg, #1a1a2e, #16213e);
+    --progress-bg: rgba(255,255,255,0.06);
+    --glow-opacity: 0.15;
+    --star-opacity: 0.8;
+    --detail-color: #475569;
+  }
+}
+
+/* 强制暗色：由 Rust 端通过 data-theme 属性设置 */
+:root[data-theme="dark"] {
+  --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  --text-color: #e2e8f0;
+  --text-muted: #64748b;
+  --text-sub: #94a3b8;
+  --primary: #a78bfa;
+  --primary-light: #c4b5fd;
+  --primary-dark: #8b5cf6;
+  --ring-inner-bg: linear-gradient(135deg, #1a1a2e, #16213e);
+  --progress-bg: rgba(255,255,255,0.06);
+  --glow-opacity: 0.15;
+  --star-opacity: 0.8;
+  --detail-color: #475569;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg-gradient);
+  color: var(--text-color);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══ 星空粒子（仅暗色模式可见） ═══ */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 40px 70px, rgba(255,255,255,0.25), transparent),
+    radial-gradient(1px 1px at 50px 160px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.25), transparent),
+    radial-gradient(1px 1px at 160px 120px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 200px 50px, rgba(167,139,250,0.4), transparent),
+    radial-gradient(1px 1px at 250px 140px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1.5px 1.5px at 300px 90px, rgba(139,92,246,0.3), transparent),
+    radial-gradient(1px 1px at 350px 30px, rgba(255,255,255,0.25), transparent);
+  background-size: 400px 200px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--star-opacity);
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  0% { opacity: calc(var(--star-opacity) * 0.75); }
+  100% { opacity: var(--star-opacity); }
+}
+
+/* ═══ 光晕 ═══ */
+.glow-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: var(--glow-opacity);
+  pointer-events: none;
+  z-index: 0;
+}
+.glow-orb-1 {
+  width: 300px; height: 300px;
+  background: var(--primary-dark);
+  top: -80px; left: -60px;
+  animation: float1 6s ease-in-out infinite alternate;
+}
+.glow-orb-2 {
+  width: 200px; height: 200px;
+  background: var(--primary);
+  bottom: -50px; right: -40px;
+  animation: float2 5s ease-in-out infinite alternate;
+}
+
+@keyframes float1 {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(30px, 20px); }
+}
+@keyframes float2 {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(-20px, -30px); }
+}
+
+/* ═══ 主容器 ═══ */
+.splash-container {
+  position: relative; z-index: 1;
+  text-align: center;
+  animation: fadeInUp 0.8s ease-out;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══ 图标 ═══ */
+.icon-wrap {
+  width: 88px; height: 88px;
+  margin: 0 auto 24px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  padding: 3px;
+  background: conic-gradient(from 0deg, var(--primary-dark), var(--primary), var(--primary-light), var(--primary-dark));
+  animation: spin 3s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.icon-img {
+  width: 64px; height: 64px;
+  border-radius: 16px;
+  position: relative;
+  z-index: 2;
+  display: block;
+}
+
+/* ═══ 文字 ═══ */
+.logo {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, var(--text-color), var(--primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 40px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+/* ═══ 状态 ═══ */
+.status {
+  font-size: 13px;
+  color: var(--text-sub);
+  margin-bottom: 16px;
+  min-height: 20px;
+  transition: opacity 0.3s ease;
+}
+
+/* ═══ 进度条 ═══ */
+.progress-track {
+  width: 220px;
+  height: 3px;
+  background: var(--progress-bg);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 0 auto 12px;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--primary-dark), var(--primary), var(--primary-light));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+  position: relative;
+}
+
+/* 脉冲 - 未开始进度时 */
+.progress-track.pulse .progress-bar {
+  width: 30% !important;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: translateX(-100%); }
+  50% { opacity: 1; transform: translateX(250%); }
+}
+
+.detail {
+  font-size: 11px;
+  color: var(--detail-color);
+  min-height: 16px;
+}
+
+/* ═══ 重试 ═══ */
+.retry-btn {
+  display: none;
+  margin-top: 24px;
+  padding: 10px 32px;
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+}
+.retry-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+}
+</style>
+</head>
+<body>
+<div class="glow-orb glow-orb-1"></div>
+<div class="glow-orb glow-orb-2"></div>
+
+<div class="splash-container">
+  <div class="icon-wrap">
+    <div class="icon-ring"></div>
+    <img class="icon-img" id="app-icon" alt="GClaw">
+  </div>
+  <div class="logo">GClaw</div>
+  <div class="subtitle">AI Assistant</div>
+  <div id="status" class="status">正在启动...</div>
+  <div id="progress-track" class="progress-track pulse"><div id="bar" class="progress-bar"></div></div>
+  <div id="detail" class="detail"></div>
+  <button id="retry-btn" class="retry-btn" onclick="location.reload()">重试</button>
+</div>
+
+<script>
+// 动态加载图标：尝试相对路径 → 同目录 icons/ → 内嵌 fallback
+(function() {
+  var img = document.getElementById('app-icon');
+  var paths = ['icons/icon.png', './icons/icon.png', 'icons/128x128.png', './icons/128x128.png', 'icons/64x64.png'];
+  var idx = 0;
+
+  function tryNext() {
+    if (idx < paths.length) {
+      img.src = paths[idx++];
+    } else {
+      // 所有路径失败，用 SVG fallback
+      img.src = 'data:image/svg+xml,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+        '<rect width="64" height="64" rx="14" fill="%238b5cf6"/>' +
+        '<text x="32" y="42" text-anchor="middle" font-family="system-ui" font-size="28" font-weight="700" fill="white">G</text>' +
+        '</svg>'
+      );
+    }
+  }
+
+  img.onerror = tryNext;
+  tryNext();
+})();
+
+window.__splashUpdate = function(opts) {
+  if (opts.status !== undefined) document.getElementById('status').textContent = opts.status;
+  if (opts.progress !== undefined) {
+    var track = document.getElementById('progress-track');
+    var bar = document.getElementById('bar');
+    track.classList.remove('pulse');
+    bar.style.width = opts.progress + '%';
+  }
+  if (opts.detail !== undefined) document.getElementById('detail').textContent = opts.detail;
+  if (opts.error) {
+    document.getElementById('retry-btn').style.display = 'inline-block';
+  }
+};
+</script>
+</body>
+</html>

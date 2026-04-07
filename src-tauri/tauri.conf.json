@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "",
         "width": 1200,
         "height": 800,
@@ -29,6 +30,8 @@
     "active": true,
     "targets": "all",
     "resources": [
+      "splash.html",
+      "icons/icon.png",
       "server/server.js",
       "server/package.json",
       "server/.next/**/*",
