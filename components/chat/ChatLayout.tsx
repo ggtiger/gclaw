@@ -104,6 +104,15 @@ export function ChatLayout() {
     setTheme(next)
   }
 
+  // 禁用右键菜单（Tauri WebView 的 reload、autofill 等）
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+    }
+    document.addEventListener('contextmenu', handleContextMenu)
+    return () => document.removeEventListener('contextmenu', handleContextMenu)
+  }, [])
+
   // Tauri 窗口拖拽：每次 mousedown 检查 __TAURI_INTERNALS__，兼容打包后注入时机
   useEffect(() => {
     if (typeof window === 'undefined') return
