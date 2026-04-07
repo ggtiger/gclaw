@@ -6,7 +6,7 @@
         "description": "会话结束时自动巩固记忆",
         "action": "notify",
         "message": "会话结束，正在巩固记忆...",
-        "agentMessage": "会话即将结束。如果你在本次对话中发现了用户的重要偏好、技术决策、错误解决方案或其他值得记住的信息，请使用记忆 API 记录下来。\n\n写入记忆示例：\ncurl -X POST $GCLAW_API_BASE/api/memory/remember -H 'Content-Type: application/json' -d '{\"level\": \"episodic\", \"userId\": \"从项目ownerId获取\", \"projectId\": \"'$GCLAW_PROJECT_ID'\", \"type\": \"decision\", \"summary\": \"简要描述\", \"tags\": [\"相关标签\"], \"source\": \"agent\"}'"
+        "agentMessage": "会话即将结束。如果你在本次对话中发现了用户的重要偏好、技术决策、错误解决方案或其他值得记住的信息，请使用记忆 API 记录下来。\n\n写入记忆示例：\ncurl -X POST $GCLAW_API_BASE/api/memory/remember -H 'Content-Type: application/json' -d '{\"level\": \"episodic\", \"userId\": \"'$GCLAW_USER_ID'\", \"projectId\": \"'$GCLAW_PROJECT_ID'\", \"type\": \"decision\", \"summary\": \"简要描述\", \"tags\": [\"相关标签\"], \"source\": \"agent\"}'"
       }
     ],
     "Stop": [

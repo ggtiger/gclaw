@@ -157,6 +157,7 @@ export async function* executeChat(
   const gclawEnv = {
     GCLAW_API_BASE: `http://localhost:${port}`,
     GCLAW_PROJECT_ID: projectId,
+    GCLAW_USER_ID: userId || '',
   }
   const sdkEnv: Record<string, string | undefined> = { ...process.env, ...skillEnv, ...gclawEnv }
 

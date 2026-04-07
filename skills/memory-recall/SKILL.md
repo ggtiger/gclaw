@@ -22,6 +22,7 @@ metadata:
 
 - `$GCLAW_API_BASE` — API 基地址（已注入）
 - `$GCLAW_PROJECT_ID` — 当前项目 ID（已注入）
+- `$GCLAW_USER_ID` — 当前用户 ID（已注入）
 
 ### 写入记忆
 
@@ -30,7 +31,7 @@ curl -X POST $GCLAW_API_BASE/api/memory/remember \
   -H 'Content-Type: application/json' \
   -d '{
     "level": "episodic",
-    "userId": "USER_ID",
+    "userId": "'$GCLAW_USER_ID'",
     "projectId": "'$GCLAW_PROJECT_ID'",
     "type": "decision",
     "summary": "用户决定使用 Next.js App Router",
@@ -49,7 +50,7 @@ curl -X POST $GCLAW_API_BASE/api/memory/remember \
   -H 'Content-Type: application/json' \
   -d '{
     "level": "semantic",
-    "userId": "USER_ID",
+    "userId": "'$GCLAW_USER_ID'",
     "projectId": "'$GCLAW_PROJECT_ID'",
     "semanticType": "preference",
     "title": "代码风格偏好",
@@ -69,7 +70,7 @@ curl -X POST $GCLAW_API_BASE/api/memory/remember \
   -H 'Content-Type: application/json' \
   -d '{
     "level": "procedural",
-    "userId": "USER_ID",
+    "userId": "'$GCLAW_USER_ID'",
     "projectId": "'$GCLAW_PROJECT_ID'",
     "proceduralType": "best_practice",
     "title": "WebKit input 最小宽度修复",
@@ -89,7 +90,7 @@ curl -X POST $GCLAW_API_BASE/api/memory/remember \
 curl -X POST $GCLAW_API_BASE/api/memory/recall \
   -H 'Content-Type: application/json' \
   -d '{
-    "userId": "USER_ID",
+    "userId": "'$GCLAW_USER_ID'",
     "projectId": "'$GCLAW_PROJECT_ID'",
     "query": "CSS 布局",
     "level": "all",
@@ -103,7 +104,7 @@ curl -X POST $GCLAW_API_BASE/api/memory/recall \
 curl -X POST $GCLAW_API_BASE/api/memory/consolidate \
   -H 'Content-Type: application/json' \
   -d '{
-    "userId": "USER_ID",
+    "userId": "'$GCLAW_USER_ID'",
     "projectId": "'$GCLAW_PROJECT_ID'"
   }'
 ```
@@ -111,7 +112,7 @@ curl -X POST $GCLAW_API_BASE/api/memory/consolidate \
 ### 列出记忆条目
 
 ```bash
-curl "$GCLAW_API_BASE/api/memory/entries?userId=USER_ID&projectId=$GCLAW_PROJECT_ID&level=all"
+curl "$GCLAW_API_BASE/api/memory/entries?userId=$GCLAW_USER_ID&projectId=$GCLAW_PROJECT_ID&level=all"
 ```
 
 ## 主动记忆原则
@@ -134,7 +135,7 @@ curl "$GCLAW_API_BASE/api/memory/entries?userId=USER_ID&projectId=$GCLAW_PROJECT
 
 ### 注意事项
 
-- `userId` 参数必须从项目信息中获取（`ownerId`）
+- `userId` 使用环境变量 `$GCLAW_USER_ID`（已自动注入）
 - `scope` 为 `user` 时所有项目可见，`project` 时仅当前项目可见
 - 每次写入/检索后不需要用户确认（记忆操作是低风险的）
 - 摘要（summary）控制在 200 字以内，详情（detail）可以更长
