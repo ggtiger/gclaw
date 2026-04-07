@@ -648,36 +648,13 @@ pub fn run() {
                             "splash",
                             WebviewUrl::External(splash_url),
                         )
-                        .title("GClaw")
+                        .title("")
                         .inner_size(480.0, 320.0)
                         .resizable(false)
-                        .decorations(false)
+                        .decorations(true)
                         .always_on_top(true)
                         .center()
-                        .build()
-                        .map(|w| {
-                            // Windows 上设置窗口圆角
-                            #[cfg(target_os = "windows")]
-                            {
-                                use windows::Win32::Foundation::HWND;
-                                use windows::Win32::Graphics::Dwm::{
-                                    DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND
-                                };
-                                if let Ok(hwnd) = w.hwnd() {
-                                    let hwnd = HWND(hwnd.0 as isize);
-                                    let attribute = DWMWCP_ROUND;
-                                    unsafe {
-                                        let _ = DwmSetWindowAttribute(
-                                            hwnd,
-                                            DWMWA_WINDOW_CORNER_PREFERENCE,
-                                            &attribute as *const _ as *const _,
-                                            std::mem::size_of_val(&attribute) as u32,
-                                        );
-                                    }
-                                }
-                            }
-                            w
-                        });
+                        .build();
                     }
                 }
 
