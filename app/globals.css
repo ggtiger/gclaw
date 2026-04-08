@@ -94,6 +94,12 @@
   --header-bg: rgba(30, 41, 59, 0.2);
 }
 
+html, body {
+  overscroll-behavior: none;
+  overflow: hidden;
+  height: 100%;
+}
+
 body {
   color: var(--color-text);
   font-family: 'Inter', "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', system-ui, Arial, sans-serif;
@@ -145,6 +151,12 @@ body {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--glass-border);
+}
+
+/* 亮色模式下侧边栏 glass 需要更高的白色不透明度 */
+:root:not(.dark) .glass {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(139, 92, 246, 0.1);
 }
 
 .glass-card {
