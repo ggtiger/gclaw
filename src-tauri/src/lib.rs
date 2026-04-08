@@ -27,14 +27,17 @@ fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
     if let Ok(resource_dir) = app.path().resource_dir() {
         let splash = resource_dir.join("splash.html");
         if splash.exists() {
-            return Some(format!("file://{}", splash.display()));
+            // Windows 需要 file:///C:/path 格式，macOS/Linux 需要 file:///path 格式
+            let path_str = splash.display().to_string().replace('\\', "/");
+            return Some(format!("file:///{}", path_str));
         }
     }
     // 开发模式 fallback：从 Cargo.toml 所在目录（src-tauri/）查找
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let splash = std::path::Path::new(&manifest_dir).join("splash.html");
         if splash.exists() {
-            return Some(format!("file://{}", splash.display()));
+            let path_str = splash.display().to_string().replace('\\', "/");
+            return Some(format!("file:///{}", path_str));
         }
     }
     None
@@ -385,9 +388,9 @@ fn download_runtime(
             .status()
             .map_err(|e| format!("解压失败: {}", e))?
     } else if url.ends_with(".zip") {
-        // Windows tar.exe 支持 .zip
+        // Windows tar.exe 支持 .zip，需要 --strip-components 去掉顶层目录
         hidden_command("tar")
-            .args(&["-xf", archive.to_str().unwrap_or("")])
+            .args(&["-xf", archive.to_str().unwrap_or(""), "--strip-components=1"])
             .arg("-C").arg(&target_dir)
             .status()
             .map_err(|e| format!("解压失败: {}", e))?

@@ -18,6 +18,7 @@ import { useProject } from '@/hooks/useProject'
 import { useTheme } from '@/hooks/useTheme'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useAuth } from '@/hooks/useAuth'
+import { isTauri } from '@/lib/tauri'
 import Modal from '@/components/ui/Modal'
 import { WindowControls } from '@/components/ui/WindowControls'
 
@@ -155,8 +156,8 @@ export function ChatLayout() {
     },
   })
 
-  // 客户端认证检查：未登录则跳转到登录页
-  if (!authLoading && !user) {
+  // 客户端认证检查：未登录则跳转到登录页（Tauri 桌面端跳过）
+  if (!authLoading && !user && !isTauri()) {
     if (typeof window !== 'undefined') {
       window.location.href = '/login'
     }
