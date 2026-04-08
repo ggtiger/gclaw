@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, RefreshCw, Star, Tag, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -158,6 +158,58 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
+  // ─── 渠道连接状态 ───
+  const [activeChannels, setActiveChannels] = useState<{ type: string; name: string; connected: boolean }[] | null>(null)
+
+  useEffect(() => {
+    if (!projectId) { setActiveChannels([]); return }
+
+    let cancelled = false
+    let firstLoad = true
+    const loadChannels = async () => {
+      try {
+        const res = await fetch(`/api/channels?projectId=${encodeURIComponent(projectId)}`)
+        const data = await res.json()
+        if (!data.success || cancelled) return
+
+        const enabled = (data.channels || []).filter((c: { enabled: boolean }) => c.enabled)
+        if (enabled.length === 0) { setActiveChannels([]); return }
+
+        // 查询微信连接状态
+        const results = await Promise.all(enabled.map(async (ch: { id: string; type: string; name: string; wechat?: { botToken: string } }) => {
+          let connected = false
+          if (ch.type === 'wechat' && ch.wechat?.botToken) {
+            try {
+              const sr = await fetch(`/api/channels/webhook/wechat/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
+              const sd = await sr.json()
+              connected = sd.status === 'connected'
+
+              // 首次加载时，微信未连接则自动连接
+              if (firstLoad && !connected) {
+                fetch('/api/channels/webhook/wechat/connect', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ projectId, channelId: ch.id }),
+                }).catch(() => {})
+              }
+            } catch {}
+          } else if (ch.type === 'dingtalk' || ch.type === 'feishu') {
+            connected = true // webhook 渠道配置即视为已链接
+          }
+          return { type: ch.type, name: ch.name, connected }
+        }))
+
+        if (!cancelled) setActiveChannels(results)
+        firstLoad = false
+      } catch {}
+    }
+
+    loadChannels()
+    // 每 30 秒刷新微信连接状态
+    const interval = setInterval(loadChannels, 30000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [projectId])
+
   // 切换项目时重置自动滚动
   useEffect(() => {
     shouldAutoScroll.current = true
@@ -288,22 +340,47 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               <PanelLeft size={14} />
             </button>
           )}
-          {/* 项目名称 */}
+          {/* 项目名称 + 渠道状态 */}
           <span className="text-sm font-medium truncate max-w-[160px] text-slate-600 dark:text-slate-400">
             {projectName || projectId.slice(0, 8)}
           </span>
+          {activeChannels && activeChannels.length > 0 && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {activeChannels.map(ch => (
+                <button
+                  key={ch.name}
+                  onClick={() => onOpenChannels?.()}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{
+                    backgroundColor: ch.connected
+                      ? 'color-mix(in srgb, #22C55E 12%, transparent)'
+                      : 'color-mix(in srgb, #94A3B8 10%, transparent)',
+                    color: ch.connected ? '#16A34A' : 'var(--color-text-muted)',
+                  }}
+                >
+                  {ch.connected ? <Wifi size={9} /> : <WifiOff size={9} />}
+                  {ch.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeChannels && activeChannels.length === 0 && (
+            <button
+              onClick={() => onOpenChannels?.()}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+              style={{
+                backgroundColor: 'color-mix(in srgb, #F59E0B 15%, transparent)',
+                color: '#B45309',
+              }}
+            >
+              <Link2 size={9} />
+              去绑定微信
+            </button>
+          )}
           <div className="flex-1" />
           <div className="flex items-center gap-2 flex-nowrap flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
             <div className="flex-shrink-0"><ExportButton projectId={projectId} /></div>
-            <button
-              onClick={() => onOpenChannels?.()}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"
-              title="渠道管理"
-            >
-              <Link2 size={14} />
-              <span className="hidden sm:inline whitespace-nowrap">渠道</span>
-            </button>
             <button
               onClick={() => onClearChat?.()}
               className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"

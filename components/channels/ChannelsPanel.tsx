@@ -328,12 +328,12 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleToggle(ch)}
-                      className="relative w-9 h-[18px] rounded-full transition-colors flex-shrink-0 cursor-pointer"
+                      className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0 cursor-pointer"
                       style={{ backgroundColor: ch.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}
                     >
                       <span
-                        className="absolute top-[1px] w-4 h-4 rounded-full bg-white shadow transition-transform"
-                        style={{ transform: ch.enabled ? 'translateX(18px)' : 'translateX(1px)' }}
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ transform: ch.enabled ? 'translateX(2px)' : 'translateX(-18px)' }}
                       />
                     </button>
                     <button
