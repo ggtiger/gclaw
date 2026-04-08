@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square, Paperclip, Zap, Bot, X, Image as ImageIcon, FileText } from 'lucide-react'
+import { Send, Square, Paperclip, Zap, Bot, X, Image as ImageIcon, FileText, Sparkles } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
 import type { ChatAttachment } from '@/types/chat'
 
@@ -29,6 +29,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
@@ -126,6 +127,27 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     })
   }, [])
 
+  // AI 优化提示词
+  const handleOptimize = useCallback(async () => {
+    if (!input.trim() || optimizing) return
+    setOptimizing(true)
+    try {
+      const res = await fetch('/api/chat/optimize-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: input }),
+      })
+      const data = await res.json()
+      if (data.optimized) {
+        setInput(data.optimized)
+      }
+    } catch {
+      // 静默失败，保持原输入
+    } finally {
+      setOptimizing(false)
+    }
+  }, [input, optimizing])
+
   // 粘贴图片
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData.items
@@ -201,16 +223,17 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           disabled={disabled}
           className="w-full resize-none border-none bg-transparent focus:ring-0 focus:outline-none p-3 text-sm text-[var(--color-text)] placeholder-[var(--color-text-secondary)]/70 min-h-[56px] max-h-32"
         />
-        <div className="flex justify-between items-center px-2 pb-1">
+        <div className="flex justify-between items-center px-1 pb-1">
           {/* 左侧功能按钮组 */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 flex-nowrap overflow-x-auto">
             <button
-              className="p-2 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors text-xs"
               title="附加文件"
               type="button"
               onClick={() => fileInputRef.current?.click()}
             >
-              <Paperclip size={18} />
+              <Paperclip size={15} />
+              <span className="hidden sm:inline whitespace-nowrap">附件</span>
             </button>
             <input
               ref={fileInputRef}
@@ -223,24 +246,36 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
               }}
             />
             <button
-              className="p-2 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors text-xs"
               title="技能管理"
               type="button"
               onClick={onOpenSkills}
             >
-              <Zap size={18} />
+              <Zap size={15} />
+              <span className="hidden sm:inline whitespace-nowrap">技能</span>
             </button>
             <button
-              className="p-2 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-[var(--color-text-secondary)] hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-lg transition-colors text-xs"
               title="智能体管理"
               type="button"
               onClick={onOpenAgents}
             >
-              <Bot size={18} />
+              <Bot size={15} />
+              <span className="hidden sm:inline whitespace-nowrap">智能体</span>
             </button>
-            <div className="h-4 w-px bg-[var(--color-border)] mx-1" />
+            <div className="h-4 w-px bg-[var(--color-border)] mx-0.5" />
+            <button
+              className="flex items-center gap-1 px-2 py-1.5 text-[var(--color-text-secondary)] hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg transition-colors text-xs disabled:opacity-50"
+              title="AI 优化提示词"
+              type="button"
+              onClick={handleOptimize}
+              disabled={!input.trim() || optimizing}
+            >
+              <Sparkles size={15} className={optimizing ? 'animate-pulse' : ''} />
+              <span className="hidden sm:inline whitespace-nowrap">{optimizing ? '优化中...' : '优化提示词'}</span>
+            </button>
             {uploading && (
-              <span className="text-xs text-purple-500 animate-pulse">上传中...</span>
+              <span className="text-xs text-purple-500 animate-pulse ml-1">上传中...</span>
             )}
           </div>
 

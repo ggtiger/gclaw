@@ -100,6 +100,21 @@ html, body {
   height: 100%;
 }
 
+/* 文件面板工具栏：容器查询实现响应式 */
+.fp-header {
+  container-type: inline-size;
+  container-name: fp-header;
+}
+/* 默认：宽屏显示所有按钮，隐藏更多下拉 */
+.fp-extra { display: inline-flex; }
+.fp-more  { display: none; }
+
+@container fp-header (max-width: 420px) {
+  /* 窄屏：隐藏扩展按钮，显示更多下拉 */
+  .fp-extra { display: none !important; }
+  .fp-more  { display: block !important; }
+}
+
 body {
   color: var(--color-text);
   font-family: 'Inter', "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', system-ui, Arial, sans-serif;

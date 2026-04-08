@@ -22,6 +22,7 @@ import {
   Scissors,
   ClipboardPaste,
   ExternalLink,
+  MoreHorizontal,
 } from 'lucide-react'
 import type { TreeEntry, FilesPanelProps, MenuItem, ClipboardState } from './files/types'
 import { getFileCategory } from './files/types'
@@ -81,6 +82,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
 
   // 删除确认
   const [pendingDelete, setPendingDelete] = useState<TreeEntry | null>(null)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [treeWidth, setTreeWidth] = useState(180)
   const [isDraggingSplit, setIsDraggingSplit] = useState(false)
   const splitDragRef = useRef(false)
@@ -550,7 +552,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       {/* 工具栏 */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-between px-3 pt-3 pb-2 py-1.5 border-b shrink-0 select-none"
+        className="fp-header flex items-center justify-between px-3 pt-3 pb-2 py-1.5 border-b shrink-0 select-none"
         style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -562,37 +564,84 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
           <Code2 size={16} style={{ color: 'var(--color-primary)' }} />
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>文件</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="fp-toolbar flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* 始终显示的核心按钮 */}
           <button onClick={() => startCreate('file', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件">
             <FilePlus size={15} />
           </button>
-          <button onClick={() => startCreate('folder', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件夹">
-            <FolderPlus size={15} />
-          </button>
-          <button onClick={() => { uploadDirRef.current = ''; fileInputRef.current?.click() }} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="上传" disabled={uploading}>
-            {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-          </button>
           <button onClick={refreshCurrentFile} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title={selectedFile ? '刷新当前文件' : '刷新文件树'}>
             <RefreshCw size={15} />
+          </button>
+
+          {/* 宽屏：直接显示更多按钮 */}
+          <button onClick={() => startCreate('folder', '')} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件夹">
+            <FolderPlus size={15} />
+          </button>
+          <button onClick={() => { uploadDirRef.current = ''; fileInputRef.current?.click() }} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="上传" disabled={uploading}>
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
           </button>
           {selectedFile && (
             <button onClick={() => {
               const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(selectedFile.path)}`
               const a = document.createElement('a'); a.href = url; a.download = selectedFile.name; a.click()
-            }} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="下载当前文件">
+            }} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="下载当前文件">
               <Download size={15} />
             </button>
           )}
           {selectedFile && isTauri() && (
-            <button onClick={() => handleOpenLocal(selectedFile.path)} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="本地打开">
+            <button onClick={() => handleOpenLocal(selectedFile.path)} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="本地打开">
               <ExternalLink size={15} />
             </button>
           )}
           {selectedFile && isTauri() && (
-            <button onClick={() => handleRevealInDir(selectedFile.path)} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="打开所在目录">
+            <button onClick={() => handleRevealInDir(selectedFile.path)} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="打开所在目录">
               <FolderOpen size={15} />
             </button>
           )}
+
+          {/* 窄屏：更多下拉 */}
+          <div className="fp-more relative">
+            <button
+              onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+              className="p-1 rounded cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)' }}
+              title="更多"
+            >
+              <MoreHorizontal size={15} />
+            </button>
+            {moreMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMoreMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[140px]" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                  <button onClick={() => { startCreate('folder', ''); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                    <FolderPlus size={13} /> 新建文件夹
+                  </button>
+                  <button onClick={() => { uploadDirRef.current = ''; fileInputRef.current?.click(); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }} disabled={uploading}>
+                    <Upload size={13} /> {uploading ? '上传中...' : '上传文件'}
+                  </button>
+                  {selectedFile && (
+                    <button onClick={() => {
+                      const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(selectedFile.path)}`
+                      const a = document.createElement('a'); a.href = url; a.download = selectedFile.name; a.click()
+                      setMoreMenuOpen(false)
+                    }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                      <Download size={13} /> 下载文件
+                    </button>
+                  )}
+                  {selectedFile && isTauri() && (
+                    <button onClick={() => { handleOpenLocal(selectedFile.path); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                      <ExternalLink size={13} /> 本地打开
+                    </button>
+                  )}
+                  {selectedFile && isTauri() && (
+                    <button onClick={() => { handleRevealInDir(selectedFile.path); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                      <FolderOpen size={13} /> 打开目录
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

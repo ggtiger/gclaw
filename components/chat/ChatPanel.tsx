@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, PanelLeft, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, RefreshCw, Star, Tag, Trash2, X } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -274,7 +274,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       {!isEmpty && !initialLoading && (
         <div
           data-tauri-drag-region
-          className="flex items-center pt-1 pb-1 gap-2 px-3 lg:px-4 py-2 border-white/10 dark:border-white/[0.06] flex-shrink-0"
+          className="flex items-center flex-nowrap pt-1 pb-1 gap-2 px-3 lg:px-4 py-2 border-white/10 dark:border-white/[0.06] flex-shrink-0 overflow-x-auto"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           {/* 展开侧边栏按钮（项目名左侧） */}
@@ -293,22 +293,24 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
             {projectName || projectId.slice(0, 8)}
           </span>
           <div className="flex-1" />
-          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <div className="flex items-center gap-2 flex-nowrap flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
-            <ExportButton projectId={projectId} />
+            <div className="flex-shrink-0"><ExportButton projectId={projectId} /></div>
             <button
               onClick={() => onOpenChannels?.()}
-              className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"
               title="渠道管理"
             >
-              <Link2 size={16} />
+              <Link2 size={14} />
+              <span className="hidden sm:inline whitespace-nowrap">渠道</span>
             </button>
             <button
               onClick={() => onClearChat?.()}
-              className="p-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"
               title="清空对话"
             >
-              <Trash2 size={16} />
+              <Trash2 size={14} />
+              <span className="hidden sm:inline whitespace-nowrap">清空</span>
             </button>
           </div>
         </div>
