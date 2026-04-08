@@ -4,6 +4,7 @@ export interface SkillInfo {
   description: string
   path: string
   enabled: boolean
+  version?: string
 }
 
 // ── 全局设置（跨项目共享）──

@@ -5,7 +5,7 @@ import type { ProjectInfo, ProjectMember, ProjectRole, ProjectType } from '@/typ
 import { getAllUsers } from './users'
 import { addAuditLog } from './audit-log'
 
-const DATA_DIR = process.env.GCLAW_DATA_DIR
+export const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
   : path.join(process.cwd(), 'data')
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json')

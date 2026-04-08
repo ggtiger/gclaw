@@ -56,7 +56,16 @@ export function scanAvailableSkills(): SkillInfo[] {
           const name = entry.name
           const content = fs.readFileSync(skillMdPath, 'utf-8')
           const { displayName, description } = parseSkillMeta(content, name)
-          results.push({ name, displayName, description, path: path.join(SKILLS_DIR, entry.name), enabled: false })
+          // 读取 _meta.json 的 version
+          let version: string | undefined
+          const metaPath = path.join(SKILLS_DIR, entry.name, '_meta.json')
+          if (fs.existsSync(metaPath)) {
+            try {
+              const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+              if (meta.version) version = String(meta.version)
+            } catch { /* ignore */ }
+          }
+          results.push({ name, displayName, description, path: path.join(SKILLS_DIR, entry.name), enabled: false, version })
         }
       }
     }

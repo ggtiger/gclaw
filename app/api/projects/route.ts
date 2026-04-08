@@ -10,6 +10,7 @@ import {
 } from '@/lib/store/projects'
 import { addAuditLog } from '@/lib/store/audit-log'
 import { getAuthUser } from '@/lib/auth/helpers'
+import { getDefaultSkills, setEnabledSkills } from '@/lib/store/skills'
 import type { ProjectType } from '@/types/skills'
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +63,13 @@ export async function POST(request: NextRequest) {
   const user = getAuthUser(request)
   const project = createProject(name.trim(), user?.userId, projectType)
   addAuditLog('project:create', user?.username || 'system', { projectName: name.trim(), type: projectType }, project.id)
+
+  // 应用默认技能
+  const defaultSkills = getDefaultSkills()
+  if (defaultSkills.length > 0) {
+    setEnabledSkills(project.id, defaultSkills)
+  }
+
   return Response.json({ project })
 }
 

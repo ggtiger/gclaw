@@ -17,6 +17,7 @@ export interface MarketSkill {
   downloads?: number
   category?: string
   installed: boolean
+  installedVersion?: string
 }
 
 export interface MarketSearchResult {
@@ -68,22 +69,27 @@ export async function searchMarketSkills(
       rawSkills = Array.isArray(data) ? data : (data.skills || data.results || data.data || [])
     }
 
-    // 获取已安装的技能名
-    const installed = getInstalledSkillNames()
+    // 获取已安装的技能名和版本
+    const installedInfo = getInstalledSkillInfo()
 
     const skills: MarketSkill[] = rawSkills
       .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-      .map(item => ({
-        name: String(item.slug || item.name || ''),
-        displayName: String(item.displayName || item.display_name || item.name || item.slug || ''),
-        description: String(item.description || item.desc || item.summary || ''),
-        author: item.author ? String(item.author) : undefined,
-        version: item.version ? String(item.version) : undefined,
-        downloads: typeof item.downloads === 'number' ? item.downloads
-          : typeof item.download_count === 'number' ? item.download_count : undefined,
-        category: item.category ? String(item.category) : undefined,
-        installed: installed.has(String(item.slug || item.name || '')),
-      }))
+      .map(item => {
+        const skillName = String(item.slug || item.name || '')
+        const info = installedInfo.get(skillName)
+        return {
+          name: skillName,
+          displayName: String(item.displayName || item.display_name || item.name || item.slug || ''),
+          description: String(item.description || item.desc || item.summary || ''),
+          author: item.author ? String(item.author) : undefined,
+          version: item.version ? String(item.version) : undefined,
+          downloads: typeof item.downloads === 'number' ? item.downloads
+            : typeof item.download_count === 'number' ? item.download_count : undefined,
+          category: item.category ? String(item.category) : undefined,
+          installed: !!info,
+          installedVersion: info?.version,
+        }
+      })
       .filter(s => s.name)
 
     // 更新缓存
@@ -175,6 +181,105 @@ function getInstalledSkillNames(): Set<string> {
     }
   } catch { /* ignore */ }
   return names
+}
+
+/**
+ * 获取已安装技能的名称和版本信息
+ */
+function getInstalledSkillInfo(): Map<string, { version?: string }> {
+  const info = new Map<string, { version?: string }>()
+  try {
+    if (!fs.existsSync(SKILLS_DIR)) return info
+    for (const entry of fs.readdirSync(SKILLS_DIR, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue
+      if (entry.isDirectory()) {
+        let version: string | undefined
+        const metaPath = path.join(SKILLS_DIR, entry.name, '_meta.json')
+        if (fs.existsSync(metaPath)) {
+          try {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+            if (meta.version) version = String(meta.version)
+          } catch { /* ignore */ }
+        }
+        info.set(entry.name, { version })
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        info.set(path.basename(entry.name, '.md'), {})
+      }
+    }
+  } catch { /* ignore */ }
+  return info
+}
+
+/**
+ * 更新已安装技能到市场最新版本（备份 + 替换 + 回滚）
+ */
+export async function updateSkill(skillName: string): Promise<{ success: boolean; error?: string }> {
+  if (!isValidSkillName(skillName)) {
+    return { success: false, error: `无效的技能名称: "${skillName}"` }
+  }
+
+  const targetDir = path.join(SKILLS_DIR, skillName)
+  if (!fs.existsSync(targetDir)) {
+    return { success: false, error: `技能 "${skillName}" 未安装` }
+  }
+
+  // 备份
+  const bakDir = targetDir + '.bak'
+  try {
+    if (fs.existsSync(bakDir)) fs.rmSync(bakDir, { recursive: true, force: true })
+    fs.cpSync(targetDir, bakDir, { recursive: true })
+  } catch (err) {
+    return { success: false, error: `备份失败: ${err instanceof Error ? err.message : err}` }
+  }
+
+  // 删除旧目录
+  try {
+    fs.rmSync(targetDir, { recursive: true, force: true })
+  } catch (err) {
+    return { success: false, error: `删除旧版本失败: ${err instanceof Error ? err.message : err}` }
+  }
+
+  // 下载新版本（复用安装逻辑）
+  const urls = [
+    `https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/skills/${encodeURIComponent(skillName)}.zip`,
+    `https://lightmake.site/api/v1/download?slug=${encodeURIComponent(skillName)}`,
+  ]
+
+  for (const url of urls) {
+    try {
+      console.log(`[SkillMarket] Updating from: ${url}`)
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'GClaw/1.0' },
+        signal: AbortSignal.timeout(60000),
+      })
+      if (!res.ok) continue
+
+      const buffer = Buffer.from(await res.arrayBuffer())
+      await extractZip(buffer, targetDir)
+
+      // 成功，删除备份
+      try { fs.rmSync(bakDir, { recursive: true, force: true }) } catch { /* ignore */ }
+
+      // 清除缓存
+      cachedSkills = null
+      console.log(`[SkillMarket] Updated ${skillName} successfully`)
+      return { success: true }
+    } catch (err) {
+      console.warn(`[SkillMarket] Update from ${url} failed:`, err instanceof Error ? err.message : err)
+      continue
+    }
+  }
+
+  // 下载失败，从备份恢复
+  console.warn(`[SkillMarket] All sources failed, restoring backup for ${skillName}`)
+  try {
+    fs.cpSync(bakDir, targetDir, { recursive: true })
+    fs.rmSync(bakDir, { recursive: true, force: true })
+  } catch (restoreErr) {
+    console.error(`[SkillMarket] Restore failed for ${skillName}:`, restoreErr)
+  }
+
+  return { success: false, error: '下载失败，已恢复旧版本' }
 }
 
 /**

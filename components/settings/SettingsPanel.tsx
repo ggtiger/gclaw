@@ -8,6 +8,7 @@ import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
 import { AccountPanel } from './AccountPanel'
 import { useToast } from '@/components/ui/Toast'
+import { useAuth } from '@/hooks/useAuth'
 
 type SettingsTab = 'settings' | 'account' | 'audit' | 'users' | 'security'
 
@@ -33,6 +34,13 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const [uploadingBg, setUploadingBg] = useState(false)
   const bgFileInputRef = useRef<HTMLInputElement>(null)
 
+  // 默认技能
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const [installedSkills, setInstalledSkills] = useState<string[]>([])
+  const [defaultSkills, setDefaultSkillsState] = useState<string[]>([])
+  const [savingDefault, setSavingDefault] = useState(false)
+
   const { toast } = useToast()
 
   const fetchSettings = useCallback(async () => {
@@ -56,6 +64,51 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   useEffect(() => {
     fetchSettings()
   }, [fetchSettings])
+
+  // 加载默认技能配置（仅 admin）
+  useEffect(() => {
+    if (!isAdmin) return
+    fetch('/api/skills?projectId')
+      .then(r => r.json())
+      .then(data => {
+        const names = (data.skills || []).map((s: { name: string }) => s.name)
+        setInstalledSkills(names)
+      })
+      .catch(err => console.error('Failed to load skills for default config:', err))
+    fetch('/api/skills/default')
+      .then(r => r.json())
+      .then(data => setDefaultSkillsState(data.skills || []))
+      .catch(err => console.error('Failed to load default skills:', err))
+  }, [isAdmin])
+
+  const toggleDefaultSkill = (skillName: string) => {
+    setDefaultSkillsState(prev =>
+      prev.includes(skillName)
+        ? prev.filter(n => n !== skillName)
+        : [...prev, skillName]
+    )
+  }
+
+  const saveDefaultSkills = async () => {
+    setSavingDefault(true)
+    try {
+      const res = await fetch('/api/skills/default', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skills: defaultSkills }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast('默认技能配置已保存', 'success')
+      } else {
+        toast(data.error || '保存失败', 'error')
+      }
+    } catch {
+      toast('保存失败', 'error')
+    } finally {
+      setSavingDefault(false)
+    }
+  }
 
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     if (!settings) return
@@ -496,6 +549,52 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
           支持 JPG、PNG、WebP 格式图片
         </div>
       </div>
+
+      {/* 默认技能配置（仅管理员） */}
+      {isAdmin && (
+        <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
+          <div className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            默认技能
+          </div>
+          <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            新建项目时自动启用以下技能
+          </div>
+          {installedSkills.length === 0 ? (
+            <div className="text-xs py-2" style={{ color: 'var(--color-text-muted)' }}>
+              暂无已安装技能
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              {installedSkills.map(name => (
+                <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:opacity-80 transition-opacity">
+                  <input
+                    type="checkbox"
+                    checked={defaultSkills.includes(name)}
+                    onChange={() => toggleDefaultSkill(name)}
+                    className="rounded"
+                    style={{ accentColor: 'var(--color-primary)' }}
+                  />
+                  <span className="text-xs truncate" style={{ color: 'var(--color-text)' }}>
+                    {name}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={saveDefaultSkills}
+            disabled={savingDefault}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+            style={{
+              backgroundColor: 'var(--color-primary)',
+              color: 'white',
+            }}
+          >
+            {savingDefault ? <Loader size={12} className="animate-spin" /> : <Save size={12} />}
+            {savingDefault ? '保存中...' : '保存默认技能'}
+          </button>
+        </div>
+      )}
 
       {/* 保存按钮 */}
       <button

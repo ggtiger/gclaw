@@ -341,7 +341,11 @@ export function ChatLayout() {
         <ChannelsPanel projectId={project.currentId} />
       </Modal>
       <Modal open={modalOpen === 'settings'} onClose={() => setModalOpen(null)} title="设置">
-        <SettingsPanel projectId={project.currentId} />
+        <SettingsPanel
+          projectId={project.currentId}
+          backgroundImage={backgroundImage}
+          onBackgroundChange={setBackgroundImage}
+        />
       </Modal>
     </div>
   )

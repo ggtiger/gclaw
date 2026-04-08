@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Download, Check, RefreshCw, ExternalLink } from 'lucide-react'
+import { Search, Download, Check, RefreshCw, ExternalLink, ArrowUpCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
 interface MarketSkill {
@@ -13,6 +13,7 @@ interface MarketSkill {
   downloads?: number
   category?: string
   installed: boolean
+  installedVersion?: string
 }
 
 interface SkillMarketPanelProps {
@@ -28,6 +29,7 @@ export function SkillMarketPanel({ onSkillInstalled }: SkillMarketPanelProps) {
   const [hasMore, setHasMore] = useState(false)
   const [total, setTotal] = useState(0)
   const [installing, setInstalling] = useState<string | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
 
   const loadSkills = useCallback(async (resetPage = false) => {
     const currentPage = resetPage ? 1 : page
@@ -86,6 +88,37 @@ export function SkillMarketPanel({ onSkillInstalled }: SkillMarketPanelProps) {
       setInstalling(null)
     }
   }
+
+  const handleUpdate = async (skillName: string) => {
+    setUpdating(skillName)
+    try {
+      const res = await fetch('/api/skills/market/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillName }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        toast('更新成功', 'success')
+        // 更新本地状态：installedVersion 设为市场版本
+        setSkills(prev => prev.map(s =>
+          s.name === skillName ? { ...s, installedVersion: s.version } : s
+        ))
+        onSkillInstalled?.()
+      } else {
+        toast(data.error || '更新失败', 'error')
+      }
+    } catch (err) {
+      console.error('Update failed:', err)
+      toast('更新失败', 'error')
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const hasUpdate = (skill: MarketSkill) =>
+    skill.installed && skill.version && skill.installedVersion && skill.version !== skill.installedVersion
 
   return (
     <div className="space-y-3">
@@ -163,13 +196,23 @@ export function SkillMarketPanel({ onSkillInstalled }: SkillMarketPanelProps) {
                     <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
                       {skill.displayName || skill.name}
                     </span>
-                    {skill.version && (
+                    {hasUpdate(skill) ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                        style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 15%, transparent)', color: 'var(--color-warning)' }}>
+                        v{skill.installedVersion} → v{skill.version}
+                      </span>
+                    ) : skill.installed && skill.installedVersion ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                        style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)' }}>
+                        v{skill.installedVersion}
+                      </span>
+                    ) : skill.version ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
                         style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)' }}>
                         v{skill.version}
                       </span>
-                    )}
-                    {skill.installed && (
+                    ) : null}
+                    {skill.installed && !hasUpdate(skill) && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded"
                         style={{ backgroundColor: 'color-mix(in srgb, var(--color-success) 15%, transparent)', color: 'var(--color-success)' }}>
                         已安装
@@ -195,7 +238,29 @@ export function SkillMarketPanel({ onSkillInstalled }: SkillMarketPanelProps) {
                   </div>
                 </div>
                 <div className="flex-shrink-0">
-                  {skill.installed ? (
+                  {hasUpdate(skill) ? (
+                    <button
+                      onClick={() => handleUpdate(skill.name)}
+                      disabled={updating !== null}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: 'color-mix(in srgb, var(--color-warning) 15%, transparent)',
+                        color: 'var(--color-warning)',
+                      }}
+                    >
+                      {updating === skill.name ? (
+                        <>
+                          <RefreshCw size={12} className="animate-spin" />
+                          <span>更新中</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowUpCircle size={12} />
+                          <span>更新</span>
+                        </>
+                      )}
+                    </button>
+                  ) : skill.installed ? (
                     <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-success)' }}>
                       <Check size={14} />
                     </div>
