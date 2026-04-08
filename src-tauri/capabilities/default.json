@@ -12,6 +12,8 @@
       "identifier": "opener:allow-open-path",
       "allow": [{ "path": "**" }]
     },
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "dialog:default",
+    "dialog:allow-save"
   ]
 }

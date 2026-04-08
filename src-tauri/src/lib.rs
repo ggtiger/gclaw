@@ -542,6 +542,15 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
 
 // ============ Tauri Commands ============
 
+/// 前端调用：将二进制数据写入指定路径（配合 dialog 插件使用）
+#[tauri::command]
+fn save_file_content(path: String, content: Vec<u8>) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_server_url(state: tauri::State<ServerState>) -> String {
     format!("http://127.0.0.1:{}", state.port)
@@ -600,6 +609,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             // Windows: 移除原生标题栏，使用前端模拟红绿灯按钮
             #[cfg(target_os = "windows")]
@@ -753,7 +763,7 @@ pub fn run() {
             setup_tray(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready])
+        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
