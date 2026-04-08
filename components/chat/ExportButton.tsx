@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Download, FileText, FileJson, Calendar } from 'lucide-react'
+import { isTauri } from '@/lib/tauri'
 
 interface ExportButtonProps {
   projectId: string
@@ -11,6 +12,7 @@ export function ExportButton({ projectId }: ExportButtonProps) {
   const [open, setOpen] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [exporting, setExporting] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -23,11 +25,48 @@ export function ExportButton({ projectId }: ExportButtonProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  const handleExport = (format: 'markdown' | 'json') => {
+  const handleExport = async (format: 'markdown' | 'json') => {
+    if (exporting) return
+    setExporting(true)
     const params = new URLSearchParams({ projectId, format })
     if (dateFrom) params.set('from', dateFrom)
     if (dateTo) params.set('to', dateTo)
-    window.open(`/api/chat/export?${params.toString()}`, '_blank')
+
+    try {
+      const res = await fetch(`/api/chat/export?${params.toString()}`)
+      if (!res.ok) return
+
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : `export.${format === 'json' ? 'json' : 'md'}`
+
+      if (isTauri()) {
+        const blob = await res.blob()
+        const arrayBuffer = await blob.arrayBuffer()
+        const content = Array.from(new Uint8Array(arrayBuffer))
+
+        const { save } = await import('@tauri-apps/plugin-dialog')
+        const path = await save({
+          defaultPath: filename,
+          filters: [{ name: format === 'json' ? 'JSON' : 'Markdown', extensions: [format === 'json' ? 'json' : 'md'] }],
+        })
+        if (path) {
+          const { invoke } = await import('@tauri-apps/api/core')
+          await invoke('save_file_content', { path, content })
+        }
+      } else {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+    } catch { /* ignore */ }
+    setExporting(false)
     setOpen(false)
   }
 
@@ -38,7 +77,6 @@ export function ExportButton({ projectId }: ExportButtonProps) {
         className="p-1.5 rounded-md cursor-pointer transition-colors"
         style={{
           backgroundColor: open ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : 'transparent',
-          color: open ? 'var(--color-primary)' : 'var(--color-text-muted)',
         }}
         title="导出对话"
       >
@@ -60,7 +98,7 @@ export function ExportButton({ projectId }: ExportButtonProps) {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
+                onChange={e => { e.stopPropagation(); setDateFrom(e.target.value); e.target.blur() }}
                 className="flex-1 text-xs px-2 py-1 rounded border outline-none"
                 style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
                 placeholder="开始"
@@ -68,7 +106,7 @@ export function ExportButton({ projectId }: ExportButtonProps) {
               <input
                 type="date"
                 value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
+                onChange={e => { e.stopPropagation(); setDateTo(e.target.value); e.target.blur() }}
                 className="flex-1 text-xs px-2 py-1 rounded border outline-none"
                 style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
                 placeholder="结束"

@@ -146,12 +146,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
 
   return (
     <div className="px-4 py-3">
-      {/* 模板选择器 */}
-      {onTemplateSelect && (
-        <div className="mb-2">
-          <TemplateSelector projectId={projectId || ''} onSelect={onTemplateSelect} />
-        </div>
-      )}
+      
       <div className="bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.25)] border border-white/50 dark:border-white/10 p-2 flex flex-col gap-2">
         {/* 附件预览区域 */}
         {attachments.length > 0 && (
