@@ -76,13 +76,102 @@ function ensureMemoryDirs(baseDir: string): void {
 
 // ── ID 生成 ──
 
-let entryCounter = 0
+// 缓存每个 prefix+date 的最大计数器，防止进程重启后 ID 冲突
+const maxCounterCache = new Map<string, number>()
 
 function generateId(prefix: string): string {
   const now = new Date()
   const date = now.toISOString().slice(0, 10).replace(/-/g, '')
-  entryCounter = (entryCounter + 1) % 1000
-  return `${prefix}-${date}-${String(entryCounter).padStart(3, '0')}`
+  const cacheKey = `${prefix}-${date}`
+
+  if (!maxCounterCache.has(cacheKey)) {
+    // 从已有数据中扫描当天最大计数器
+    maxCounterCache.set(cacheKey, findMaxCounter(prefix, date))
+  }
+
+  const next = (maxCounterCache.get(cacheKey)! + 1) % 1000
+  maxCounterCache.set(cacheKey, next)
+  return `${prefix}-${date}-${String(next).padStart(3, '0')}`
+}
+
+/**
+ * 扫描所有记忆文件，找到指定 prefix+date 下的最大计数器
+ */
+function findMaxCounter(prefix: string, date: string): number {
+  const pattern = new RegExp(`^${prefix}-${date}-(\\d{3})$`)
+  let max = 0
+
+  const scanIds = (ids: string[]) => {
+    for (const id of ids) {
+      const m = id.match(pattern)
+      if (m) {
+        const n = parseInt(m[1], 10)
+        if (n > max) max = n
+      }
+    }
+  }
+
+  // 扫描用户级和项目级记忆目录
+  const memoryRoot = path.join(DATA_DIR, 'memory')
+  if (fs.existsSync(memoryRoot)) {
+    for (const userDir of fs.readdirSync(memoryRoot)) {
+      const dir = path.join(memoryRoot, userDir)
+      if (!fs.statSync(dir).isDirectory()) continue
+
+      const semFile = path.join(dir, 'semantic.json')
+      if (fs.existsSync(semFile)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(semFile, 'utf-8'))
+          scanIds((data.entries || []).map((e: { id: string }) => e.id))
+        } catch { /* ignore */ }
+      }
+
+      const procFile = path.join(dir, 'procedures.json')
+      if (fs.existsSync(procFile)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(procFile, 'utf-8'))
+          scanIds((data.entries || []).map((e: { id: string }) => e.id))
+        } catch { /* ignore */ }
+      }
+
+      const epDir = path.join(dir, 'episodic')
+      if (fs.existsSync(epDir) && prefix === 'EP') {
+        for (const f of fs.readdirSync(epDir).filter(f => f.startsWith(date))) {
+          try {
+            const day = JSON.parse(fs.readFileSync(path.join(epDir, f), 'utf-8'))
+            scanIds((day.entries || []).map((e: { id: string }) => e.id))
+          } catch { /* ignore */ }
+        }
+      }
+    }
+  }
+
+  // 扫描项目级记忆
+  const projectsRoot = path.join(DATA_DIR, 'projects')
+  if (fs.existsSync(projectsRoot)) {
+    for (const pDir of fs.readdirSync(projectsRoot)) {
+      const memDir = path.join(projectsRoot, pDir, '.data', 'memory')
+      if (!fs.existsSync(memDir)) continue
+
+      const semFile = path.join(memDir, 'semantic.json')
+      if (fs.existsSync(semFile)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(semFile, 'utf-8'))
+          scanIds((data.entries || []).map((e: { id: string }) => e.id))
+        } catch { /* ignore */ }
+      }
+
+      const procFile = path.join(memDir, 'procedures.json')
+      if (fs.existsSync(procFile)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(procFile, 'utf-8'))
+          scanIds((data.entries || []).map((e: { id: string }) => e.id))
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
+  return max
 }
 
 // ── 情节记忆 ──

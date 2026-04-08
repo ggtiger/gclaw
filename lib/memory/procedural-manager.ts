@@ -141,7 +141,7 @@ export function listProcedural(
 
   for (const dir of dirs) {
     const data = store.readProcedural(dir)
-    allEntries.push(...data.entries)
+    allEntries.push(...data.entries.filter(e => e.status !== 'archived'))
   }
 
   let filtered = allEntries

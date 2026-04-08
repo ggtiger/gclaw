@@ -141,7 +141,7 @@ export function listSemantic(
 
   for (const dir of dirs) {
     const data = store.readSemantic(dir)
-    allEntries.push(...data.entries)
+    allEntries.push(...data.entries.filter(e => e.status !== 'archived'))
   }
 
   let filtered = allEntries

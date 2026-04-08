@@ -43,6 +43,9 @@ export function retrieve(query: RetrievalQuery): RecallResult {
     result.procedural = retrieveProcedural(query, now).slice(0, limit)
   }
 
+  // 异步更新命中条目的访问计数（不阻塞检索返回）
+  bumpAccessCounts(query.userId, query.projectId, result)
+
   return result
 }
 
@@ -231,4 +234,54 @@ function scoreProcedural(entry: ProceduralEntry, query: RetrievalQuery, _now: nu
   }
 
   return score
+}
+
+// ── 访问计数更新 ──
+
+/**
+ * 异步更新检索命中条目的 accessCount
+ * 不阻塞检索返回，失败时静默忽略
+ */
+function bumpAccessCounts(
+  userId: string,
+  projectId: string | undefined,
+  result: RecallResult
+): void {
+  try {
+    const dirs = store.getMemoryBaseDirs(userId, projectId)
+
+    // 更新语义记忆 accessCount
+    if (result.semantic.length > 0) {
+      const hitIds = new Set(result.semantic.map(e => e.id))
+      for (const dir of dirs) {
+        const data = store.readSemantic(dir)
+        let changed = false
+        for (const entry of data.entries) {
+          if (hitIds.has(entry.id)) {
+            entry.accessCount = (entry.accessCount || 0) + 1
+            changed = true
+          }
+        }
+        if (changed) store.writeSemantic(dir, data)
+      }
+    }
+
+    // 更新程序记忆 accessCount
+    if (result.procedural.length > 0) {
+      const hitIds = new Set(result.procedural.map(e => e.id))
+      for (const dir of dirs) {
+        const data = store.readProcedural(dir)
+        let changed = false
+        for (const entry of data.entries) {
+          if (hitIds.has(entry.id)) {
+            entry.accessCount = (entry.accessCount || 0) + 1
+            changed = true
+          }
+        }
+        if (changed) store.writeProcedural(dir, data)
+      }
+    }
+  } catch {
+    // 访问计数更新失败不影响检索结果
+  }
 }

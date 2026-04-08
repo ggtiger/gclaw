@@ -7,7 +7,7 @@ import { NextRequest } from 'next/server'
 import type { SemanticEntry, ProceduralEntry } from '@/types/memory'
 import { updateSemantic } from '@/lib/memory/semantic-manager'
 import { updateProcedural } from '@/lib/memory/procedural-manager'
-import { refreshOverview } from '@/lib/memory/injection'
+import { refreshOverviewAsync } from '@/lib/memory/injection'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +43,7 @@ export async function POST(
       return Response.json({ error: 'Entry not found' }, { status: 404 })
     }
 
-    refreshOverview(body.userId)
+    refreshOverviewAsync(body.userId).catch(err => console.warn('[Memory] Overview refresh failed:', err))
 
     return Response.json({ success: true, entry: result })
   } catch (err) {

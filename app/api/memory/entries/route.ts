@@ -9,7 +9,7 @@ import type { SemanticEntry, ProceduralEntry, EpisodicEntry } from '@/types/memo
 import { store } from '@/lib/memory/store'
 import { updateSemantic, listSemantic } from '@/lib/memory/semantic-manager'
 import { updateProcedural, listProcedural } from '@/lib/memory/procedural-manager'
-import { refreshOverview } from '@/lib/memory/injection'
+import { refreshOverviewAsync } from '@/lib/memory/injection'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,7 +87,7 @@ export async function PUT(request: NextRequest) {
       return Response.json({ error: 'Entry not found' }, { status: 404 })
     }
 
-    refreshOverview(body.userId)
+    refreshOverviewAsync(body.userId).catch(err => console.warn('[Memory] Overview refresh failed:', err))
 
     return Response.json({ success: true, entry: result })
   } catch (err) {
@@ -126,7 +126,7 @@ export async function DELETE(request: NextRequest) {
       return Response.json({ error: 'Entry not found' }, { status: 404 })
     }
 
-    refreshOverview(userId)
+    refreshOverviewAsync(userId).catch(err => console.warn('[Memory] Overview refresh failed:', err))
 
     return Response.json({ success: true })
   } catch (err) {

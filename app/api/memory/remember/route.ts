@@ -8,7 +8,7 @@ import type { RememberRequest, EpisodicEntry, SemanticEntry, ProceduralEntry } f
 import { writeEpisodic } from '@/lib/memory/episodic-writer'
 import { addSemantic } from '@/lib/memory/semantic-manager'
 import { addProcedural } from '@/lib/memory/procedural-manager'
-import { refreshOverview } from '@/lib/memory/injection'
+import { refreshOverviewAsync } from '@/lib/memory/injection'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     // 语义/程序记忆变更后刷新总纲
     if (body.level !== 'episodic') {
-      refreshOverview(body.userId)
+      refreshOverviewAsync(body.userId).catch(err => console.warn('[Memory] Overview refresh failed:', err))
     }
 
     return Response.json({ success: true, entry })
