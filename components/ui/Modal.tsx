@@ -31,20 +31,21 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
       {/* 遮罩层 */}
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* 内容区域 */}
-      <div className="relative max-w-2xl w-full mx-4 max-h-[80vh] bg-white dark:bg-gray-900 rounded-xl shadow-xl flex flex-col">
+      <div className="relative max-w-2xl w-full mx-4 max-h-[80vh] glass rounded-2xl shadow-xl flex flex-col border border-white/40 dark:border-white/[0.06]">
         {/* 标题栏 */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="flex justify-between items-center px-6 py-4 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="p-1 rounded-lg transition-colors"
+            style={{ color: 'var(--color-text-muted)' }}
             aria-label="关闭"
           >
             <X className="w-5 h-5" />

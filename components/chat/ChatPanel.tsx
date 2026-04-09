@@ -417,7 +417,18 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <div className="flex-1" />
         )
       ) : isEmpty ? (
-        <div className="flex-1 flex flex-col pb-48" data-tauri-drag-region>
+        <div className="flex-1 flex flex-col pb-48 relative" data-tauri-drag-region>
+          {/* 空会话时也需要展开侧边栏按钮 */}
+          {sidebarHidden && onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="absolute top-2 left-3 z-10 p-1.5 rounded-md transition-colors cursor-pointer"
+              style={{ WebkitAppRegion: 'no-drag', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-secondary)' } as React.CSSProperties}
+              title="展开项目侧边栏"
+            >
+              <PanelLeft size={16} />
+            </button>
+          )}
           <EmptyState onSend={handleSend} />
         </div>
       ) : (

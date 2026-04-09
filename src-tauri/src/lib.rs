@@ -23,6 +23,8 @@ const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/
 
 // 编译时嵌入 splash.html 内容
 const SPLASH_HTML: &str = include_str!("../splash.html");
+// 编译时嵌入应用图标
+const APP_ICON_PNG: &[u8] = include_bytes!("../icons/icon.png");
 
 /// 创建 splash 窗口，通过自定义协议 splashpage:// 加载内嵌的 HTML
 fn create_splash_window(handle: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
@@ -53,9 +55,10 @@ fn create_splash_window(handle: &tauri::AppHandle) -> Option<tauri::WebviewWindo
     .decorations(false)
     .always_on_top(true)
     .center()
+    .visible(false)  // 先隐藏，等页面加载完再显示，避免黑屏闪烁
     .build() {
         Ok(w) => {
-            println!("[GClaw] Splash window created via custom protocol");
+            println!("[GClaw] Splash window created (hidden until page loaded)");
             Some(w)
         }
         Err(e) => {
@@ -636,12 +639,31 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         // 注册自定义协议 splashpage:// 用于提供嵌入的 splash HTML
-        .register_uri_scheme_protocol("splashpage", |_ctx, _request| {
+        .register_uri_scheme_protocol("splashpage", |_ctx, request| {
+            let path = request.uri().path();
+            // 请求图标文件时返回嵌入的 PNG
+            if path.contains("icon") && path.ends_with(".png") {
+                return tauri::http::Response::builder()
+                    .status(200)
+                    .header("content-type", "image/png")
+                    .body(APP_ICON_PNG.to_vec())
+                    .unwrap();
+            }
+            // 默认返回 splash HTML
             tauri::http::Response::builder()
                 .status(200)
                 .header("content-type", "text/html; charset=utf-8")
                 .body(SPLASH_HTML.as_bytes().to_vec())
                 .unwrap()
+        })
+        // splash 页面加载完成后才显示窗口，避免黑屏闪烁
+        .on_page_load(|webview, payload| {
+            if webview.label() == "splash" {
+                if let tauri::webview::PageLoadEvent::Finished = payload.event() {
+                    let _ = webview.window().show();
+                    println!("[GClaw] Splash page loaded, window shown");
+                }
+            }
         })
         .setup(move |app| {
             // Windows: 移除原生标题栏，使用前端模拟红绿灯按钮

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { LoginForm } from './LoginForm'
 import { RegisterForm } from './RegisterForm'
+import { WindowControls } from '@/components/ui/WindowControls'
 
 export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'register' }) {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
@@ -65,6 +66,7 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--color-bg)' }} data-tauri-drag-region>
+      <WindowControls />
       <div
         className="w-full max-w-sm rounded-xl border p-6 animate-fade-in-up"
         style={{
@@ -94,44 +96,6 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
           />
         )}
 
-        {/* OAuth 登录（仅登录模式显示） */}
-        {mode === 'login' && (
-          <>
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="px-3 text-xs" style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-muted)' }}>
-                  或
-                </span>
-              </div>
-              <div className="border-t" style={{ borderColor: 'var(--color-border)' }} />
-            </div>
-            <div className="flex gap-2">
-              <a
-                href={`/api/auth/oauth/dingtalk?redirect=${encodeURIComponent(searchParams.get('redirect') || '/')}`}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:border-[var(--color-primary)]"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-              >
-                <span className="text-[#0089FF] font-bold">D</span>
-                钉钉登录
-              </a>
-              <a
-                href={`/api/auth/oauth/feishu?redirect=${encodeURIComponent(searchParams.get('redirect') || '/')}`}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:border-[var(--color-primary)]"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-              >
-                <span className="text-[#3370CC] font-bold">F</span>
-                飞书登录
-              </a>
-            </div>
-          </>
-        )}
-
-        {/* OAuth 错误提示 */}
-        {searchParams.get('error') === 'oauth_failed' && (
-          <div className="mt-3 text-xs text-center" style={{ color: 'var(--color-error)' }}>
-            OAuth 登录失败，请重试或使用账号密码登录
-          </div>
-        )}
       </div>
     </div>
   )

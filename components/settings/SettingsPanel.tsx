@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield, Users, ShieldAlert, User, Upload } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield, Users, ShieldAlert, User, Upload, Palette } from 'lucide-react'
 import type { AppSettings } from '@/types/skills'
+import { applyThemeColor as applyThemeColorGlobal, resetThemeColor as resetThemeColorGlobal } from '@/lib/theme-color'
 import { AuditLogPanel } from './AuditLogPanel'
 import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
@@ -33,6 +34,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'settings')
   const [uploadingBg, setUploadingBg] = useState(false)
   const bgFileInputRef = useRef<HTMLInputElement>(null)
+  // 主题颜色
+  const [themeColor, setThemeColor] = useState<string>('')
 
   // 默认技能
   const { user } = useAuth()
@@ -63,6 +66,11 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
 
   useEffect(() => {
     fetchSettings()
+    // 读取自定义主题颜色
+    try {
+      const saved = localStorage.getItem('gclaw-theme-color')
+      if (saved) setThemeColor(saved)
+    } catch {}
   }, [fetchSettings])
 
   // 加载默认技能配置（仅 admin）
@@ -548,6 +556,77 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
           支持 JPG、PNG、WebP 格式图片
         </div>
+      </div>
+
+      {/* 主题颜色 */}
+      <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
+        <div className="flex items-center gap-1.5">
+          <Palette size={13} style={{ color: 'var(--color-text-secondary)' }} />
+          <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>主题颜色</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 预设颜色 */}
+          {[
+            { label: '紫罗兰', hex: '#8b5cf6' },
+            { label: '蓝色', hex: '#3b82f6' },
+            { label: '青色', hex: '#14b8a6' },
+            { label: '玫红', hex: '#ec4899' },
+            { label: '红色', hex: '#ef4444' },
+            { label: '橙色', hex: '#f97316' },
+            { label: '绿色', hex: '#22c55e' },
+          ].map(c => (
+            <button
+              key={c.hex}
+              onClick={() => {
+                setThemeColor(c.hex)
+                localStorage.setItem('gclaw-theme-color', c.hex)
+                applyThemeColorGlobal(c.hex)
+              }}
+              className="w-7 h-7 rounded-full border-2 transition-all cursor-pointer hover:scale-110"
+              style={{
+                backgroundColor: c.hex,
+                borderColor: themeColor === c.hex ? 'var(--color-text)' : 'transparent',
+                boxShadow: themeColor === c.hex ? `0 0 0 2px ${c.hex}40` : 'none',
+              }}
+              title={c.label}
+            />
+          ))}
+          {/* 自定义颜色 */}
+          <div className="relative">
+            <input
+              type="color"
+              value={themeColor || '#8b5cf6'}
+              onChange={e => {
+                const hex = e.target.value
+                setThemeColor(hex)
+                localStorage.setItem('gclaw-theme-color', hex)
+                applyThemeColorGlobal(hex)
+              }}
+              className="absolute inset-0 w-7 h-7 opacity-0 cursor-pointer"
+            />
+            <div
+              className="w-7 h-7 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+              style={{ borderColor: 'var(--color-border)' }}
+              title="自定义颜色"
+            >
+              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+</span>
+            </div>
+          </div>
+        </div>
+        {/* 重置按钮 */}
+        {themeColor && themeColor !== '#8b5cf6' && (
+          <button
+            onClick={() => {
+              setThemeColor('')
+              localStorage.removeItem('gclaw-theme-color')
+              resetThemeColorGlobal()
+            }}
+            className="text-[11px] cursor-pointer hover:underline"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            恢复默认
+          </button>
+        )}
       </div>
 
       {/* 默认技能配置（仅管理员） */}

@@ -9,6 +9,8 @@
 @import 'highlight.js/styles/github.css' (prefers-color-scheme: light);
 
 :root {
+  /* 主题颜色 RGB 值（供 Tailwind purple-* 使用） */
+  --theme-primary: 139 92 246;
   /* 基础背景色 - 亮色模式浅灰渐变 */
   --color-bg: #F8FAFC;
   --color-bg-secondary: #F1F5F9;
@@ -52,6 +54,8 @@
 }
 
 .dark {
+  /* 主题颜色 RGB 值（暗色模式稍亮） */
+  --theme-primary: 167 139 250;
   /* 基础背景色 - 深蓝灰渐变（参考 Secretary 截图） */
   --color-bg: rgba(30, 41, 59, 0.5);
   --color-bg-secondary: rgba(30, 41, 59, 0.4);
