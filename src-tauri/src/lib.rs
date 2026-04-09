@@ -22,7 +22,8 @@ const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/
 // ============ 启动页（独立 splash 窗口） ============
 
 /// 获取 splash.html 的文件 URL
-fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
+/// 读取 splash.html 内容，返回 data URI，避免 file:// 协议在 Windows WebView2 上的重定向问题
+fn splash_data_url(app: &tauri::AppHandle) -> Option<String> {
     // 按优先级查找 splash.html：resource_dir → app_data_dir → manifest_dir
     let splash_path = app.path().resource_dir().ok()
         .and_then(|d| { let p = d.join("splash.html"); if p.exists() { Some(p) } else { None } })
@@ -32,25 +33,18 @@ fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
             .and_then(|dir| { let p = std::path::Path::new(&dir).join("splash.html"); if p.exists() { Some(p) } else { None } }));
 
     let path = splash_path?;
+    println!("[GClaw] Found splash.html at: {}", path.display());
     
-    // Windows: canonicalize 返回 \\?\C:\path 格式，需要去掉 \\?\ 前缀
-    #[cfg(target_os = "windows")]
-    {
-        let path_str = path.to_string_lossy().replace('\\', "/");
-        // 去掉可能的 \\?\ 前缀
-        let clean_path = path_str.strip_prefix("\\\\?\\").unwrap_or(&path_str);
-        Some(format!("file:///{}", clean_path))
-    }
-    
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(canonical) = path.canonicalize() {
-            let path_str = canonical.to_string_lossy().replace('\\', "/");
-            Some(format!("file://{}", path_str))
-        } else {
-            None
+    // 读取文件内容，转换为 data URI（使用 percent-encoding 编码）
+    let content = std::fs::read_to_string(&path).ok()?;
+    let encoded: String = content.bytes().map(|b| {
+        match b {
+            // 安全字符直接保留
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b' ' => (b as char).to_string(),
+            _ => format!("%{:02X}", b),
         }
-    }
+    }).collect::<String>().replace(' ', "%20");
+    Some(format!("data:text/html,{}", encoded))
 }
 
 /// 读取应用主题设置（从 global.json）
@@ -676,8 +670,8 @@ pub fn run() {
                 // ---- 开发模式 / 生产模式：动态创建 splash 窗口 ----
                 let handle = app.handle().clone();
 
-                if let Some(url) = splash_file_url(&handle) {
-                    println!("[GClaw] Splash URL: {}", url);
+                if let Some(url) = splash_data_url(&handle) {
+                    println!("[GClaw] Splash loaded via data URI ({} bytes)", url.len());
                     if let Ok(splash_url) = url.parse() {
                         let _ = WebviewWindowBuilder::new(
                             &handle,
