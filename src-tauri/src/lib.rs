@@ -623,20 +623,23 @@ pub fn run() {
             }
 
             // macOS: 点击关闭时隐藏到托盘（Dock 图标可恢复）
-            // Windows: 点击关闭时直接退出应用并杀掉 Node 进程
+            // Windows/Linux: 点击关闭时直接退出应用并杀掉 Node 进程
             if let Some(main_window) = app.get_webview_window("main") {
-                let main_window_clone = main_window.clone();
+                let app_handle: tauri::AppHandle = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         #[cfg(target_os = "macos")]
                         {
                             api.prevent_close();
-                            let _ = main_window_clone.hide();
+                            // 在闭包内通过 app_handle 获取窗口
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
                         }
                         #[cfg(not(target_os = "macos"))]
                         {
                             // Windows/Linux: 允许关闭，触发 RunEvent::Exit 清理进程
-                            let _ = (api, main_window_clone);
+                            let _ = api;
                         }
                     }
                 });
