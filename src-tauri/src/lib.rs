@@ -13,11 +13,15 @@ pub struct ServerState {
 
 const NODE_VERSION: &str = "22.18.0";
 const PYTHON_VERSION: &str = "3.12.13";
+const GIT_VERSION: &str = "2.47.1";
+const GIT_WINDOWS_TAG: &str = "v2.47.1.windows.1";
 const PYTHON_RELEASE_TAG: &str = "20260325";
 
 // 国内镜像（首次下载快）
 const NODE_MIRROR: &str = "https://cdn.npmmirror.com/binaries/node";
 const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone";
+// Windows MinGit 便携版（npmmirror 国内镜像）
+const GIT_MIRROR: &str = "https://registry.npmmirror.com/-/binary/git-for-windows";
 
 // ============ 启动页（独立 splash 窗口） ============
 
@@ -238,6 +242,21 @@ fn find_python3(app: &tauri::AppHandle) -> Option<String> {
     which_python3()
 }
 
+/// 查找 Git 二进制路径
+fn find_git(_app: &tauri::AppHandle) -> Option<String> {
+    // Windows: 检查内置 MinGit（runtimes/git/cmd/git.exe）
+    #[cfg(target_os = "windows")]
+    {
+        let rd = runtimes_dir(_app);
+        let bundled = rd.join("git").join("cmd").join("git.exe");
+        if bundled.exists() {
+            println!("[GClaw] Found runtime MinGit: {}", bundled.display());
+            return Some(bundled.to_string_lossy().to_string());
+        }
+    }
+    which_git()
+}
+
 fn which_node() -> Option<String> {
     let cmd = if cfg!(target_os = "windows") { "where" } else { "which" };
     if let Ok(output) = hidden_command(cmd).arg("node").output() {
@@ -275,6 +294,29 @@ fn which_python3() -> Option<String> {
     None
 }
 
+/// 查找 git 二进制路径（macOS GUI 应用需要显式注入）
+fn which_git() -> Option<String> {
+    let cmd = if cfg!(target_os = "windows") { "where" } else { "which" };
+    if let Ok(output) = hidden_command(cmd).arg("git").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+    if !cfg!(target_os = "windows") {
+        // macOS 常见 git 安装路径
+        for path in &["/usr/local/bin/git", "/opt/homebrew/bin/git", "/usr/bin/git"] {
+            if std::path::Path::new(path).exists() { return Some(path.to_string()); }
+        }
+    } else {
+        // Windows: 常见 git 安装路径
+        for path in &["C:\\Program Files\\Git\\bin\\git.exe", "C:\\Program Files (x86)\\Git\\bin\\git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"] {
+            if std::path::Path::new(path).exists() { return Some(path.to_string()); }
+        }
+    }
+    None
+}
+
 /// 构建下载 URL
 fn node_download_url() -> String {
     let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" };
@@ -302,6 +344,20 @@ fn python_download_url() -> String {
     )
 }
 
+/// 构建 Git 下载 URL（仅 Windows 支持自动下载 MinGit 便携版）
+fn git_download_url() -> Option<String> {
+    if cfg!(target_os = "windows") {
+        // MinGit: 免安装便携版，解压即用，体积小（~30MB）
+        Some(format!("{}/{}/MinGit-{}-64-bit.zip",
+            GIT_MIRROR, GIT_WINDOWS_TAG, GIT_VERSION))
+    } else {
+        // macOS: /usr/bin/git (Xcode CLT) 或 /opt/homebrew/bin/git (Homebrew)
+        // Linux: 系统包管理器安装 (apt/yum install git)
+        // 这两个平台不提供自动下载，依赖系统 git + PATH 注入
+        None
+    }
+}
+
 /// 获取文件大小（Content-Length）
 fn get_remote_size(url: &str) -> u64 {
     let output = hidden_command(curl_cmd())
@@ -326,8 +382,8 @@ fn get_remote_size(url: &str) -> u64 {
 /// 下载并解压运行时
 fn download_runtime(
     app: &tauri::AppHandle,
-    name: &str,       // "node" or "python"
-    label: &str,      // 显示名 "Node.js" or "Python"
+    name: &str,       // "node", "python" or "git"
+    label: &str,      // 显示名 "Node.js", "Python" or "Git"
     url: &str,
 ) -> Result<(), String> {
     let rd = runtimes_dir(app);
@@ -337,6 +393,9 @@ fn download_runtime(
     let check_bin = if name == "node" {
         if cfg!(target_os = "windows") { target_dir.join("node.exe") }
         else { target_dir.join("bin").join("node") }
+    } else if name == "git" {
+        // Windows MinGit: cmd/git.exe
+        target_dir.join("cmd").join("git.exe")
     } else {
         if cfg!(target_os = "windows") { target_dir.join("bin").join("python.exe") }
         else { target_dir.join("bin").join("python3") }
@@ -406,23 +465,28 @@ fn download_runtime(
     splash_update(app, &format!("正在解压 {}...", label), 100, "请稍候...");
     std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
 
+    // MinGit zip 无顶层目录，直接包含 cmd/、mingw64/ 等，不需 strip
+    let strip = if name == "git" { 0 } else { 1 };
+
     let extract_status = if url.ends_with(".tar.xz") {
-        hidden_command("tar")
-            .args(&["-xJf", archive.to_str().unwrap_or(""), "--strip-components=1"])
-            .arg("-C").arg(&target_dir)
+        let mut cmd = hidden_command("tar");
+        cmd.args(&["-xJf", archive.to_str().unwrap_or("")]);
+        if strip > 0 { cmd.arg(format!("--strip-components={}", strip)); }
+        cmd.arg("-C").arg(&target_dir)
             .status()
             .map_err(|e| format!("解压失败: {}", e))?
     } else if url.ends_with(".zip") {
-        // Windows tar.exe 支持 .zip，需要 --strip-components 去掉顶层目录
-        hidden_command("tar")
-            .args(&["-xf", archive.to_str().unwrap_or(""), "--strip-components=1"])
-            .arg("-C").arg(&target_dir)
+        let mut cmd = hidden_command("tar");
+        cmd.args(&["-xf", archive.to_str().unwrap_or("")]);
+        if strip > 0 { cmd.arg(format!("--strip-components={}", strip)); }
+        cmd.arg("-C").arg(&target_dir)
             .status()
             .map_err(|e| format!("解压失败: {}", e))?
     } else {
-        hidden_command("tar")
-            .args(&["-xzf", archive.to_str().unwrap_or(""), "--strip-components=1"])
-            .arg("-C").arg(&target_dir)
+        let mut cmd = hidden_command("tar");
+        cmd.args(&["-xzf", archive.to_str().unwrap_or("")]);
+        if strip > 0 { cmd.arg(format!("--strip-components={}", strip)); }
+        cmd.arg("-C").arg(&target_dir)
             .status()
             .map_err(|e| format!("解压失败: {}", e))?
     };
@@ -532,6 +596,16 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         if let Some(py_dir) = std::path::Path::new(&sys_python).parent() {
             let s = py_dir.to_string_lossy().to_string();
             if !current_path.contains(&s) && s != node_dir {
+                path_parts.push(s);
+            }
+        }
+    }
+
+    // 4. Git（macOS GUI 应用需要显式注入，否则 Claude SDK 找不到 git 命令）
+    if let Some(git_bin) = find_git(app) {
+        if let Some(git_dir) = std::path::Path::new(&git_bin).parent() {
+            let s = git_dir.to_string_lossy().to_string();
+            if !current_path.contains(&s) && !path_parts.contains(&s) {
                 path_parts.push(s);
             }
         }
@@ -784,6 +858,32 @@ pub fn run() {
                                     splash_error(&handle, "环境准备失败，请检查网络后重试");
                                     return;
                                 }
+                            }
+                        }
+
+                        // Git 运行时（必需，Windows 自动下载 MinGit，macOS/Linux 依赖系统 git）
+                        let git_present = find_git(&handle).is_some();
+                        if !git_present {
+                            if let Some(git_url) = git_download_url() {
+                                splash_update(&handle, "正在准备运行环境...", 60, "首次启动需要下载，请稍候");
+                                match download_runtime(&handle, "git", "Git", &git_url) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        eprintln!("[GClaw] Git download failed: {}", e);
+                                        splash_error(&handle, "环境准备失败，请检查网络后重试");
+                                        return;
+                                    }
+                                }
+                            } else {
+                                // macOS/Linux: 系统没有 git，提示用户安装
+                                let msg = if cfg!(target_os = "macos") {
+                                    "未检测到 Git，请先执行: xcode-select --install"
+                                } else {
+                                    "未检测到 Git，请先安装: sudo apt install git"
+                                };
+                                eprintln!("[GClaw] Git not found");
+                                splash_error(&handle, msg);
+                                return;
                             }
                         }
 
