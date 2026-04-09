@@ -23,42 +23,17 @@ const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/
 
 /// 获取 splash.html 的文件 URL
 fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
-    // Windows: 使用 Tauri 资源协议 (https://tauri.localhost/) 加载资源文件
-    // macOS/Linux: 使用 file:// 协议
-    #[cfg(target_os = "windows")]
-    {
-        // 开发模式下检查 manifest 目录，生产模式使用资源协议
-        if cfg!(debug_assertions) {
-            if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-                let splash = std::path::Path::new(&manifest_dir).join("splash.html");
-                if splash.exists() {
-                    let path_str = splash.display().to_string().replace('\\', "/");
-                    return Some(format!("file:///{}", path_str));
-                }
-            }
-        }
-        // 生产模式：使用 Tauri 内置资源协议
-        return Some("https://tauri.localhost/splash.html".to_string());
-    }
+    // 按优先级查找 splash.html：resource_dir → app_data_dir → manifest_dir
+    let splash_path = app.path().resource_dir().ok()
+        .and_then(|d| { let p = d.join("splash.html"); if p.exists() { Some(p) } else { None } })
+        .or_else(|| app.path().app_data_dir().ok()
+            .and_then(|d| { let p = d.join("splash.html"); if p.exists() { Some(p) } else { None } }))
+        .or_else(|| std::env::var("CARGO_MANIFEST_DIR").ok()
+            .and_then(|dir| { let p = std::path::Path::new(&dir).join("splash.html"); if p.exists() { Some(p) } else { None } }));
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(resource_dir) = app.path().resource_dir() {
-            let splash = resource_dir.join("splash.html");
-            if splash.exists() {
-                let path_str = splash.display().to_string();
-                return Some(format!("file://{}", path_str));
-            }
-        }
-        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-            let splash = std::path::Path::new(&manifest_dir).join("splash.html");
-            if splash.exists() {
-                let path_str = splash.display().to_string();
-                return Some(format!("file://{}", path_str));
-            }
-        }
-        None
-    }
+    let path = splash_path?;
+    let path_str = path.display().to_string().replace('\\', "/");
+    Some(format!("file:///{}", path_str))
 }
 
 /// 读取应用主题设置（从 global.json）
