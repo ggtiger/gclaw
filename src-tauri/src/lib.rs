@@ -32,8 +32,15 @@ fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
             .and_then(|dir| { let p = std::path::Path::new(&dir).join("splash.html"); if p.exists() { Some(p) } else { None } }));
 
     let path = splash_path?;
-    let path_str = path.display().to_string().replace('\\', "/");
-    Some(format!("file:///{}", path_str))
+    
+    // 使用 canonicalize 获取绝对路径，然后转换为 file:// URL
+    if let Ok(canonical) = path.canonicalize() {
+        let path_str = canonical.to_string_lossy().replace('\\', "/");
+        // Windows: file:///C:/path, Unix: file:///path
+        Some(format!("file:///{}", path_str))
+    } else {
+        None
+    }
 }
 
 /// 读取应用主题设置（从 global.json）
@@ -615,13 +622,22 @@ pub fn run() {
                 }
             }
 
-            // 主窗口点击关闭时隐藏而非销毁，保证托盘"显示窗口"能正常恢复
+            // macOS: 点击关闭时隐藏到托盘（Dock 图标可恢复）
+            // Windows: 点击关闭时直接退出应用并杀掉 Node 进程
             if let Some(main_window) = app.get_webview_window("main") {
                 let main_window_clone = main_window.clone();
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = main_window_clone.hide();
+                        #[cfg(target_os = "macos")]
+                        {
+                            api.prevent_close();
+                            let _ = main_window_clone.hide();
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            // Windows/Linux: 允许关闭，触发 RunEvent::Exit 清理进程
+                            let _ = (api, main_window_clone);
+                        }
                     }
                 });
             }
@@ -648,6 +664,7 @@ pub fn run() {
                 let handle = app.handle().clone();
 
                 if let Some(url) = splash_file_url(&handle) {
+                    println!("[GClaw] Splash URL: {}", url);
                     if let Ok(splash_url) = url.parse() {
                         let _ = WebviewWindowBuilder::new(
                             &handle,
