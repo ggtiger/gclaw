@@ -21,30 +21,34 @@ const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/
 
 // ============ 启动页（独立 splash 窗口） ============
 
-/// 获取 splash.html 的文件 URL
-/// 读取 splash.html 内容，返回 data URI，避免 file:// 协议在 Windows WebView2 上的重定向问题
-fn splash_data_url(app: &tauri::AppHandle) -> Option<String> {
-    // 按优先级查找 splash.html：resource_dir → app_data_dir → manifest_dir
-    let splash_path = app.path().resource_dir().ok()
-        .and_then(|d| { let p = d.join("splash.html"); if p.exists() { Some(p) } else { None } })
-        .or_else(|| app.path().app_data_dir().ok()
-            .and_then(|d| { let p = d.join("splash.html"); if p.exists() { Some(p) } else { None } }))
-        .or_else(|| std::env::var("CARGO_MANIFEST_DIR").ok()
-            .and_then(|dir| { let p = std::path::Path::new(&dir).join("splash.html"); if p.exists() { Some(p) } else { None } }));
+// 编译时嵌入 splash.html 内容
+const SPLASH_HTML: &str = include_str!("../splash.html");
 
-    let path = splash_path?;
-    println!("[GClaw] Found splash.html at: {}", path.display());
-    
-    // 读取文件内容，转换为 data URI（使用 percent-encoding 编码）
-    let content = std::fs::read_to_string(&path).ok()?;
-    let encoded: String = content.bytes().map(|b| {
-        match b {
-            // 安全字符直接保留
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b' ' => (b as char).to_string(),
-            _ => format!("%{:02X}", b),
-        }
-    }).collect::<String>().replace(' ', "%20");
-    Some(format!("data:text/html,{}", encoded))
+/// 创建 splash 窗口，直接使用内嵌的 HTML 内容
+fn create_splash_window(handle: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    // 用最小化 HTML 作为初始页面
+    let blank: tauri::Url = "data:text/html,<html><body></body></html>".parse().ok()?;
+    let window = WebviewWindowBuilder::new(
+        handle,
+        "splash",
+        WebviewUrl::External(blank),
+    )
+    .title("")
+    .inner_size(480.0, 320.0)
+    .resizable(false)
+    .decorations(false)
+    .always_on_top(true)
+    .center()
+    .build()
+    .ok()?;
+
+    // 等待窗口初始化后注入完整 HTML
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let escaped = SPLASH_HTML.replace('\\', "\\\\").replace('`', "\\`").replace("${", "\\${");
+    let js = format!("document.open();document.write(`{}`);document.close();", escaped);
+    let _ = window.eval(&js);
+    println!("[GClaw] Splash window created with embedded HTML");
+    Some(window)
 }
 
 /// 读取应用主题设置（从 global.json）
@@ -670,23 +674,7 @@ pub fn run() {
                 // ---- 开发模式 / 生产模式：动态创建 splash 窗口 ----
                 let handle = app.handle().clone();
 
-                if let Some(url) = splash_data_url(&handle) {
-                    println!("[GClaw] Splash loaded via data URI ({} bytes)", url.len());
-                    if let Ok(splash_url) = url.parse() {
-                        let _ = WebviewWindowBuilder::new(
-                            &handle,
-                            "splash",
-                            WebviewUrl::External(splash_url),
-                        )
-                        .title("")
-                        .inner_size(480.0, 320.0)
-                        .resizable(false)
-                        .decorations(false)
-                        .always_on_top(true)
-                        .center()
-                        .build();
-                    }
-                }
+                create_splash_window(&handle);
 
                 // 应用主题到 splash 窗口
                 std::thread::sleep(std::time::Duration::from_millis(200));
