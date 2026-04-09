@@ -33,13 +33,23 @@ fn splash_file_url(app: &tauri::AppHandle) -> Option<String> {
 
     let path = splash_path?;
     
-    // 使用 canonicalize 获取绝对路径，然后转换为 file:// URL
-    if let Ok(canonical) = path.canonicalize() {
-        let path_str = canonical.to_string_lossy().replace('\\', "/");
-        // Windows: file:///C:/path, Unix: file:///path
-        Some(format!("file:///{}", path_str))
-    } else {
-        None
+    // Windows: canonicalize 返回 \\?\C:\path 格式，需要去掉 \\?\ 前缀
+    #[cfg(target_os = "windows")]
+    {
+        let path_str = path.to_string_lossy().replace('\\', "/");
+        // 去掉可能的 \\?\ 前缀
+        let clean_path = path_str.strip_prefix("\\\\?\\").unwrap_or(&path_str);
+        Some(format!("file:///{}", clean_path))
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(canonical) = path.canonicalize() {
+            let path_str = canonical.to_string_lossy().replace('\\', "/");
+            Some(format!("file://{}", path_str))
+        } else {
+            None
+        }
     }
 }
 
