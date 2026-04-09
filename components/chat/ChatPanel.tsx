@@ -328,7 +328,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       {!initialLoading && (
         <div
           data-tauri-drag-region
-          className="flex items-center flex-nowrap pt-1 pb-1 gap-2 px-3 lg:px-4 py-2 border-white/10 dark:border-white/[0.06] flex-shrink-0 overflow-x-auto"
+          className="flex items-center flex-nowrap gap-2 px-3 lg:px-4 py-1.5 flex-shrink-0"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           {/* 展开侧边栏按钮（项目名左侧） */}
@@ -380,7 +380,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
             </button>
           )}
           <div className="flex-1" />
-          <div className="flex items-center gap-2 flex-nowrap flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <div className="flex items-center gap-1.5 flex-nowrap flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
             <div className="flex-shrink-0"><ExportButton projectId={projectId} /></div>
             <button
