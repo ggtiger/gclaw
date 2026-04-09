@@ -24,14 +24,28 @@ const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/
 // 编译时嵌入 splash.html 内容
 const SPLASH_HTML: &str = include_str!("../splash.html");
 
-/// 创建 splash 窗口，直接使用内嵌的 HTML 内容
+/// 创建 splash 窗口，通过自定义协议 splashpage:// 加载内嵌的 HTML
 fn create_splash_window(handle: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
-    // 用最小化 HTML 作为初始页面
-    let blank: tauri::Url = "data:text/html,<html><body></body></html>".parse().ok()?;
-    let window = WebviewWindowBuilder::new(
+    // 構建平台特定的自定义协议 URL
+    // macOS/Linux: splashpage://localhost
+    // Windows: http://splashpage.localhost
+    #[cfg(target_os = "windows")]
+    let splash_url_str = "http://splashpage.localhost";
+    #[cfg(not(target_os = "windows"))]
+    let splash_url_str = "splashpage://localhost";
+
+    let url: tauri::Url = match splash_url_str.parse() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[GClaw] Failed to parse splash URL: {}", e);
+            return None;
+        }
+    };
+
+    match WebviewWindowBuilder::new(
         handle,
         "splash",
-        WebviewUrl::External(blank),
+        WebviewUrl::External(url),
     )
     .title("")
     .inner_size(480.0, 320.0)
@@ -39,16 +53,16 @@ fn create_splash_window(handle: &tauri::AppHandle) -> Option<tauri::WebviewWindo
     .decorations(false)
     .always_on_top(true)
     .center()
-    .build()
-    .ok()?;
-
-    // 等待窗口初始化后注入完整 HTML
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    let escaped = SPLASH_HTML.replace('\\', "\\\\").replace('`', "\\`").replace("${", "\\${");
-    let js = format!("document.open();document.write(`{}`);document.close();", escaped);
-    let _ = window.eval(&js);
-    println!("[GClaw] Splash window created with embedded HTML");
-    Some(window)
+    .build() {
+        Ok(w) => {
+            println!("[GClaw] Splash window created via custom protocol");
+            Some(w)
+        }
+        Err(e) => {
+            eprintln!("[GClaw] Failed to create splash window: {}", e);
+            None
+        }
+    }
 }
 
 /// 读取应用主题设置（从 global.json）
@@ -621,6 +635,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // 注册自定义协议 splashpage:// 用于提供嵌入的 splash HTML
+        .register_uri_scheme_protocol("splashpage", |_ctx, _request| {
+            tauri::http::Response::builder()
+                .status(200)
+                .header("content-type", "text/html; charset=utf-8")
+                .body(SPLASH_HTML.as_bytes().to_vec())
+                .unwrap()
+        })
         .setup(move |app| {
             // Windows: 移除原生标题栏，使用前端模拟红绿灯按钮
             #[cfg(target_os = "windows")]
