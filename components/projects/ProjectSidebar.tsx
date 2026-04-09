@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FolderOpen, Plus, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Loader2, Bot, Monitor, FileText, Settings } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings } from 'lucide-react'
 import type { ProjectInfo, ProjectType } from '@/types/skills'
 
 interface ProjectSidebarProps {
@@ -110,10 +110,10 @@ export function ProjectSidebar({
           <div className="flex-1" />
           <button
             onClick={onHide}
-            className="p-1 rounded-lg cursor-pointer transition-colors text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-600 dark:hover:text-gray-300"
+            className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
             title="收起侧边栏"
           >
-            <ChevronLeft size={14} />
+            <PanelLeftClose size={14} />
           </button>
         </div>
       </div>

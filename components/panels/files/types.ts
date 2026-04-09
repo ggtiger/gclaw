@@ -41,6 +41,7 @@ export interface FilesPanelProps {
   projectId: string
   onToggleFullscreen?: () => void
   isFullscreen?: boolean
+  onHide?: () => void
 }
 
 export interface MenuItem {

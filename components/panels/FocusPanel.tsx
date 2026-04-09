@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Settings, Brain } from 'lucide-react'
+import { Settings, Brain, PanelRightClose } from 'lucide-react'
 import { useFocusData } from '@/hooks/useFocusData'
 import { useProject } from '@/hooks/useProject'
 import TodoList from './focus/TodoList'
@@ -14,11 +14,12 @@ import { useMemoryData } from '@/hooks/useMemoryData'
 
 interface Props {
   projectId: string
+  onHide?: () => void
 }
 
 type MainTab = 'focus' | 'memory'
 
-export default function FocusPanel({ projectId }: Props) {
+export default function FocusPanel({ projectId, onHide }: Props) {
   const {
     loading, todos, notes, events, settings,
     addTodo, toggleTodo, removeTodo,
@@ -67,6 +68,15 @@ export default function FocusPanel({ projectId }: Props) {
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {onHide && (
+            <button
+              onClick={onHide}
+              className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
+              title="收起面板"
+            >
+              <PanelRightClose size={14} />
+            </button>
+          )}
           {/* 主 Tab 切换 */}
           <div className="flex gap-0.5 bg-gray-100 dark:bg-white/5 rounded-lg p-0.5">
             <button

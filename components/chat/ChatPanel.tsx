@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, RefreshCw, Star, Tag, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Star, Tag, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -33,6 +33,8 @@ interface ChatPanelProps {
   onOpenAgents?: () => void
   sidebarHidden?: boolean
   onToggleSidebar?: () => void
+  rightPanelHidden?: boolean
+  onToggleRightPanel?: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
   onRespondAskQuestion: (requestId: string, answers: Record<string, string>) => void
   onUpdateMessage?: (message: ChatMessage) => void
@@ -153,7 +155,7 @@ function FilterBar({
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -389,6 +391,15 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               <Trash2 size={14} />
               <span className="hidden sm:inline whitespace-nowrap">清空</span>
             </button>
+            {rightPanelHidden && onToggleRightPanel && (
+              <button
+                onClick={onToggleRightPanel}
+                className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors"
+                title="展开右侧面板"
+              >
+                <PanelRight size={14} />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -422,11 +433,21 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           {sidebarHidden && onToggleSidebar && (
             <button
               onClick={onToggleSidebar}
-              className="absolute top-2 left-3 z-10 p-1.5 rounded-md transition-colors cursor-pointer"
-              style={{ WebkitAppRegion: 'no-drag', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-secondary)' } as React.CSSProperties}
+              className="absolute top-2 left-3 z-10 p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               title="展开项目侧边栏"
             >
-              <PanelLeft size={16} />
+              <PanelLeft size={14} />
+            </button>
+          )}
+          {rightPanelHidden && onToggleRightPanel && (
+            <button
+              onClick={onToggleRightPanel}
+              className="absolute top-2 right-3 z-10 p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="展开右侧面板"
+            >
+              <PanelRight size={14} />
             </button>
           )}
           <EmptyState onSend={handleSend} />

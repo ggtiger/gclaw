@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
+  PanelRightClose,
   Copy,
   Scissors,
   ClipboardPaste,
@@ -34,7 +35,7 @@ import { isTauri, openWithSystemApp, revealInFinder } from '@/lib/tauri'
 
 // ─── 主组件 ───
 
-export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen }: FilesPanelProps) {
+export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen, onHide }: FilesPanelProps) {
   // 文件树
   const [tree, setTree] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -556,6 +557,11 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
         style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {onHide && !isFullscreen && (
+            <button onClick={onHide} className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer" title="收起面板">
+              <PanelRightClose size={14} />
+            </button>
+          )}
           {onToggleFullscreen && (
             <button onClick={onToggleFullscreen} className="p-0.5 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title={isFullscreen ? '退出全屏' : '全屏'}>
               {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}

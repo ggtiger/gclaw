@@ -34,6 +34,7 @@ export function ChatLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'channels' | 'settings' | null>(null)
   const [filesFullscreen, setFilesFullscreen] = useState(false)
+  const [rightPanelHidden, setRightPanelHidden] = useState(false)
 
   // 右侧面板拖拽调整宽度
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
@@ -267,6 +268,8 @@ export function ChatLayout() {
             projectName={currentProject?.name}
             sidebarHidden={projectSidebarHidden}
             onToggleSidebar={() => setProjectSidebarHidden(false)}
+            rightPanelHidden={rightPanelHidden}
+            onToggleRightPanel={() => setRightPanelHidden(false)}
             onSend={chat.sendMessage}
             onAbort={chat.abortChat}
             onClearChat={chat.clearChat}
@@ -281,6 +284,7 @@ export function ChatLayout() {
         )}
 
         {/* Right side panel */}
+        {!rightPanelHidden && (
         <aside
           className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[280px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
           style={{ WebkitAppRegion: 'no-drag', width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
@@ -296,13 +300,15 @@ export function ChatLayout() {
           )}
           {/* 面板内容 */}
           <div className={`w-full h-full overflow-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
-            {isSecretary ? <FocusPanel projectId={project.currentId} /> : <FilesPanel
+            {isSecretary ? <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} /> : <FilesPanel
               projectId={project.currentId}
               isFullscreen={filesFullscreen}
               onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)}
+              onHide={() => setRightPanelHidden(true)}
             />}
           </div>
         </aside>
+        )}
       </div>
 
       {/* Mobile overlay for project sidebar */}
