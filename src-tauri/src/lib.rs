@@ -231,7 +231,7 @@ fn find_node(app: &tauri::AppHandle) -> Option<String> {
 fn find_python3(app: &tauri::AppHandle) -> Option<String> {
     let rd = runtimes_dir(app);
     let bundled = if cfg!(target_os = "windows") {
-        rd.join("python").join("bin").join("python.exe")
+        rd.join("python").join("python.exe")
     } else {
         rd.join("python").join("bin").join("python3")
     };
@@ -413,12 +413,31 @@ fn download_runtime(
         if cfg!(target_os = "windows") { target_dir.join("node.exe") }
         else { target_dir.join("bin").join("node") }
     } else if name == "git" {
-        // Windows PortableGit: cmd/git.exe + bin/bash.exe
+        // Windows PortableGit: cmd/git.exe + bin/bash.exe 都必须存在
         target_dir.join("cmd").join("git.exe")
     } else {
-        if cfg!(target_os = "windows") { target_dir.join("bin").join("python.exe") }
+        if cfg!(target_os = "windows") { target_dir.join("python.exe") }
         else { target_dir.join("bin").join("python3") }
     };
+
+    // Windows git: 如果有 git.exe 但没有 bash.exe（旧的 MinGit），删除重下 PortableGit
+    if name == "git" && check_bin.exists() {
+        let bash_exe = target_dir.join("bin").join("bash.exe");
+        if !bash_exe.exists() {
+            println!("[GClaw] Git found but bash.exe missing (old MinGit?), re-downloading PortableGit...");
+            std::fs::remove_dir_all(&target_dir).ok();
+        }
+    }
+
+    // Windows python: 如果旧路径 bin/python.exe 存在但新路径 python.exe 不存在，删除重下
+    if name == "python" && !check_bin.exists() && cfg!(target_os = "windows") {
+        let old_bin = target_dir.join("bin").join("python.exe");
+        if old_bin.exists() {
+            println!("[GClaw] Python old layout detected (bin/python.exe), re-downloading...");
+            std::fs::remove_dir_all(&target_dir).ok();
+        }
+    }
+
     if check_bin.exists() {
         println!("[GClaw] {} already exists, skip download", label);
         return Ok(());
@@ -544,7 +563,7 @@ fn download_runtime(
 fn install_python_pip(app: &tauri::AppHandle) -> Result<(), String> {
     let rd = runtimes_dir(app);
     let python_bin = if cfg!(target_os = "windows") {
-        rd.join("python").join("bin").join("python.exe")
+        rd.join("python").join("python.exe")
     } else {
         rd.join("python").join("bin").join("python3")
     };
@@ -607,7 +626,7 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
     // 2. 运行时 Python（优先）
     let rd = runtimes_dir(app);
     let runtime_python = if cfg!(target_os = "windows") {
-        rd.join("python").join("bin").join("python.exe")
+        rd.join("python").join("python.exe")
     } else {
         rd.join("python").join("bin").join("python3")
     };
