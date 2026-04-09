@@ -20,7 +20,7 @@ const PYTHON_RELEASE_TAG: &str = "20260325";
 // 国内镜像（首次下载快）
 const NODE_MIRROR: &str = "https://cdn.npmmirror.com/binaries/node";
 const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone";
-// Windows MinGit 便携版（npmmirror 国内镜像）
+// Windows PortableGit 便携版（npmmirror 国内镜像，含 bash.exe）
 const GIT_MIRROR: &str = "https://registry.npmmirror.com/-/binary/git-for-windows";
 
 // ============ 启动页（独立 splash 窗口） ============
@@ -244,17 +244,37 @@ fn find_python3(app: &tauri::AppHandle) -> Option<String> {
 
 /// 查找 Git 二进制路径
 fn find_git(_app: &tauri::AppHandle) -> Option<String> {
-    // Windows: 检查内置 MinGit（runtimes/git/cmd/git.exe）
+    // Windows: 检查内置 PortableGit（runtimes/git/cmd/git.exe）
     #[cfg(target_os = "windows")]
     {
         let rd = runtimes_dir(_app);
         let bundled = rd.join("git").join("cmd").join("git.exe");
         if bundled.exists() {
-            println!("[GClaw] Found runtime MinGit: {}", bundled.display());
+            println!("[GClaw] Found runtime PortableGit: {}", bundled.display());
             return Some(bundled.to_string_lossy().to_string());
         }
     }
     which_git()
+}
+
+/// 查找 Git Bash 路径（Windows Claude Code 必需）
+fn find_git_bash(app: &tauri::AppHandle) -> Option<String> {
+    // 运行时 PortableGit 的 bash.exe
+    let rd = runtimes_dir(app);
+    let bundled_bash = rd.join("git").join("bin").join("bash.exe");
+    if bundled_bash.exists() {
+        return Some(bundled_bash.to_string_lossy().to_string());
+    }
+    // 系统安装的 Git 的 bash.exe
+    for path in &[
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+    ] {
+        if std::path::Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+    None
 }
 
 fn which_node() -> Option<String> {
@@ -344,16 +364,15 @@ fn python_download_url() -> String {
     )
 }
 
-/// 构建 Git 下载 URL（仅 Windows 支持自动下载 MinGit 便携版）
+/// 构建 Git 下载 URL（Windows 下载 PortableGit 含 bash.exe）
 fn git_download_url() -> Option<String> {
     if cfg!(target_os = "windows") {
-        // MinGit: 免安装便携版，解压即用，体积小（~30MB）
-        Some(format!("{}/{}/MinGit-{}-64-bit.zip",
+        // PortableGit: 完整便携版，含 git.exe + bash.exe，Claude Code 必需
+        Some(format!("{}/{}/PortableGit-{}-64-bit.7z.exe",
             GIT_MIRROR, GIT_WINDOWS_TAG, GIT_VERSION))
     } else {
         // macOS: /usr/bin/git (Xcode CLT) 或 /opt/homebrew/bin/git (Homebrew)
         // Linux: 系统包管理器安装 (apt/yum install git)
-        // 这两个平台不提供自动下载，依赖系统 git + PATH 注入
         None
     }
 }
@@ -394,7 +413,7 @@ fn download_runtime(
         if cfg!(target_os = "windows") { target_dir.join("node.exe") }
         else { target_dir.join("bin").join("node") }
     } else if name == "git" {
-        // Windows MinGit: cmd/git.exe
+        // Windows PortableGit: cmd/git.exe + bin/bash.exe
         target_dir.join("cmd").join("git.exe")
     } else {
         if cfg!(target_os = "windows") { target_dir.join("bin").join("python.exe") }
@@ -407,7 +426,8 @@ fn download_runtime(
 
     let temp_dir = std::env::temp_dir().join(format!("gclaw-dl-{}", name));
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
-    let archive_ext = if url.ends_with(".zip") { ".zip" }
+    let archive_ext = if url.ends_with(".7z.exe") { ".7z.exe" }
+                      else if url.ends_with(".zip") { ".zip" }
                       else if url.ends_with(".tar.xz") { ".tar.xz" }
                       else { ".tar.gz" };
     let archive = temp_dir.join(format!("download{}", archive_ext));
@@ -465,10 +485,17 @@ fn download_runtime(
     splash_update(app, &format!("正在解压 {}...", label), 100, "请稍候...");
     std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
 
-    // MinGit zip 无顶层目录，直接包含 cmd/、mingw64/ 等，不需 strip
+    // PortableGit zip 无顶层目录，直接包含 cmd/、bin/、mingw64/ 等，不需 strip
     let strip = if name == "git" { 0 } else { 1 };
 
-    let extract_status = if url.ends_with(".tar.xz") {
+    let extract_status = if url.ends_with(".7z.exe") {
+        // PortableGit 是 7z 自解压格式，运行自身即可解压
+        hidden_command(archive.to_str().unwrap_or(""))
+            .arg(format!("-o{}", target_dir.display()))
+            .arg("-y")
+            .status()
+            .map_err(|e| format!("解压失败: {}", e))?
+    } else if url.ends_with(".tar.xz") {
         let mut cmd = hidden_command("tar");
         cmd.args(&["-xJf", archive.to_str().unwrap_or("")]);
         if strip > 0 { cmd.arg(format!("--strip-components={}", strip)); }
@@ -601,12 +628,29 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         }
     }
 
-    // 4. Git（macOS GUI 应用需要显式注入，否则 Claude SDK 找不到 git 命令）
+    // 4. Git（PATH 注入 + CLAUDE_CODE_GIT_BASH_PATH）
     if let Some(git_bin) = find_git(app) {
         if let Some(git_dir) = std::path::Path::new(&git_bin).parent() {
             let s = git_dir.to_string_lossy().to_string();
             if !current_path.contains(&s) && !path_parts.contains(&s) {
                 path_parts.push(s);
+            }
+        }
+        // PortableGit 的 bin/ 目录也需要加入 PATH（含 bash.exe 等工具）
+        if let Some(git_root) = std::path::Path::new(&git_bin).parent().and_then(|p| p.parent()) {
+            let bin_dir = git_root.join("bin");
+            if bin_dir.exists() {
+                let s = bin_dir.to_string_lossy().to_string();
+                if !current_path.contains(&s) && !path_parts.contains(&s) {
+                    path_parts.push(s);
+                }
+            }
+            let usr_bin = git_root.join("usr").join("bin");
+            if usr_bin.exists() {
+                let s = usr_bin.to_string_lossy().to_string();
+                if !current_path.contains(&s) && !path_parts.contains(&s) {
+                    path_parts.push(s);
+                }
             }
         }
     }
@@ -632,6 +676,12 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         let python_home = rd.join("python");
         cmd.env("PYTHONHOME", python_home.to_string_lossy().as_ref());
         println!("[GClaw] PYTHONHOME={}", python_home.display());
+    }
+
+    // Windows: 设置 CLAUDE_CODE_GIT_BASH_PATH（Claude Code on Windows 必需）
+    if let Some(bash_path) = find_git_bash(app) {
+        cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &bash_path);
+        println!("[GClaw] CLAUDE_CODE_GIT_BASH_PATH={}", bash_path);
     }
 
     let child = cmd
