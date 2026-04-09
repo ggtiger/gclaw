@@ -156,11 +156,25 @@ export function ChatLayout() {
     },
   })
 
-  // 客户端认证检查：未登录则跳转到登录页（Tauri 桌面端跳过）
-  if (!authLoading && !user && !isTauri()) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login'
+  // 客户端认证检查：未登录则跳转到登录页
+  useEffect(() => {
+    if (!authLoading && !user) {
+      if (isTauri()) {
+        // Tauri 桌面端：通过 Rust 命令导航，避免 asset protocol 重定向问题
+        import('@tauri-apps/api/core').then(({ invoke }) => {
+          invoke('navigate_to', { path: '/login' }).catch(() => {
+            window.location.href = '/login'
+          })
+        }).catch(() => {
+          window.location.href = '/login'
+        })
+      } else {
+        window.location.href = '/login'
+      }
     }
+  }, [authLoading, user])
+
+  if (authLoading || !user) {
     return (
       <div className="h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg)' }}>
         <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
