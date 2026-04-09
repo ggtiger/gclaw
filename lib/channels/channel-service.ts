@@ -7,7 +7,7 @@
 import { executeChat } from '@/lib/claude/process-manager'
 import { addMessage } from '@/lib/store/messages'
 import { channelEventBus } from './channel-events'
-import type { ChatMessage } from '@/types/chat'
+import type { ChatMessage, ChatAttachment } from '@/types/chat'
 import type { ChannelConfig } from '@/types/channels'
 
 /**
@@ -18,6 +18,7 @@ export async function handleChannelMessage(
   projectId: string,
   _channel: ChannelConfig,
   incomingText: string,
+  attachments?: ChatAttachment[],
 ): Promise<string> {
   // 持久化用户消息
   const userMsg: ChatMessage = {
@@ -26,6 +27,7 @@ export async function handleChannelMessage(
     content: incomingText,
     messageType: 'text',
     createdAt: new Date().toISOString(),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   }
   addMessage(projectId, userMsg)
 

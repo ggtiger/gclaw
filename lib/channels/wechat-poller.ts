@@ -259,8 +259,30 @@ class WechatPollerService {
       }
     }
 
+    // 构建附件列表（用于前端 UI 展示）
+    const attachments: import('@/types/chat').ChatAttachment[] = []
+    if (parsed.messageType === 'image' && parsed.imagePayload?.imageUrl) {
+      attachments.push({
+        id: `att_${Date.now()}_img`,
+        filename: 'image.jpg',
+        mimeType: 'image/jpeg',
+        size: parsed.imagePayload.size || 0,
+        url: parsed.imagePayload.imageUrl,
+        type: 'image',
+      })
+    } else if (parsed.messageType === 'file' && parsed.filePayload?.fileUrl) {
+      attachments.push({
+        id: `att_${Date.now()}_file`,
+        filename: parsed.filePayload.fileName || 'file',
+        mimeType: parsed.filePayload.fileType || 'application/octet-stream',
+        size: parsed.filePayload.size || 0,
+        url: parsed.filePayload.fileUrl,
+        type: 'file',
+      })
+    }
+
     // 调用 Agent 获取回复
-    const reply = await handleChannelMessage(conn.projectId, conn.channel, agentInput)
+    const reply = await handleChannelMessage(conn.projectId, conn.channel, agentInput, attachments.length > 0 ? attachments : undefined)
 
     // 通过 ilink API 回复
     const contextToken = conn.contextTokenCache.get(parsed.senderId)

@@ -27,6 +27,7 @@ export function parseFeishuEvent(body: Record<string, unknown>): {
   type: 'challenge' | 'message' | 'unknown'
   challenge?: string
   text?: string
+  imageUrl?: string
   messageId?: string
   chatId?: string
   chatType?: string
@@ -48,6 +49,7 @@ export function parseFeishuEvent(body: Record<string, unknown>): {
     if (message) {
       const msgType = message.message_type as string
       let text = ''
+      let imageUrl: string | undefined
 
       if (msgType === 'text') {
         try {
@@ -56,11 +58,18 @@ export function parseFeishuEvent(body: Record<string, unknown>): {
         } catch {
           text = (message.content as string) || ''
         }
+      } else if (msgType === 'image') {
+        text = '[图片消息]'
+        try {
+          const content = JSON.parse(message.content as string)
+          imageUrl = content.image_key as string
+        } catch {}
       }
 
       return {
         type: 'message',
         text,
+        imageUrl,
         messageId: message.message_id as string,
         chatId: message.chat_id as string,
         chatType: message.chat_type as string,

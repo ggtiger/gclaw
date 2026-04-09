@@ -417,7 +417,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <div className="flex-1" />
         )
       ) : isEmpty ? (
-        <div className="flex-1 flex flex-col pb-48">
+        <div className="flex-1 flex flex-col pb-48" data-tauri-drag-region>
           <EmptyState onSend={handleSend} />
         </div>
       ) : (

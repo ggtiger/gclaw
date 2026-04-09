@@ -9,6 +9,8 @@ import type { DingtalkConfig } from '@/types/channels'
 interface DingtalkMessage {
   msgtype: string
   text?: { content: string }
+  picture?: { downloadCode: string; fileSize: number }
+  richText?: { text: string }
   msgId: string
   createAt: string
   conversationType: string // '1'=单聊, '2'=群聊
@@ -46,22 +48,31 @@ export function verifyDingtalkSignature(
 }
 
 /**
- * 解析钉钉消息体，提取文本内容
+ * 解析钉钉消息体，提取文本和图片内容
  */
 export function parseDingtalkMessage(body: Record<string, unknown>): {
   text: string
+  imageUrl?: string
   sessionWebhook: string | null
   senderNick: string
 } {
   const msg = body as unknown as DingtalkMessage
   let text = ''
+  let imageUrl: string | undefined
 
   if (msg.msgtype === 'text' && msg.text?.content) {
     text = msg.text.content.trim()
+  } else if (msg.msgtype === 'picture' && msg.picture?.downloadCode) {
+    text = '[图片消息]'
+    // 钉钉图片需要通过 downloadCode 下载，这里记录标识
+    imageUrl = msg.picture.downloadCode
+  } else if (msg.msgtype === 'richText' && msg.richText?.text) {
+    text = msg.richText.text.trim()
   }
 
   return {
     text,
+    imageUrl,
     sessionWebhook: msg.sessionWebhook || null,
     senderNick: msg.senderNick || 'unknown',
   }

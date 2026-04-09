@@ -38,16 +38,26 @@ export async function POST(request: NextRequest) {
 
   // 解析消息
   const body = await request.json()
-  const { text, sessionWebhook, senderNick } = parseDingtalkMessage(body)
+  const { text, imageUrl, sessionWebhook, senderNick } = parseDingtalkMessage(body)
 
   if (!text) {
     return Response.json({ success: true, message: 'no text content' })
   }
 
+  // 构建附件
+  const attachments = imageUrl ? [{
+    id: `att_${Date.now()}_img`,
+    filename: 'image.jpg',
+    mimeType: 'image/jpeg',
+    size: 0,
+    url: imageUrl,
+    type: 'image' as const,
+  }] : undefined
+
   console.log(`[Webhook/Dingtalk] Message from ${senderNick}: ${text.slice(0, 100)}`)
 
   // 调用 Agent 获取回复
-  const reply = await handleChannelMessage(projectId, channel, text)
+  const reply = await handleChannelMessage(projectId, channel, text, attachments)
 
   // 回复消息
   if (sessionWebhook) {

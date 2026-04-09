@@ -44,10 +44,20 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, message: 'ignored' })
   }
 
+  // 构建附件
+  const attachments = event.imageUrl ? [{
+    id: `att_${Date.now()}_img`,
+    filename: 'image.jpg',
+    mimeType: 'image/jpeg',
+    size: 0,
+    url: event.imageUrl,
+    type: 'image' as const,
+  }] : undefined
+
   console.log(`[Webhook/Feishu] Message: ${event.text.slice(0, 100)}`)
 
   // 调用 Agent 获取回复
-  const reply = await handleChannelMessage(projectId, channel, event.text)
+  const reply = await handleChannelMessage(projectId, channel, event.text, attachments)
 
   // 回复消息
   if (event.messageId) {

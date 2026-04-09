@@ -64,7 +64,7 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--color-bg)' }} data-tauri-drag-region>
       <div
         className="w-full max-w-sm rounded-xl border p-6 animate-fade-in-up"
         style={{
