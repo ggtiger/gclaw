@@ -64,7 +64,7 @@ export default function FocusPanel({ projectId, onHide }: Props) {
       {/* Header */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-between px-5 pt-3 pb-2 shrink-0 select-none"
+        className="flex items-center justify-between px-5 pt-2 pb-2 shrink-0 select-none"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

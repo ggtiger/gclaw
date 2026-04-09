@@ -553,7 +553,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       {/* 工具栏 */}
       <div
         data-tauri-drag-region
-        className="fp-header flex items-center justify-between px-3 pt-3 pb-2 py-1.5 border-b shrink-0 select-none"
+        className="fp-header flex items-center justify-between px-3 pt-2 pb-2 py-1.5 border-b shrink-0 select-none"
         style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

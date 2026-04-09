@@ -325,7 +325,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
   return (
     <div className="relative flex flex-col h-full bg-white dark:bg-transparent">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
-      {!isEmpty && !initialLoading && (
+      {!initialLoading && (
         <div
           data-tauri-drag-region
           className="flex items-center flex-nowrap pt-1 pb-1 gap-2 px-3 lg:px-4 py-2 border-white/10 dark:border-white/[0.06] flex-shrink-0 overflow-x-auto"
@@ -428,28 +428,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <div className="flex-1" />
         )
       ) : isEmpty ? (
-        <div className="flex-1 flex flex-col pb-48 relative" data-tauri-drag-region>
-          {/* 空会话时也需要展开侧边栏按钮 */}
-          {sidebarHidden && onToggleSidebar && (
-            <button
-              onClick={onToggleSidebar}
-              className="absolute top-2 left-3 z-10 p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              title="展开项目侧边栏"
-            >
-              <PanelLeft size={14} />
-            </button>
-          )}
-          {rightPanelHidden && onToggleRightPanel && (
-            <button
-              onClick={onToggleRightPanel}
-              className="absolute top-2 right-3 z-10 p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              title="展开右侧面板"
-            >
-              <PanelRight size={14} />
-            </button>
-          )}
+        <div className="flex-1 flex flex-col pb-48">
           <EmptyState onSend={handleSend} />
         </div>
       ) : (
