@@ -65,7 +65,7 @@ export const PermissionDialog = memo(function PermissionDialog({ request, onResp
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-2.5"
-        style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning, #f59e0b) 12%, transparent)' }}
+        style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)' }}
       >
         <Shield size={16} style={{ color: 'var(--color-warning, #f59e0b)' }} />
         <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>

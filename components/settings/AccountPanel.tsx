@@ -94,7 +94,7 @@ export function AccountPanel() {
   return (
     <div className="p-4 space-y-5">
       {/* 用户信息卡片 */}
-      <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20">
+      <div className="flex items-center gap-4 p-4 rounded-lg bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20">
         {/* 头像上传区域 */}
         <div className="relative flex-shrink-0">
           <div

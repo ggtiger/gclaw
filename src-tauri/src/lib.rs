@@ -960,7 +960,7 @@ pub fn run() {
     {
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--enable-gpu-rasterization --enable-zero-copy --disable-features=msSmartScreenProtection --force-gpu-mem-available-mb=512 --gpu-rasterization-msaa-sample-count=0",
+            "--disable-gpu-compositing --enable-begin-frame-scheduling --disable-features=msSmartScreenProtection",
         );
     }
 

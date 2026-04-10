@@ -159,7 +159,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
 
   if (isSystem) {
     return (
-      <div className="flex items-start gap-2 px-4 py-3 mx-4 my-2 rounded-xl animate-fade-in" style={{ backgroundColor: 'color-mix(in srgb, var(--color-error) 8%, transparent)' }}>
+      <div className="flex items-start gap-2 px-4 py-3 mx-4 my-2 rounded-xl animate-fade-in" style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)' }}>
         <AlertCircle size={16} className="text-[var(--color-error)] mt-0.5 flex-shrink-0" />
         <div className="text-sm" style={{ color: 'var(--color-error)' }}>
           {message.content}
@@ -195,7 +195,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
         </div>
 
         {isUser ? (
-          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-2xl rounded-tr-md shadow-lg shadow-purple-500/20">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-lg rounded-tr-sm shadow-lg shadow-purple-500/20">
             {message.content !== '(附件)' && message.content}
             {/* 附件预览 */}
             {message.attachments && message.attachments.length > 0 && (
@@ -207,7 +207,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             )}
           </div>
         ) : (
-          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-[#f1f5f9] dark:bg-[#1e293b] rounded-2xl rounded-tl-md border border-gray-200/60 dark:border-white/10 text-[var(--color-text)] shadow-sm">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-[#f1f5f9] dark:bg-[#1e293b] rounded-lg rounded-tl-sm border border-gray-200/60 dark:border-white/10 text-[var(--color-text)] shadow-sm">
             {/* 长消息折叠：只渲染前 COLLAPSE_THRESHOLD 字符，大幅减少 DOM 节点 */}
             <MarkdownRenderer
               content={expanded || message.isStreaming ? message.content : message.content.slice(0, COLLAPSE_THRESHOLD) + '\n\n...'}

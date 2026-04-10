@@ -43,8 +43,8 @@ function TodoStatusIcon({ status }: { status: string }) {
 function TodoStatusBadge({ status }: { status: string }) {
   const config: Record<string, { label: string; color: string; bg: string }> = {
     PENDING: { label: '待处理', color: 'var(--color-text-muted)', bg: 'var(--color-surface-hover)' },
-    IN_PROGRESS: { label: '进行中', color: 'var(--color-primary)', bg: 'color-mix(in srgb, var(--color-primary) 15%, transparent)' },
-    COMPLETE: { label: '已完成', color: 'var(--color-success)', bg: 'color-mix(in srgb, var(--color-success) 15%, transparent)' },
+    IN_PROGRESS: { label: '进行中', color: 'var(--color-primary)', bg: 'rgba(124, 58, 237, 0.15)' },
+    COMPLETE: { label: '已完成', color: 'var(--color-success)', bg: 'rgba(34, 197, 94, 0.15)' },
     CANCELLED: { label: '已取消', color: 'var(--color-text-muted)', bg: 'var(--color-surface-hover)' },
   }
   const c = config[status] || config.PENDING
@@ -125,7 +125,7 @@ function TodoWriteView({ tools }: { tools: ToolCallItem[] }) {
             key={todo.id}
             className="flex items-start gap-2 py-1 px-2 rounded text-xs"
             style={{
-              backgroundColor: todo.status === 'IN_PROGRESS' ? 'color-mix(in srgb, var(--color-primary) 8%, transparent)' : 'transparent',
+              backgroundColor: todo.status === 'IN_PROGRESS' ? 'rgba(124, 58, 237, 0.08)' : 'transparent',
               opacity: todo.status === 'CANCELLED' ? 0.5 : 1,
             }}
           >
@@ -316,7 +316,7 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                         <span
                           className="inline-block px-1.5 py-px rounded text-[10px] font-medium"
                           style={{
-                            backgroundColor: 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)',
+                            backgroundColor: 'rgba(124, 58, 237, 0.12)',
                             color: 'var(--color-primary, #7c3aed)',
                           }}
                         >
@@ -384,7 +384,7 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                                 style={{
                                   borderColor: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
                                   backgroundColor: isSelected
-                                    ? 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)'
+                                    ? 'rgba(124, 58, 237, 0.12)'
                                     : 'transparent',
                                   color: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text)',
                                 }}

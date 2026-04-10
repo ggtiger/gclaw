@@ -55,7 +55,7 @@ export function TemplateSelector({ projectId, onSelect }: TemplateSelectorProps)
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors border"
         style={{
           borderColor: open ? 'var(--color-primary)' : 'var(--color-border)',
-          backgroundColor: open ? 'color-mix(in srgb, var(--color-primary) 8%, transparent)' : 'transparent',
+          backgroundColor: open ? 'rgba(124, 58, 237, 0.08)' : 'transparent',
           color: open ? 'var(--color-primary)' : 'var(--color-text-muted)',
         }}
       >

@@ -76,7 +76,7 @@ export function ExportButton({ projectId }: ExportButtonProps) {
         onClick={() => setOpen(!open)}
         className="p-1.5 rounded-md cursor-pointer transition-colors"
         style={{
-          backgroundColor: open ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : 'transparent',
+          backgroundColor: open ? 'rgba(124, 58, 237, 0.10)' : 'transparent',
         }}
         title="导出对话"
       >

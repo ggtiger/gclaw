@@ -177,22 +177,28 @@ export function useChat(projectId: string) {
     }
   }, [projectId, loadHistory])
 
-  // ---- 状态更新辅助：同时写入 React state 和 buffer ----
+  // ---- 状态更新辅助：同时写入 React state 和 buffer，用 RAF 批处理避免高频重渲染 ----
+  const rafRef = useRef<number>(0)
   const updateState = useCallback((forProjectId: string, updater: (buf: StreamBuffer) => void) => {
     const buf = getBuffer(forProjectId)
     updater(buf)
 
-    // 只在当前显示的项目匹配时更新 React state
-    if (currentProjectIdRef.current === forProjectId) {
-      setStreamingContent(buf.content)
-      setThinkingContent(buf.thinkingContent)
-      setToolSummary(buf.toolSummary)
-      setSending(buf.sending)
-      setSessionId(buf.sessionId)
-      setLastStats(buf.lastStats)
-      setPermissionRequest(buf.permissionRequest)
-      setAskQuestion(buf.askQuestion)
-      setStatusText(buf.statusText)
+    // 只在当前显示的项目匹配时更新 React state，用 RAF 批处理
+    if (currentProjectIdRef.current === forProjectId && !rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0
+        const b = getBuffer(forProjectId)
+        if (currentProjectIdRef.current !== forProjectId) return
+        setStreamingContent(b.content)
+        setThinkingContent(b.thinkingContent)
+        setToolSummary(b.toolSummary)
+        setSending(b.sending)
+        setSessionId(b.sessionId)
+        setLastStats(b.lastStats)
+        setPermissionRequest(b.permissionRequest)
+        setAskQuestion(b.askQuestion)
+        setStatusText(b.statusText)
+      })
     }
   }, [])
 

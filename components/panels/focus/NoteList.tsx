@@ -60,7 +60,7 @@ function NoteEditorModal({
   const modal = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-w-[90vw] max-h-[85vh] flex flex-col"
+        className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-w-[90vw] max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

@@ -72,7 +72,7 @@ export function FocusSettingsModal({ projectId, settings, onSave, onClose }: Pro
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 w-[400px] max-w-[90vw] max-h-[80vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-[400px] max-w-[90vw] max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

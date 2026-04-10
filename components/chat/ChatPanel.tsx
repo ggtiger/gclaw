@@ -46,7 +46,7 @@ interface ChatPanelProps {
 function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttachment[]) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in-up">
-      <Image src={appIcon} alt="GClaw" width={64} height={64} className="w-16 h-16 rounded-2xl mb-5 shadow-lg" />
+      <Image src={appIcon} alt="GClaw" width={64} height={64} className="w-16 h-16 rounded-lg mb-5 shadow-lg" />
       <h2 className="text-xl font-bold mb-1.5" style={{ color: 'var(--color-text)' }}>
         GClaw
       </h2>
@@ -112,8 +112,8 @@ function FilterBar({
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
         style={{
           backgroundColor: activeStarred
-            ? 'color-mix(in srgb, #FDE047 20%, transparent)'
-            : 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
+            ? 'rgba(253, 224, 71, 0.2)'
+            : 'rgba(148, 163, 184, 0.08)',
           color: activeStarred ? '#D97706' : 'var(--color-text-muted)',
         }}
       >
@@ -129,8 +129,8 @@ function FilterBar({
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
           style={{
             backgroundColor: activeTag === t.name
-              ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)'
-              : 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)',
+              ? 'rgba(124, 58, 237, 0.15)'
+              : 'rgba(148, 163, 184, 0.08)',
             color: activeTag === t.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
           }}
         >
@@ -360,8 +360,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
                   style={{
                     backgroundColor: ch.connected
-                      ? 'color-mix(in srgb, #22C55E 12%, transparent)'
-                      : 'color-mix(in srgb, #94A3B8 10%, transparent)',
+                      ? 'rgba(34, 197, 94, 0.12)'
+                      : 'rgba(148, 163, 184, 0.10)',
                     color: ch.connected ? '#16A34A' : 'var(--color-text-muted)',
                   }}
                 >
@@ -376,7 +376,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               onClick={() => onOpenChannels?.()}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
               style={{
-                backgroundColor: 'color-mix(in srgb, #F59E0B 15%, transparent)',
+                backgroundColor: 'rgba(245, 158, 11, 0.15)',
                 color: '#B45309',
               }}
             >
@@ -418,7 +418,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
                   <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-white/10 animate-pulse shrink-0" />
                   <div className={`max-w-[70%] flex flex-col gap-2 ${i % 2 === 0 ? '' : 'items-end'}`}>
                     <div className="h-3 w-16 rounded bg-gray-200 dark:bg-white/10 animate-pulse" />
-                    <div className="rounded-2xl px-4 py-3 bg-gray-200/80 dark:bg-white/[0.06] animate-pulse">
+                    <div className="rounded-lg px-4 py-3 bg-gray-200/80 dark:bg-white/[0.06] animate-pulse">
                       <div className="flex flex-col gap-1.5">
                         <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${60 + Math.random() * 40}%` }} />
                         <div className="h-3 rounded bg-gray-300/60 dark:bg-white/[0.06]" style={{ width: `${40 + Math.random() * 30}%` }} />
@@ -517,7 +517,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 流式输出 */}
             {streamingContent && (
-              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
                     <Bot size={16} className="text-purple-600 dark:text-purple-400" />
@@ -534,7 +534,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 等待响应指示 */}
             {sending && !streamingContent && !toolSummary && (
-              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
                     <Bot size={16} className="text-purple-600 dark:text-purple-400" />
@@ -569,7 +569,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       )}
 
       {/* 浮动输入区域 */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-white/0 dark:from-[#1e293b] dark:via-[#1e293b]/95 dark:to-[#1e293b]/0 pt-8 pb-4 px-3 lg:px-4 flex justify-center z-20">
+      <div className="absolute bottom-0 left-0 right-0 pb-4 px-3 lg:px-4 flex justify-center z-20">
         <div className="w-full">
           <ChatInput
             onSend={handleSend}

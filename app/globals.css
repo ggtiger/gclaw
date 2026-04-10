@@ -632,10 +632,16 @@ body {
   background: #1a1f2e !important;
 }
 
-/* 滚动容器强制 GPU 独立图层 + 优化 */
-.tauri-app .overflow-y-auto {
+/* 滚动容器强制 GPU 独立图层 + 优化（只针对聊天区域，不影响 Modal） */
+.tauri-app main .overflow-y-auto {
   transform: translateZ(0);
   -webkit-overflow-scrolling: touch;
+  contain: layout style paint;
+}
+
+/* 消息气泡容器：限制重排范围 */
+.tauri-app [id^="msg-"] {
+  contain: layout style;
 }
 
 /* 消除所有 transition — 滚动时浏览器不需要检查属性变化 */
@@ -699,4 +705,12 @@ body {
 .tauri-app .animate-slide-in-left,
 .tauri-app .animate-slide-in-right {
   animation: none !important;
+}
+
+/* 浮动输入区：纯色背景替代渐变 */
+.tauri-app [class*="bg-gradient-to-t"] {
+  background: #fff !important;
+}
+.dark.tauri-app [class*="bg-gradient-to-t"] {
+  background: #1e293b !important;
 }

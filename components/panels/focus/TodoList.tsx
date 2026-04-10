@@ -44,7 +44,7 @@ export default function TodoList({ todos, loading, onToggle, onAdd, onRemove }: 
   }
 
   return (
-    <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-3">
+    <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-lg border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500 dark:text-gray-400">待办任务</span>
         <span className="text-[10px] text-gray-400">

@@ -39,7 +39,7 @@ export function MermaidBlock({ chart }: { chart: string }) {
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'color-mix(in srgb, var(--color-error) 10%, transparent)', color: 'var(--color-error)' }}>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'rgba(239, 68, 68, 0.10)', color: 'var(--color-error)' }}>
         <AlertCircle size={14} />
         <span>Mermaid 渲染失败: {error}</span>
       </div>

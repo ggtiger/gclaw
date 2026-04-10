@@ -118,7 +118,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
       </div>
 
       {/* 背景图片 */}
-      <div className="p-4 rounded-2xl bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20 space-y-3">
+      <div className="p-4 rounded-lg bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20 space-y-3">
         <label className="block text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           <div className="flex items-center gap-1.5">
             <ImageIcon size={13} />
@@ -207,7 +207,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
       </div>
 
       {/* 主题颜色 */}
-      <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
+      <div className="p-4 rounded-lg border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
         <div className="flex items-center gap-1.5">
           <Palette size={13} style={{ color: 'var(--color-text-secondary)' }} />
           <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>主题颜色</span>

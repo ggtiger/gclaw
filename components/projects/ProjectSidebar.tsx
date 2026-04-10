@@ -66,7 +66,7 @@ export function ProjectSidebar({
   if (collapsed) {
     return (
       <div
-        className="w-10 h-full flex flex-col items-center py-2 flex-shrink-0 rounded-2xl glass"
+        className="w-10 h-full flex flex-col items-center py-2 flex-shrink-0 glass"
       >
         <button
           onClick={onToggleCollapse}
@@ -95,7 +95,7 @@ export function ProjectSidebar({
 
   return (
     <div
-      className="w-56 h-full flex flex-col flex-shrink-0 rounded-2xl glass"
+      className="w-56 h-full flex flex-col flex-shrink-0 glass"
     >
       {/* macOS 红绿灰空间 + GClaw 品牌区域 */}
       <div

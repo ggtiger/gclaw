@@ -90,7 +90,7 @@ export default function CalendarView({ events, loading, onAdd, onRemove }: Props
   }
 
   return (
-    <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-2xl border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-2">
+    <div className="bg-white/30 dark:bg-white/5 backdrop-blur-md rounded-lg border border-white/40 dark:border-white/[0.06] p-4 shadow-sm flex flex-col gap-2">
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-semibold text-gray-900 dark:text-white">

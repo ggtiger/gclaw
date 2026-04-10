@@ -127,7 +127,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
       {/* Header */}
       <div
         className="flex items-center gap-1.5 px-3 py-1.5"
-        style={{ backgroundColor: 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)' }}
+        style={{ backgroundColor: 'rgba(124, 58, 237, 0.12)' }}
       >
         <HelpCircle size={13} style={{ color: 'var(--color-primary, #7c3aed)' }} />
         <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
@@ -147,7 +147,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                 <span
                   className="inline-block px-1.5 py-px rounded text-[10px] font-medium"
                   style={{
-                    backgroundColor: 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)',
+                    backgroundColor: 'rgba(124, 58, 237, 0.12)',
                     color: 'var(--color-primary, #7c3aed)',
                   }}
                 >
@@ -213,7 +213,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                           ? 'var(--color-primary, #7c3aed)'
                           : 'var(--color-border)',
                         backgroundColor: isSelected
-                          ? 'color-mix(in srgb, var(--color-primary, #7c3aed) 12%, transparent)'
+                          ? 'rgba(124, 58, 237, 0.12)'
                           : 'transparent',
                         color: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text)',
                       }}

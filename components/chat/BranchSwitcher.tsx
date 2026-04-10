@@ -103,10 +103,10 @@ export function BranchSwitcher({ projectId, activeBranch, onSwitch, lastMessageI
         className="px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
         style={{
           backgroundColor: activeBranch === 'main'
-            ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)'
+            ? 'rgba(124, 58, 237, 0.15)'
             : 'transparent',
           color: activeBranch === 'main' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          border: activeBranch === 'main' ? '1px solid color-mix(in srgb, var(--color-primary) 30%, transparent)' : '1px solid transparent',
+          border: activeBranch === 'main' ? '1px solid rgba(124, 58, 237, 0.30)' : '1px solid transparent',
         }}
       >
         主线
@@ -120,13 +120,13 @@ export function BranchSwitcher({ projectId, activeBranch, onSwitch, lastMessageI
             className="px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors flex items-center gap-1"
             style={{
               backgroundColor: activeBranch === branch.id
-                ? `color-mix(in srgb, ${BRANCH_COLORS[idx % BRANCH_COLORS.length]} 15%, transparent)`
+                ? `rgba(${BRANCH_COLORS[idx % BRANCH_COLORS.length]}, 0.15)`
                 : 'transparent',
               color: activeBranch === branch.id
                 ? BRANCH_COLORS[idx % BRANCH_COLORS.length]
                 : 'var(--color-text-muted)',
               border: activeBranch === branch.id
-                ? `1px solid color-mix(in srgb, ${BRANCH_COLORS[idx % BRANCH_COLORS.length]} 30%, transparent)`
+                ? `1px solid rgba(${BRANCH_COLORS[idx % BRANCH_COLORS.length]}, 0.30)`
                 : '1px solid transparent',
             }}
           >

@@ -36,7 +36,7 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
       />
 
       {/* 内容区域 */}
-      <div className="relative max-w-2xl w-full mx-4 max-h-[80vh] glass rounded-2xl shadow-xl flex flex-col border border-white/40 dark:border-white/[0.06]">
+      <div className="relative max-w-2xl w-full mx-4 max-h-[80vh] glass rounded-lg shadow-xl flex flex-col border border-white/40 dark:border-white/[0.06]">
         {/* 标题栏 */}
         <div className="flex justify-between items-center px-6 py-4 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
           <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>

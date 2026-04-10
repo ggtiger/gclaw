@@ -266,7 +266,7 @@ export function CommandPalette({
   let flatIdx = 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] animate-fade-in" style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] animate-fade-in" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
       <div
         className="w-full max-w-lg rounded-xl border shadow-2xl overflow-hidden animate-fade-in-up"
         style={{
@@ -336,7 +336,7 @@ export function CommandPalette({
                       <span
                         className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg"
                         style={{
-                          backgroundColor: isSelected ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'var(--color-bg-secondary)',
+                          backgroundColor: isSelected ? 'rgba(124, 58, 237, 0.12)' : 'var(--color-bg-secondary)',
                           color: isSelected ? 'var(--color-primary)' : 'var(--color-text-muted)',
                         }}
                       >
