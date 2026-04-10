@@ -274,7 +274,7 @@ body::before {
   <div id="status" class="status">正在启动...</div>
   <div id="progress-track" class="progress-track pulse"><div id="bar" class="progress-bar"></div></div>
   <div id="detail" class="detail"></div>
-  <button id="retry-btn" class="retry-btn" onclick="window.location.href = window.location.href">重试</button>
+  <button id="retry-btn" class="retry-btn" onclick="retryStartup()">重试</button>
 </div>
 
 <script>
@@ -315,6 +315,23 @@ window.__splashUpdate = function(opts) {
     document.getElementById('retry-btn').style.display = 'inline-block';
   }
 };
+
+function retryStartup() {
+  // 隐藏重试按钮，重置 UI
+  document.getElementById('retry-btn').style.display = 'none';
+  document.getElementById('status').textContent = '正在重试...';
+  document.getElementById('detail').textContent = '';
+  var track = document.getElementById('progress-track');
+  track.classList.add('pulse');
+  document.getElementById('bar').style.width = '0%';
+  // 调用 Tauri command 重跑启动流程
+  if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+    window.__TAURI_INTERNALS__.invoke('retry_startup');
+  } else {
+    // fallback: 刷新页面
+    window.location.reload();
+  }
+}
 </script>
 </body>
 </html>

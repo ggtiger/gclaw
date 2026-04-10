@@ -19,7 +19,7 @@ const PYTHON_RELEASE_TAG: &str = "20260325";
 
 // 国内镜像（首次下载快）
 const NODE_MIRROR: &str = "https://cdn.npmmirror.com/binaries/node";
-const PYTHON_MIRROR: &str = "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone";
+const PYTHON_MIRROR: &str = "https://registry.npmmirror.com/-/binary/python-build-standalone";
 // Windows PortableGit 便携版（npmmirror 国内镜像，含 bash.exe）
 const GIT_MIRROR: &str = "https://registry.npmmirror.com/-/binary/git-for-windows";
 
@@ -374,7 +374,7 @@ fn node_download_url() -> String {
 fn python_download_url() -> String {
     let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
     let platform_suffix = if cfg!(target_os = "windows") {
-        format!("{}-pc-windows-msvc-shared", arch)
+        format!("{}-pc-windows-msvc", arch)
     } else if cfg!(target_os = "macos") {
         format!("{}-apple-darwin", arch)
     } else {
@@ -786,6 +786,14 @@ fn save_file_content(path: String, content: Vec<u8>) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+/// splash 重试按钮调用：重新执行启动流程
+#[tauri::command]
+fn retry_startup(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        run_production_startup(&app);
+    });
+}
+
 #[tauri::command]
 fn get_server_url(state: tauri::State<ServerState>) -> String {
     format!("http://127.0.0.1:{}", state.port)
@@ -813,6 +821,98 @@ fn app_ready(app: tauri::AppHandle) {
         let _ = main.show();
         let _ = main.set_focus();
     }
+}
+
+/// 生产模式启动流程：检查/下载运行时 → 启动服务 → 导航主窗口
+fn run_production_startup(handle: &tauri::AppHandle) {
+    // 重置 splash 状态（重试时需要）
+    splash_update(handle, "正在检查环境...", 20, "");
+
+    let node_present = find_node(handle).is_some();
+    if !node_present {
+        splash_update(handle, "正在准备运行环境...", 30, "首次启动需要下载，请稍候");
+        match download_runtime(handle, "node", "Node.js", &node_download_url()) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("[GClaw] Node.js download failed: {}", e);
+                splash_error(handle, "环境准备失败，请检查网络后重试");
+                return;
+            }
+        }
+    }
+
+    let python_present = find_python3(handle).is_some();
+    if !python_present {
+        splash_update(handle, "正在准备运行环境...", 50, "即将完成");
+        match download_runtime(handle, "python", "Python", &python_download_url()) {
+            Ok(_) => {
+                if let Err(e) = install_python_pip(handle) {
+                    eprintln!("[GClaw] pip install failed: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("[GClaw] Python download failed: {}", e);
+                splash_error(handle, "环境准备失败，请检查网络后重试");
+                return;
+            }
+        }
+    }
+
+    // Git 运行时
+    let git_present = find_git(handle).is_some();
+    if !git_present {
+        if let Some(git_url) = git_download_url() {
+            splash_update(handle, "正在准备运行环境...", 60, "首次启动需要下载，请稍候");
+            match download_runtime(handle, "git", "Git", &git_url) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("[GClaw] Git download failed: {}", e);
+                    splash_error(handle, "环境准备失败，请检查网络后重试");
+                    return;
+                }
+            }
+        } else {
+            let msg = if cfg!(target_os = "macos") {
+                "未检测到 Git，请先执行: xcode-select --install"
+            } else {
+                "未检测到 Git，请先安装: sudo apt install git"
+            };
+            eprintln!("[GClaw] Git not found");
+            splash_error(handle, msg);
+            return;
+        }
+    }
+
+    splash_update(handle, "环境就绪", 70, "");
+    splash_update(handle, "正在启动服务...", 85, "");
+
+    let (child, port) = start_server(handle);
+
+    // 如果是重试，ServerState 可能已经 manage 过
+    if let Some(state) = handle.try_state::<ServerState>() {
+        if let Ok(mut guard) = state.child.lock() {
+            // 杀掉旧进程（如果有的话）
+            if let Some(old) = guard.as_mut() {
+                let _ = old.kill();
+                let _ = old.wait();
+            }
+            *guard = Some(child);
+        }
+    } else {
+        handle.manage(ServerState {
+            child: Mutex::new(Some(child)),
+            port,
+        });
+    }
+
+    wait_for_server(port);
+
+    splash_update(handle, "即将就绪...", 100, "");
+    if let Some(main) = handle.get_webview_window("main") {
+        let url = format!("http://127.0.0.1:{}", port);
+        let _ = main.navigate(url.parse().unwrap());
+    }
+    finalize_launch(handle, 15);
 }
 
 /// 等待前端 app_ready 信号或超时后强制切换
@@ -960,87 +1060,7 @@ pub fn run() {
                     std::thread::spawn(move || {
                         // 等待启动页加载
                         std::thread::sleep(std::time::Duration::from_millis(500));
-
-                        // --- 检查/下载运行时环境 ---
-                        splash_update(&handle, "正在检查环境...", 20, "");
-
-                        let node_present = find_node(&handle).is_some();
-                        if !node_present {
-                            splash_update(&handle, "正在准备运行环境...", 30, "首次启动需要下载，请稍候");
-                            match download_runtime(&handle, "node", "Node.js", &node_download_url()) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    eprintln!("[GClaw] Node.js download failed: {}", e);
-                                    splash_error(&handle, "环境准备失败，请检查网络后重试");
-                                    return;
-                                }
-                            }
-                        }
-
-                        let python_present = find_python3(&handle).is_some();
-                        if !python_present {
-                            splash_update(&handle, "正在准备运行环境...", 50, "即将完成");
-                            match download_runtime(&handle, "python", "Python", &python_download_url()) {
-                                Ok(_) => {
-                                    if let Err(e) = install_python_pip(&handle) {
-                                        eprintln!("[GClaw] pip install failed: {}", e);
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("[GClaw] Python download failed: {}", e);
-                                    splash_error(&handle, "环境准备失败，请检查网络后重试");
-                                    return;
-                                }
-                            }
-                        }
-
-                        // Git 运行时（必需，Windows 自动下载 MinGit，macOS/Linux 依赖系统 git）
-                        let git_present = find_git(&handle).is_some();
-                        if !git_present {
-                            if let Some(git_url) = git_download_url() {
-                                splash_update(&handle, "正在准备运行环境...", 60, "首次启动需要下载，请稍候");
-                                match download_runtime(&handle, "git", "Git", &git_url) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        eprintln!("[GClaw] Git download failed: {}", e);
-                                        splash_error(&handle, "环境准备失败，请检查网络后重试");
-                                        return;
-                                    }
-                                }
-                            } else {
-                                // macOS/Linux: 系统没有 git，提示用户安装
-                                let msg = if cfg!(target_os = "macos") {
-                                    "未检测到 Git，请先执行: xcode-select --install"
-                                } else {
-                                    "未检测到 Git，请先安装: sudo apt install git"
-                                };
-                                eprintln!("[GClaw] Git not found");
-                                splash_error(&handle, msg);
-                                return;
-                            }
-                        }
-
-                        splash_update(&handle, "环境就绪", 70, "");
-
-                        // --- 启动服务器 ---
-                        splash_update(&handle, "正在启动服务...", 85, "");
-
-                        let (child, port) = start_server(&handle);
-                        handle.manage(ServerState {
-                            child: Mutex::new(Some(child)),
-                            port,
-                        });
-
-                        wait_for_server(port);
-
-                        // 导航主窗口到服务器 URL
-                        splash_update(&handle, "即将就绪...", 100, "");
-                        if let Some(main) = handle.get_webview_window("main") {
-                            let url = format!("http://127.0.0.1:{}", port);
-                            let _ = main.navigate(url.parse().unwrap());
-                        }
-                        // 等待前端 app_ready 或超时
-                        finalize_launch(&handle, 15);
+                        run_production_startup(&handle);
                     });
                 }
             }
@@ -1048,7 +1068,7 @@ pub fn run() {
             setup_tray(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content])
+        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content, retry_startup])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
