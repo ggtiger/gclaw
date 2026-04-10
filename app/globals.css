@@ -692,12 +692,37 @@ body {
   background: #1c2536 !important;
 }
 
-/* Tauri 环境下禁用自定义动画 */
+/* 禁用滚动路径中的 box-shadow — WebView2 每个 shadow 都创建合成层 */
+.tauri-app main .shadow-lg,
+.tauri-app main .shadow-md,
+.tauri-app main .shadow-sm,
+.tauri-app main .shadow-xl,
+.tauri-app main .shadow-2xl,
+.tauri-app main [class*="shadow-purple"],
+.tauri-app main [class*="shadow-slate"] {
+  box-shadow: none !important;
+}
+.tauri-app main .markdown-body pre {
+  box-shadow: none !important;
+}
+
+/* 禁用所有动画（含 Tailwind 内置的 pulse/spin/bounce） */
 .tauri-app .animate-fade-in,
 .tauri-app .animate-fade-in-up,
 .tauri-app .animate-slide-in-left,
-.tauri-app .animate-slide-in-right {
+.tauri-app .animate-slide-in-right,
+.tauri-app .animate-pulse,
+.tauri-app .animate-spin,
+.tauri-app .animate-bounce {
   animation: none !important;
+}
+
+/* 输入区背景改为完全不透明 */
+:root:not(.dark).tauri-app .chat-input > div {
+  background: #fff !important;
+}
+.dark.tauri-app .chat-input > div {
+  background: #1e293b !important;
 }
 
 /* 浮动输入区：纯色背景替代渐变 */

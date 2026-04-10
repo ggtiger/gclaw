@@ -167,7 +167,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const canSend = (input.trim() || attachments.length > 0) && !disabled && !uploading
 
   return (
-    <div className="px-2 py-2">
+    <div className="chat-input px-2 py-2">
       
       <div className="bg-white/90 dark:bg-slate-800/90 rounded-lg border border-gray-200/60 dark:border-white/10 p-2 flex flex-col gap-2 shadow-sm">
         {/* 附件预览区域 */}
