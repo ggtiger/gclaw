@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Menu, Sun, Moon, Monitor
+  Sun, Moon, Monitor
 } from 'lucide-react'
 import { ChatPanel } from './ChatPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
@@ -251,13 +251,6 @@ export function ChatLayout() {
           className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden bg-white dark:bg-[#1e293b] relative`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          {/* 移动端菜单按钮 */}
-          <button
-            className="[@media(min-width:960px)]:hidden absolute top-3 left-3 z-20 p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/[0.06] text-gray-600 dark:text-gray-300"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            <Menu size={18} />
-          </button>
           <ChatPanel
             messages={chat.messages}
             initialLoading={chat.initialLoading}
@@ -274,6 +267,7 @@ export function ChatLayout() {
             projectName={currentProject?.name}
             sidebarHidden={projectSidebarHidden}
             onToggleSidebar={() => setProjectSidebarHidden(false)}
+            onOpenMobileSidebar={() => setSidebarOpen(true)}
             rightPanelHidden={rightPanelHidden}
             onToggleRightPanel={() => setRightPanelHidden(false)}
             onSend={chat.sendMessage}

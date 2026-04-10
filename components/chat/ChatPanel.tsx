@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -35,6 +35,7 @@ interface ChatPanelProps {
   onOpenAgents?: () => void
   sidebarHidden?: boolean
   onToggleSidebar?: () => void
+  onOpenMobileSidebar?: () => void
   rightPanelHidden?: boolean
   onToggleRightPanel?: () => void
   onRespondPermission: (requestId: string, decision: 'allow' | 'deny') => void
@@ -78,7 +79,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -235,7 +236,18 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           className="flex items-center flex-nowrap gap-2 px-3 lg:px-4 py-1.5 flex-shrink-0"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          {/* 展开侧边栏按钮（项目名左侧） */}
+          {/* 移动端菜单按钮（屏幕 < 960px） */}
+          {onOpenMobileSidebar && (
+            <button
+              onClick={onOpenMobileSidebar}
+              className="[@media(min-width:960px)]:hidden p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="打开侧边栏"
+            >
+              <Menu size={16} />
+            </button>
+          )}
+          {/* 展开侧边栏按钮（桌面端侧边栏隐藏时） */}
           {sidebarHidden && onToggleSidebar && (
             <button
               onClick={onToggleSidebar}
