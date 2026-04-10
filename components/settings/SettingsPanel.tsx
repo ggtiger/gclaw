@@ -1,17 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Save, Loader, Eye, EyeOff, Image as ImageIcon, X as XIcon, Settings as SettingsIcon, Shield, Users, ShieldAlert, User, Upload, Palette } from 'lucide-react'
-import type { AppSettings } from '@/types/skills'
-import { applyThemeColor as applyThemeColorGlobal, resetThemeColor as resetThemeColorGlobal } from '@/lib/theme-color'
+import { useState, useEffect, useCallback } from 'react'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette } from 'lucide-react'
+import type { GlobalSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
-import { AccountPanel } from './AccountPanel'
+import { PreferencesPanel } from './PreferencesPanel'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 
-type SettingsTab = 'settings' | 'account' | 'audit' | 'users' | 'security'
+type SettingsTab = 'preferences' | 'settings' | 'audit' | 'users' | 'security'
 
 interface SettingsPanelProps {
   projectId: string
@@ -21,28 +20,17 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, initialTab }: SettingsPanelProps) {
-  const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [settings, setSettings] = useState<GlobalSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   // apiKey 掩码/实际值切换
-  // API 从后端返回的 apiKey 是掩码格式 (****xxxx)
-  // 用户编辑时记录实际值，未编辑时保持掩码
-  const [apiKeyEditing, setApiKeyEditing] = useState(false)
   const [apiKeyRawValue, setApiKeyRawValue] = useState('')
-  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'settings')
-  const [uploadingBg, setUploadingBg] = useState(false)
-  const bgFileInputRef = useRef<HTMLInputElement>(null)
-  // 主题颜色
-  const [themeColor, setThemeColor] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'preferences')
 
-  // 默认技能
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [installedSkills, setInstalledSkills] = useState<string[]>([])
-  const [defaultSkills, setDefaultSkillsState] = useState<string[]>([])
-  const [savingDefault, setSavingDefault] = useState(false)
 
   const { toast } = useToast()
 
@@ -51,12 +39,16 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     try {
       const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
       const data = await res.json()
-      // API 返回掩码 apiKey，保存用于显示
-      // 如果有完整 key（仅首次输入时），存储原始值
+      // 只保留全局级字段
       if (data.apiKey && !data.apiKey.startsWith('****')) {
         setApiKeyRawValue(data.apiKey)
       }
-      setSettings(data)
+      setSettings({
+        apiKey: data.apiKey || '',
+        apiBaseUrl: data.apiBaseUrl || '',
+        theme: data.theme || 'system',
+        security: data.security || { sensitiveWords: [], retentionDays: 0 },
+      })
     } catch (err) {
       console.error('Failed to load settings:', err)
     } finally {
@@ -66,59 +58,9 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
 
   useEffect(() => {
     fetchSettings()
-    // 读取自定义主题颜色
-    try {
-      const saved = localStorage.getItem('gclaw-theme-color')
-      if (saved) setThemeColor(saved)
-    } catch {}
   }, [fetchSettings])
 
-  // 加载默认技能配置（仅 admin）
-  useEffect(() => {
-    if (!isAdmin) return
-    fetch('/api/skills?projectId')
-      .then(r => r.json())
-      .then(data => {
-        const names = (data.skills || []).map((s: { name: string }) => s.name)
-        setInstalledSkills(names)
-      })
-      .catch(err => console.error('Failed to load skills for default config:', err))
-    fetch('/api/skills/default')
-      .then(r => r.json())
-      .then(data => setDefaultSkillsState(data.skills || []))
-      .catch(err => console.error('Failed to load default skills:', err))
-  }, [isAdmin])
-
-  const toggleDefaultSkill = (skillName: string) => {
-    setDefaultSkillsState(prev =>
-      prev.includes(skillName)
-        ? prev.filter(n => n !== skillName)
-        : [...prev, skillName]
-    )
-  }
-
-  const saveDefaultSkills = async () => {
-    setSavingDefault(true)
-    try {
-      const res = await fetch('/api/skills/default', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skills: defaultSkills }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast('默认技能配置已保存', 'success')
-      } else {
-        toast(data.error || '保存失败', 'error')
-      }
-    } catch {
-      toast('保存失败', 'error')
-    } finally {
-      setSavingDefault(false)
-    }
-  }
-
-  const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+  const updateField = <K extends keyof GlobalSettings>(key: K, value: GlobalSettings[K]) => {
     if (!settings) return
     setSettings({ ...settings, [key]: value })
     setDirty(true)
@@ -141,57 +83,14 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
       setDirty(false)
       // 保存后重新加载（拿到掩码后的值）
       fetchSettings()
+      toast('设置已保存', 'success')
     } catch (err) {
       console.error('Failed to save settings:', err)
       toast('保存设置失败', 'error')
     } finally {
       setSaving(false)
     }
-  }, [settings, dirty, apiKeyRawValue])
-
-  const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // 验证文件类型
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      toast('不支持的文件类型，仅支持 JPG、PNG、WebP', 'error')
-      return
-    }
-
-    // 验证文件大小 (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast('文件大小超过限制（最大 10MB）', 'error')
-      return
-    }
-
-    setUploadingBg(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/uploads/background', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (data.success && data.url) {
-        onBackgroundChange?.(data.url)
-        toast('背景图上传成功', 'success')
-      } else {
-        toast(data.error || '上传失败', 'error')
-      }
-    } catch (err) {
-      console.error('上传背景图失败:', err)
-      toast('上传失败', 'error')
-    } finally {
-      setUploadingBg(false)
-      // 清空 input 以便可以重复选择同一文件
-      if (bgFileInputRef.current) {
-        bgFileInputRef.current.value = ''
-      }
-    }
-  }
+  }, [settings, dirty, apiKeyRawValue, projectId, fetchSettings, toast])
 
   if (loading || !settings) {
     return (
@@ -203,493 +102,121 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     )
   }
 
+  // Tab 配置：所有用户可见偏好，仅管理员可见其他
+  const tabs: { key: SettingsTab; icon: React.ReactNode; label: string; adminOnly: boolean }[] = [
+    { key: 'preferences', icon: <Palette size={14} />, label: '偏好', adminOnly: false },
+    { key: 'settings', icon: <SettingsIcon size={14} />, label: '设置', adminOnly: true },
+    { key: 'audit', icon: <Shield size={14} />, label: '审计日志', adminOnly: true },
+    { key: 'users', icon: <Users size={14} />, label: '用户管理', adminOnly: true },
+    { key: 'security', icon: <ShieldAlert size={14} />, label: '安全过滤', adminOnly: true },
+  ]
+
+  const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin)
+
   return (
     <div className="space-y-0">
       {/* Tab 栏 */}
       <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
-          style={{
-            borderBottomColor: activeTab === 'settings' ? 'var(--color-primary)' : 'transparent',
-            color: activeTab === 'settings' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
-        >
-          <SettingsIcon size={14} />
-          设置
-        </button>
-        <button
-          onClick={() => setActiveTab('account')}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
-          style={{
-            borderBottomColor: activeTab === 'account' ? 'var(--color-primary)' : 'transparent',
-            color: activeTab === 'account' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
-        >
-          <User size={14} />
-          账户
-        </button>
-        <button
-          onClick={() => setActiveTab('audit')}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
-          style={{
-            borderBottomColor: activeTab === 'audit' ? 'var(--color-primary)' : 'transparent',
-            color: activeTab === 'audit' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
-        >
-          <Shield size={14} />
-          审计日志
-        </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
-          style={{
-            borderBottomColor: activeTab === 'users' ? 'var(--color-primary)' : 'transparent',
-            color: activeTab === 'users' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
-        >
-          <Users size={14} />
-          用户管理
-        </button>
-        <button
-          onClick={() => setActiveTab('security')}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
-          style={{
-            borderBottomColor: activeTab === 'security' ? 'var(--color-primary)' : 'transparent',
-            color: activeTab === 'security' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
-        >
-          <ShieldAlert size={14} />
-          安全过滤
-        </button>
+        {visibleTabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
+            style={{
+              borderBottomColor: activeTab === tab.key ? 'var(--color-primary)' : 'transparent',
+              color: activeTab === tab.key ? 'var(--color-primary)' : 'var(--color-text-muted)',
+            }}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Tab 内容 */}
-      {activeTab === 'account'? (
-        <AccountPanel />
-      ) : activeTab === 'audit'? (
+      {activeTab === 'preferences' ? (
+        <PreferencesPanel backgroundImage={backgroundImage} onBackgroundChange={onBackgroundChange} />
+      ) : activeTab === 'audit' ? (
         <AuditLogPanel />
-      ) : activeTab === 'users'? (
+      ) : activeTab === 'users' ? (
         <UsersPanel />
-      ) : activeTab === 'security'? (
+      ) : activeTab === 'security' ? (
         <SecurityPanel />
-      ) : (
-    <div className="p-4 space-y-4">
-      {/* API Key */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          API Key
-        </label>
-        <div className="relative">
-          <input
-            type={showApiKey ? 'text' : 'password'}
-            value={settings.apiKey}
-            onChange={e => {
-              const val = e.target.value
-              setApiKeyRawValue(val)
-              updateField('apiKey', val)
-            }}
-            placeholder="sk-ant-..."
-            className="w-full px-3 py-2 pr-10 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-            style={{
-              borderColor: 'var(--color-border)',
-              backgroundColor: 'var(--color-bg)',
-              color: 'var(--color-text)',
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => setShowApiKey(!showApiKey)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-          </button>
-        </div>
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-          留空则使用环境变量 ANTHROPIC_API_KEY
-        </div>
-      </div>
-
-      {/* API Base URL */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          API 地址
-        </label>
-        <input
-          type="text"
-          value={settings.apiBaseUrl}
-          onChange={e => updateField('apiBaseUrl', e.target.value)}
-          placeholder="https://api.anthropic.com"
-          className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-          留空使用默认地址，可填写代理地址
-        </div>
-      </div>
-
-      {/* Model */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          模型
-        </label>
-        <input
-          type="text"
-          value={settings.model}
-          onChange={e => updateField('model', e.target.value)}
-          placeholder="默认 (claude-sonnet-4-20250514)"
-          className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-          留空使用默认模型
-        </div>
-      </div>
-
-      {/* Effort */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          推理强度
-        </label>
-        <div className="flex gap-2">
-          {(['low', 'medium', 'high'] as const).map(level => (
-            <button
-              key={level}
-              onClick={() => updateField('effort', level)}
-              className="flex-1 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer"
-              style={{
-                borderColor: settings.effort === level ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: settings.effort === level ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : 'var(--color-bg)',
-                color: settings.effort === level ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              }}
-            >
-              {{ low: '低', medium: '中', high: '高' }[level]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* CWD */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          工作目录
-        </label>
-        <input
-          type="text"
-          value={settings.cwd}
-          onChange={e => updateField('cwd', e.target.value)}
-          placeholder="默认当前目录"
-          className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        />
-      </div>
-
-      {/* System Prompt (Soul) */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          系统提示词 (Soul)
-        </label>
-        <textarea
-          value={settings.systemPrompt}
-          onChange={e => updateField('systemPrompt', e.target.value)}
-          placeholder="每次会话自动注入的持久化指令，例如角色设定、行为规范、项目上下文等"
-          rows={4}
-          className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors resize-y focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-            minHeight: '80px',
-            maxHeight: '200px',
-          }}
-        />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-          写入项目 CLAUDE.md，SDK 每次会话自动加载
-        </div>
-      </div>
-
-      {/* Skip Permissions */}
-      <div className="flex items-center justify-between py-2">
-        <div>
-          <div className="text-sm" style={{ color: 'var(--color-text)' }}>
-            跳过权限确认
-          </div>
-          <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            dangerouslySkipPermissions
-          </div>
-        </div>
-        <button
-          onClick={() => updateField('dangerouslySkipPermissions', !settings.dangerouslySkipPermissions)}
-          className="relative w-10 h-5 rounded-full transition-colors cursor-pointer"
-          style={{
-            backgroundColor: settings.dangerouslySkipPermissions ? 'var(--color-warning)' : 'var(--color-bg-tertiary)',
-          }}
-        >
-          <span
-            className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-            style={{
-              transform: settings.dangerouslySkipPermissions ? 'translateX(2px)' : 'translateX(-18px)',
-            }}
-          />
-        </button>
-      </div>
-
-      {/* Session ID */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-          Session ID
-        </label>
-        <input
-          type="text"
-          value={settings.sessionId}
-          onChange={e => updateField('sessionId', e.target.value)}
-          placeholder="自动生成"
-          className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-          留空则每次新建会话
-        </div>
-      </div>
-
-      {/* 背景图片 */}
-      <div className="p-4 rounded-2xl bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20 space-y-3">
-        <label className="block text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          <div className="flex items-center gap-1.5">
-            <ImageIcon size={13} />
-            自定义背景
-          </div>
-        </label>
-
-        {/* 预览区域 */}
-        {backgroundImage ? (
-          <div className="relative rounded-xl overflow-hidden h-24 border border-white/20">
-            <img
-              src={backgroundImage}
-              alt="背景预览"
-              className="w-full h-full object-cover"
-            />
-            <button
-              onClick={() => onBackgroundChange?.('')}
-              className="absolute top-2 right-2 p-1.5 rounded-full cursor-pointer transition-all duration-200 hover:bg-black/70"
-              style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: 'white' }}
-              title="移除背景"
-            >
-              <XIcon size={14} />
-            </button>
-          </div>
-        ) : (
-          <div className="h-24 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>暂无背景</span>
-          </div>
-        )}
-
-        {/* 上传按钮 */}
-        <button
-          onClick={() => !uploadingBg && bgFileInputRef.current?.click()}
-          disabled={uploadingBg}
-          className="w-full rounded-xl border-2 border-dashed border-white/20 hover:border-purple-400/50 p-4 text-center cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: 'var(--color-bg-secondary)' }}
-        >
-          {uploadingBg ? (
-            <div className="flex flex-col items-center gap-2">
-              <Loader size={20} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>上传中...</span>
+      ) : activeTab === 'settings' ? (
+        <div className="p-4 space-y-4">
+          {/* API Key */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+              API Key
+            </label>
+            <div className="relative">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={settings.apiKey}
+                onChange={e => {
+                  const val = e.target.value
+                  setApiKeyRawValue(val)
+                  updateField('apiKey', val)
+                }}
+                placeholder="sk-ant-..."
+                className="w-full px-3 py-2 pr-10 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-bg)',
+                  color: 'var(--color-text)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-1">
-              <Upload size={20} style={{ color: 'var(--color-primary)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>点击上传背景图</span>
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>JPG / PNG / WebP，最大 10MB</span>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              留空则使用环境变量 ANTHROPIC_API_KEY
             </div>
-          )}
-        </button>
+          </div>
 
-        {/* 隐藏的文件输入 */}
-        <input
-          ref={bgFileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={handleBackgroundUpload}
-          disabled={uploadingBg}
-        />
-
-        {/* 分隔线 */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
-          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>或输入 URL</span>
-          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
-        </div>
-
-        {/* URL 输入 */}
-        <input
-          type="text"
-          value={backgroundImage || ''}
-          onChange={e => onBackgroundChange?.(e.target.value)}
-          placeholder="输入图片 URL"
-          className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all duration-200 focus:border-purple-400/50"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        />
-
-        <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-          支持 JPG、PNG、WebP 格式图片
-        </div>
-      </div>
-
-      {/* 主题颜色 */}
-      <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
-        <div className="flex items-center gap-1.5">
-          <Palette size={13} style={{ color: 'var(--color-text-secondary)' }} />
-          <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>主题颜色</span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* 预设颜色 */}
-          {[
-            { label: '紫罗兰', hex: '#8b5cf6' },
-            { label: '蓝色', hex: '#3b82f6' },
-            { label: '青色', hex: '#14b8a6' },
-            { label: '玫红', hex: '#ec4899' },
-            { label: '红色', hex: '#ef4444' },
-            { label: '橙色', hex: '#f97316' },
-            { label: '绿色', hex: '#22c55e' },
-          ].map(c => (
-            <button
-              key={c.hex}
-              onClick={() => {
-                setThemeColor(c.hex)
-                localStorage.setItem('gclaw-theme-color', c.hex)
-                applyThemeColorGlobal(c.hex)
-              }}
-              className="w-7 h-7 rounded-full border-2 transition-all cursor-pointer hover:scale-110"
-              style={{
-                backgroundColor: c.hex,
-                borderColor: themeColor === c.hex ? 'var(--color-text)' : 'transparent',
-                boxShadow: themeColor === c.hex ? `0 0 0 2px ${c.hex}40` : 'none',
-              }}
-              title={c.label}
-            />
-          ))}
-          {/* 自定义颜色 */}
-          <div className="relative">
+          {/* API Base URL */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+              API 地址
+            </label>
             <input
-              type="color"
-              value={themeColor || '#8b5cf6'}
-              onChange={e => {
-                const hex = e.target.value
-                setThemeColor(hex)
-                localStorage.setItem('gclaw-theme-color', hex)
-                applyThemeColorGlobal(hex)
+              type="text"
+              value={settings.apiBaseUrl}
+              onChange={e => updateField('apiBaseUrl', e.target.value)}
+              placeholder="https://api.anthropic.com"
+              className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'var(--color-bg)',
+                color: 'var(--color-text)',
               }}
-              className="absolute inset-0 w-7 h-7 opacity-0 cursor-pointer"
             />
-            <div
-              className="w-7 h-7 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-              style={{ borderColor: 'var(--color-border)' }}
-              title="自定义颜色"
-            >
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+</span>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              留空使用默认地址，可填写代理地址
             </div>
           </div>
-        </div>
-        {/* 重置按钮 */}
-        {themeColor && themeColor !== '#8b5cf6' && (
-          <button
-            onClick={() => {
-              setThemeColor('')
-              localStorage.removeItem('gclaw-theme-color')
-              resetThemeColorGlobal()
-            }}
-            className="text-[11px] cursor-pointer hover:underline"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            恢复默认
-          </button>
-        )}
-      </div>
 
-      {/* 默认技能配置（仅管理员） */}
-      {isAdmin && (
-        <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
-          <div className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-            默认技能
-          </div>
-          <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-            新建项目时自动启用以下技能
-          </div>
-          {installedSkills.length === 0 ? (
-            <div className="text-xs py-2" style={{ color: 'var(--color-text-muted)' }}>
-              暂无已安装技能
-            </div>
-          ) : (
-            <div className="space-y-1.5 max-h-48 overflow-y-auto">
-              {installedSkills.map(name => (
-                <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:opacity-80 transition-opacity">
-                  <input
-                    type="checkbox"
-                    checked={defaultSkills.includes(name)}
-                    onChange={() => toggleDefaultSkill(name)}
-                    className="rounded"
-                    style={{ accentColor: 'var(--color-primary)' }}
-                  />
-                  <span className="text-xs truncate" style={{ color: 'var(--color-text)' }}>
-                    {name}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
+          {/* 保存按钮 */}
           <button
-            onClick={saveDefaultSkills}
-            disabled={savingDefault}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+            onClick={saveSettings}
+            disabled={!dirty || saving}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
-              backgroundColor: 'var(--color-primary)',
-              color: 'white',
+              backgroundColor: dirty ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+              color: dirty ? 'white' : 'var(--color-text-muted)',
             }}
           >
-            {savingDefault ? <Loader size={12} className="animate-spin" /> : <Save size={12} />}
-            {savingDefault ? '保存中...' : '保存默认技能'}
+            {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? '保存中...' : '保存设置'}
           </button>
         </div>
-      )}
-
-      {/* 保存按钮 */}
-      <button
-        onClick={saveSettings}
-        disabled={!dirty || saving}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{
-          backgroundColor: dirty ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-          color: dirty ? 'white' : 'var(--color-text-muted)',
-        }}
-      >
-        {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
-        {saving ? '保存中...' : '保存设置'}
-      </button>
-    </div>
-      )}
+      ) : null}
     </div>
   )
 }

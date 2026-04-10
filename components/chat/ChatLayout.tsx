@@ -7,6 +7,8 @@ import {
 import { ChatPanel } from './ChatPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { SettingsPanel } from '../settings/SettingsPanel'
+import { ProjectSettingsPanel } from '../settings/ProjectSettingsPanel'
+import { AccountPanel } from '../settings/AccountPanel'
 import { AgentsPanel } from '../agents/AgentsPanel'
 import { ChannelsPanel } from '../channels/ChannelsPanel'
 import { ProjectSidebar } from '../projects/ProjectSidebar'
@@ -32,7 +34,7 @@ export function ChatLayout() {
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
   const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'channels' | 'settings' | null>(null)
+  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'channels' | 'settings' | 'projectSettings' | 'account' | null>(null)
   const [filesFullscreen, setFilesFullscreen] = useState(false)
   const [rightPanelHidden, setRightPanelHidden] = useState(false)
 
@@ -232,8 +234,12 @@ export function ChatLayout() {
             onCycleTheme={cycleTheme}
             themeIcon={themeIcon()}
             user={user ? { username: user.username, role: user.role } : undefined}
-            onUserMenu={() => setModalOpen('settings')}
+            onUserMenu={() => setModalOpen('account')}
             onHide={() => setProjectSidebarHidden(true)}
+            onOpenProjectSettings={(id) => {
+              if (id !== project.currentId) project.switchProject(id)
+              setModalOpen('projectSettings')
+            }}
           />
         </div>
         )}
@@ -332,8 +338,13 @@ export function ChatLayout() {
               onCycleTheme={cycleTheme}
               themeIcon={themeIcon()}
               user={user ? { username: user.username, role: user.role } : undefined}
-              onUserMenu={() => setModalOpen('settings')}
+              onUserMenu={() => setModalOpen('account')}
               onHide={() => setSidebarOpen(false)}
+              onOpenProjectSettings={(id) => {
+                if (id !== project.currentId) project.switchProject(id)
+                setModalOpen('projectSettings')
+                setSidebarOpen(false)
+              }}
             />
           </div>
         </div>
@@ -367,6 +378,12 @@ export function ChatLayout() {
           backgroundImage={backgroundImage}
           onBackgroundChange={setBackgroundImage}
         />
+      </Modal>
+      <Modal open={modalOpen === 'projectSettings'} onClose={() => setModalOpen(null)} title="项目设置">
+        <ProjectSettingsPanel projectId={project.currentId} onClose={() => setModalOpen(null)} />
+      </Modal>
+      <Modal open={modalOpen === 'account'} onClose={() => setModalOpen(null)} title="账户">
+        <AccountPanel />
       </Modal>
     </div>
   )

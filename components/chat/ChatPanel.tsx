@@ -467,7 +467,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
             )}
 
             {filteredMessages.map(msg => (
-              <div key={msg.id} id={`msg-${msg.id}`}>
+              <div key={msg.id} id={`msg-${msg.id}`} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
                 <MessageBubble
                   message={msg}
                   projectId={projectId}

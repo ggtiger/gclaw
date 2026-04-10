@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings, Settings2 } from 'lucide-react'
 import type { ProjectInfo, ProjectType } from '@/types/skills'
 import appIcon from '@/public/icon.png'
 
@@ -24,12 +24,13 @@ interface ProjectSidebarProps {
   user?: { username: string; role?: string }
   onUserMenu?: () => void
   onHide?: () => void
+  onOpenProjectSettings?: (projectId: string) => void
 }
 
 export function ProjectSidebar({
   projects, currentId, activeProjectIds, collapsed, onToggleCollapse,
   onSwitch, onCreate, onRename, onDelete, userRole,
-  onOpenSettings, onCycleTheme, themeIcon, user, onUserMenu, onHide,
+  onOpenSettings, onCycleTheme, themeIcon, user, onUserMenu, onHide, onOpenProjectSettings,
 }: ProjectSidebarProps) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -273,6 +274,12 @@ export function ProjectSidebar({
                     </div>
                   </div>
                   <div className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    {onOpenProjectSettings && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onOpenProjectSettings(project.id) }}
+                        className="p-0.5 rounded-lg cursor-pointer text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all duration-200" title="项目设置"
+                      ><Settings2 size={11} /></button>
+                    )}
                     <button
                       onClick={e => { e.stopPropagation(); setEditingId(project.id); setEditName(project.name) }}
                       className="p-0.5 rounded-lg cursor-pointer text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all duration-200" title="重命名"

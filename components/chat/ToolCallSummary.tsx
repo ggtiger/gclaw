@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useState, useEffect, useRef } from 'react'
+import { memo, useState, useEffect, useRef, useMemo } from 'react'
 import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Circle, Clock, Ban, HelpCircle, MessageSquare, CheckCircle2, Send, Pencil } from 'lucide-react'
 import type { ToolSummary, ToolCallItem, AskUserQuestionRequest } from '@/types/chat'
 
@@ -544,17 +544,21 @@ function isTodoWrite(name: string) {
 
 export const ToolCallSummary = memo(function ToolCallSummary({ summary, askQuestion, onRespondAskQuestion }: ToolCallSummaryProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const allTools = [...summary.pendingTools, ...summary.completedTools]
 
-  if (allTools.length === 0) return null
+  const { todoTools, generalTools, pendingCount, completedCount, errorCount } = useMemo(() => {
+    const allTools = [...summary.pendingTools, ...summary.completedTools]
+    const todo = allTools.filter(t => isTodoWrite(t.toolName))
+    const general = allTools.filter(t => !isTodoWrite(t.toolName))
+    return {
+      todoTools: todo,
+      generalTools: general,
+      pendingCount: general.filter(t => t.status === 'pending').length,
+      completedCount: general.filter(t => t.status === 'completed').length,
+      errorCount: general.filter(t => t.isError).length,
+    }
+  }, [summary.pendingTools, summary.completedTools])
 
-  // 只分离 todo_write；AskUserQuestion 留在 generalTools 里
-  const todoTools = allTools.filter(t => isTodoWrite(t.toolName))
-  const generalTools = allTools.filter(t => !isTodoWrite(t.toolName))
-
-  const pendingCount = generalTools.filter(t => t.status === 'pending').length
-  const completedCount = generalTools.filter(t => t.status === 'completed').length
-  const errorCount = generalTools.filter(t => t.isError).length
+  if (todoTools.length === 0 && generalTools.length === 0) return null
 
   return (
     <div className="space-y-2">

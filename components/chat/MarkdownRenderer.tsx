@@ -1,10 +1,19 @@
 'use client'
 
-import { memo, useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
-import hljs from 'highlight.js'
+// hljs 懒加载缓存
+let _hljs: typeof import('highlight.js').default | null = null
+let _hljsLoading: Promise<typeof import('highlight.js').default> | null = null
+function getHljs(): Promise<typeof import('highlight.js').default> {
+  if (_hljs) return Promise.resolve(_hljs)
+  if (!_hljsLoading) {
+    _hljsLoading = import('highlight.js').then(m => { _hljs = m.default; return _hljs })
+  }
+  return _hljsLoading
+}
 
 // hljs 不支持的语言标记映射到相近语言
 const LANG_ALIASES: Record<string, string> = {
@@ -30,7 +39,7 @@ interface MarkdownRendererProps {
 
 function resolveLanguage(lang: string): string {
   const lower = lang.toLowerCase()
-  if (hljs.getLanguage(lower)) return lower
+  if (_hljs?.getLanguage(lower)) return lower
   return LANG_ALIASES[lower] || lower
 }
 
@@ -55,15 +64,18 @@ function HighlightedCodeBlock({ className, children, isStreaming }: { className?
       return
     }
     if (highlightedRef.current) return
-    if (codeRef.current && resolvedLang && hljs.getLanguage(resolvedLang)) {
-      highlightedRef.current = true
-      try {
-        const result = hljs.highlight(codeText, { language: resolvedLang })
-        codeRef.current.innerHTML = result.value
-      } catch {
-        // highlight.js 可能不支持某些语言，忽略
+    if (!codeRef.current || !resolvedLang) return
+    highlightedRef.current = true
+    getHljs().then(hljs => {
+      if (codeRef.current && hljs.getLanguage(resolvedLang)) {
+        try {
+          const result = hljs.highlight(codeText, { language: resolvedLang })
+          codeRef.current.innerHTML = result.value
+        } catch {
+          // highlight.js 可能不支持某些语言，忽略
+        }
       }
-    }
+    })
   }, [isStreaming, resolvedLang, codeText])
 
   return (
@@ -97,41 +109,46 @@ function HighlightedCodeBlock({ className, children, isStreaming }: { className?
   )
 }
 
+// 稳定的 remarkPlugins / rehypePlugins 引用，避免 ReactMarkdown 每次重建 processor
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS = [rehypeSanitize]
+
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps) {
+  const components = useMemo(() => ({
+    code({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { node?: unknown }) {
+      const codeText = String(children).replace(/\n$/, '')
+      const isInline = !className && !codeText.includes('\n')
+      if (isInline) {
+        return <code className={className} {...props}>{children}</code>
+      }
+      const lang = className?.replace('language-', '') || ''
+      if (lang === 'mermaid') {
+        return <MermaidBlock chart={codeText} />
+      }
+      return (
+        <HighlightedCodeBlock className={className} isStreaming={isStreaming}>
+          {codeText}
+        </HighlightedCodeBlock>
+      )
+    },
+    pre({ children }: React.HTMLAttributes<HTMLElement> & { node?: unknown }) {
+      return <>{children}</>
+    },
+    a({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      )
+    },
+  }), [isStreaming])
+
   return (
     <div className={`markdown-body prose prose-sm max-w-none ${isStreaming ? 'streaming-cursor' : ''}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeSanitize]}
-        components={{
-          code({ className, children, ...props }) {
-            const codeText = String(children).replace(/\n$/, '')
-            // 没有语言标记 + 单行内容 → 行内 code；其余都是代码块
-            const isInline = !className && !codeText.includes('\n')
-            if (isInline) {
-              return <code className={className} {...props}>{children}</code>
-            }
-            const lang = className?.replace('language-', '') || ''
-            if (lang === 'mermaid') {
-              return <MermaidBlock chart={codeText} />
-            }
-            return (
-              <HighlightedCodeBlock className={className} isStreaming={isStreaming}>
-                {codeText}
-              </HighlightedCodeBlock>
-            )
-          },
-          pre({ children }) {
-            return <>{children}</>
-          },
-          a({ href, children }) {
-            return (
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                {children}
-              </a>
-            )
-          },
-        }}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={components}
       >
         {content}
       </ReactMarkdown>
