@@ -44,10 +44,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  // 页面渲染完成后通知 Tauri 关闭 splash 并显示主窗口
+  // Tauri 桌面端：标记环境 + 通知 splash 关闭
   useEffect(() => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<unknown> } })
+      // 添加 tauri-app 类，用于 CSS 禁用 WebView2 性能杀手（backdrop-filter 等）
+      document.documentElement.classList.add('tauri-app')
+      ;(window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<unknown> } })
         .__TAURI_INTERNALS__.invoke('app_ready').catch(() => {})
     }
   }, [])

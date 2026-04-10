@@ -955,12 +955,12 @@ fn finalize_launch(handle: &tauri::AppHandle, timeout_secs: u64) {
 // ============ 主入口 ============
 
 pub fn run() {
-    // Windows WebView2: 启用 GPU 硬件加速，解决渲染卡顿
+    // Windows WebView2: 优化渲染性能
     #[cfg(target_os = "windows")]
     {
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--enable-gpu-rasterization --enable-zero-copy --enable-features=CanvasOopRasterization,Vulkan",
+            "--enable-gpu-rasterization --enable-zero-copy --disable-features=msSmartScreenProtection --force-gpu-mem-available-mb=512 --gpu-rasterization-msaa-sample-count=0",
         );
     }
 
