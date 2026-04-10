@@ -228,7 +228,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
   const isEmpty = messages.length === 0 && !streamingContent
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-transparent">
+    <div className="flex flex-col h-full bg-white dark:bg-[#1e293b]">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
       {!initialLoading && (
         <div
@@ -348,11 +348,14 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <EmptyState onSend={handleSend} />
         </div>
       ) : (
-        <div
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto px-3 pt-4 pb-6 lg:px-4 lg:pt-6 bg-white dark:bg-[#1e293b]"
-        >
-          <div className="w-full mx-auto flex flex-col gap-4">
+        <div className="relative flex-1 min-h-0">
+          <div
+            ref={scrollContainerRef}
+            className="absolute inset-0 overflow-y-auto"
+            style={{ overscrollBehavior: 'contain' }}
+          >
+            <div className="px-3 pt-4 pb-6 lg:px-4 lg:pt-6">
+              <div className="w-full mx-auto flex flex-col gap-4">
             {/* 加载更多历史消息 */}
             {hasMore && (
               <div className="flex justify-center py-1">
@@ -454,6 +457,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 底部间距 */}
             <div className="h-4" />
+              </div>
+            </div>
           </div>
         </div>
       )}

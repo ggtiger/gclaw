@@ -632,11 +632,6 @@ body {
   background: #1a1f2e !important;
 }
 
-/* 滚动容器优化（只针对聊天区域，不影响 Modal） */
-.tauri-app main .overflow-y-auto {
-  -webkit-overflow-scrolling: touch;
-}
-
 /* 消息气泡容器：限制重排范围 */
 .tauri-app [id^="msg-"] {
   contain: layout style;
