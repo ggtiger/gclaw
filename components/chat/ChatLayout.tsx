@@ -73,7 +73,7 @@ export function ChatLayout() {
       // 移除遮罩层
       document.getElementById('panel-resize-overlay')?.remove()
     }
-    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mousemove', handleMouseMove, { passive: true })
     document.addEventListener('mouseup', handleMouseUp)
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
@@ -120,10 +120,17 @@ export function ChatLayout() {
   // Tauri 窗口拖拽：每次 mousedown 检查 __TAURI_INTERNALS__，兼容打包后注入时机
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handler = (e: MouseEvent) => {
-      // 每次检查，因为打包后 __TAURI_INTERNALS__ 可能在页面加载后才注入
+    // 缓存 Tauri 内部接口引用，避免每次 mousedown 都访问
+    let tauriInvoke: ((cmd: string, args?: unknown) => Promise<unknown>) | null = null
+    const checkTauri = () => {
       const ti = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ as { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } | undefined
-      if (!ti?.invoke) return
+      tauriInvoke = ti?.invoke || null
+    }
+    checkTauri()
+    // 延迟检查，因为打包后可能延迟注入
+    const timer = setTimeout(checkTauri, 2000)
+    const handler = (e: MouseEvent) => {
+      if (!tauriInvoke) return
       const target = e.target as HTMLElement
       // 交互元素不拖动
       if (target.closest('button, a, input, textarea, select, [role="button"]')) return
@@ -137,10 +144,10 @@ export function ChatLayout() {
       }
       if (!foundDrag) return
       e.preventDefault()
-      ti.invoke('plugin:window|start_dragging', { label: 'main' }).catch(() => {})
+      tauriInvoke('plugin:window|start_dragging', { label: 'main' }).catch(() => {})
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    return () => { document.removeEventListener('mousedown', handler); clearTimeout(timer) }
   }, [])
 
   // 键盘快捷键

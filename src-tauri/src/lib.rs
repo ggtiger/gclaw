@@ -960,7 +960,7 @@ pub fn run() {
     {
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--disable-gpu-compositing --enable-begin-frame-scheduling --disable-features=msSmartScreenProtection",
+            "--disable-direct-composition --disable-features=msSmartScreenProtection",
         );
     }
 
