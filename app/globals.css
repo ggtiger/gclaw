@@ -392,6 +392,73 @@ body {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
+/* 覆盖 highlight.js 亮色主题的白色背景，确保代码块始终深色 */
+.markdown-body pre .hljs,
+.markdown-body code.hljs {
+  background-color: transparent !important;
+}
+
+/* 确保代码高亮颜色在深色背景下可见 */
+.markdown-body pre .hljs-keyword,
+.markdown-body pre .hljs-selector-tag,
+.markdown-body pre .hljs-built_in,
+.markdown-body pre .hljs-name,
+.markdown-body pre .hljs-tag {
+  color: #c678dd !important;
+}
+
+.markdown-body pre .hljs-string,
+.markdown-body pre .hljs-title,
+.markdown-body pre .hljs-attr,
+.markdown-body pre .hljs-symbol,
+.markdown-body pre .hljs-bullet,
+.markdown-body pre .hljs-addition,
+.markdown-body pre .hljs-variable,
+.markdown-body pre .hljs-template-tag,
+.markdown-body pre .hljs-template-variable {
+  color: #98c379 !important;
+}
+
+.markdown-body pre .hljs-comment,
+.markdown-body pre .hljs-quote,
+.markdown-body pre .hljs-deletion,
+.markdown-body pre .hljs-meta {
+  color: #5c6370 !important;
+}
+
+.markdown-body pre .hljs-number,
+.markdown-body pre .hljs-regexp,
+.markdown-body pre .hljs-literal,
+.markdown-body pre .hljs-link {
+  color: #d19a66 !important;
+}
+
+.markdown-body pre .hljs-attribute,
+.markdown-body pre .hljs-selector-id,
+.markdown-body pre .hljs-selector-class,
+.markdown-body pre .hljs-selector-attr,
+.markdown-body pre .hljs-selector-pseudo {
+  color: #e06c75 !important;
+}
+
+.markdown-body pre .hljs-params {
+  color: #abb2bf !important;
+}
+
+.markdown-body pre .hljs-function {
+  color: #61afef !important;
+}
+
+.markdown-body pre .hljs-title.function_ {
+  color: #61afef !important;
+}
+
+.markdown-body pre .hljs-params,
+.markdown-body pre .hljs-property,
+.markdown-body pre .hljs-punctuation {
+  color: #abb2bf !important;
+}
+
 .markdown-body pre code {
   color: #E2E8F0;
 }
