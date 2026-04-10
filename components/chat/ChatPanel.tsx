@@ -227,7 +227,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
   const isEmpty = messages.length === 0 && !streamingContent
 
   return (
-    <div className="relative flex flex-col h-full bg-white dark:bg-transparent">
+    <div className="flex flex-col h-full bg-white dark:bg-transparent">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
       {!initialLoading && (
         <div
@@ -310,7 +310,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
       {initialLoading ? (
         showSkeleton ? (
-          <div className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6">
+          <div className="flex-1 overflow-y-auto px-3 pt-4 pb-6 lg:px-4 lg:pt-6">
             <div className="w-full mx-auto flex flex-col gap-4">
               {[0, 1, 2].map(i => (
                 <div key={i} className={`flex gap-3 ${i % 2 === 0 ? '' : 'flex-row-reverse'}`}>
@@ -332,13 +332,13 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <div className="flex-1" />
         )
       ) : isEmpty ? (
-        <div className="flex-1 flex flex-col pb-48">
+        <div className="flex-1 flex flex-col">
           <EmptyState onSend={handleSend} />
         </div>
       ) : (
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6 bg-white dark:bg-[#1e293b]"
+          className="flex-1 overflow-y-auto px-3 pt-4 pb-6 lg:px-4 lg:pt-6 bg-white dark:bg-[#1e293b]"
         >
           <div className="w-full mx-auto flex flex-col gap-4">
             {/* 加载更多历史消息 */}
@@ -448,15 +448,13 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
       {/* 权限审批对话框 */}
       {permissionRequest && (
-        <div className="absolute bottom-48 left-0 right-0 z-30 px-3 lg:px-4 flex justify-center">
-          <div className="w-full">
-            <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
-          </div>
+        <div className="flex-shrink-0 px-3 lg:px-4 pb-2">
+          <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
         </div>
       )}
 
-      {/* 浮动输入区域 */}
-      <div className="absolute bottom-0 left-0 right-0 pb-4 px-3 lg:px-4 flex justify-center z-20">
+      {/* 输入区域 - 正常 flex 布局，不叠在滚动区域上 */}
+      <div className="flex-shrink-0 pb-3 px-3 lg:px-4">
         <div className="w-full">
           <ChatInput
             onSend={handleSend}

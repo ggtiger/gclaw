@@ -28,27 +28,23 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
-      {/* 遮罩层 */}
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
-
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
       {/* 内容区域 */}
-      <div className="relative max-w-2xl w-full mx-4 max-h-[80vh] glass rounded-lg shadow-xl flex flex-col border border-white/40 dark:border-white/[0.06]">
+      <div
+        className="relative max-w-2xl w-full mx-4 max-h-[80vh] bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
         {/* 标题栏 */}
-        <div className="flex justify-between items-center px-6 py-4 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
             {title}
-          </h2>
+          </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg transition-colors"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             aria-label="关闭"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 

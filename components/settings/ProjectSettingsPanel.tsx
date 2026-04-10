@@ -23,7 +23,6 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     try {
       const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
       const data = await res.json()
-      // 只保留项目级字段
       setSettings({
         model: data.model || '',
         effort: data.effort || 'medium',
@@ -54,7 +53,6 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     if (!settings || !dirty) return
     setSaving(true)
     try {
-      // 只提交项目级字段
       await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -75,17 +73,17 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     return (
       <div className="p-4 space-y-3">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-12 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--color-bg-secondary)' }} />
+          <div key={i} className="h-12 rounded-lg animate-pulse bg-gray-200 dark:bg-white/10" />
         ))}
       </div>
     )
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 flex flex-col gap-3">
       {/* Model */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           模型
         </label>
         <input
@@ -93,21 +91,16 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           value={settings.model}
           onChange={e => updateField('model', e.target.value)}
           placeholder="默认 (claude-sonnet-4-20250514)"
-          className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
         />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="text-xs mt-1 text-gray-400">
           留空使用默认模型
         </div>
       </div>
 
       {/* Effort */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           推理强度
         </label>
         <div className="flex gap-2">
@@ -115,12 +108,11 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
             <button
               key={level}
               onClick={() => updateField('effort', level)}
-              className="flex-1 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer"
-              style={{
-                borderColor: settings.effort === level ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: settings.effort === level ? 'var(--color-primary-10)' : 'var(--color-bg)',
-                color: settings.effort === level ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              }}
+              className={`flex-1 text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                settings.effort === level
+                  ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                  : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400'
+              }`}
             >
               {{ low: '低', medium: '中', high: '高' }[level]}
             </button>
@@ -129,8 +121,8 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
       </div>
 
       {/* CWD */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           工作目录
         </label>
         <input
@@ -138,45 +130,34 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           value={settings.cwd}
           onChange={e => updateField('cwd', e.target.value)}
           placeholder="默认当前目录"
-          className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
         />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="text-xs mt-1 text-gray-400">
           Claude 工作目录，默认为项目目录
         </div>
       </div>
 
-      {/* System Prompt (Soul) */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      {/* System Prompt */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           系统提示词 (Soul)
         </label>
         <textarea
           value={settings.systemPrompt}
           onChange={e => updateField('systemPrompt', e.target.value)}
-          placeholder="每次会话自动注入的持久化指令，例如角色设定、行为规范、项目上下文等"
+          placeholder="每次会话自动注入的持久化指令..."
           rows={4}
-          className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-colors resize-y focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-            minHeight: '80px',
-            maxHeight: '200px',
-          }}
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none resize-y"
+          style={{ minHeight: '80px', maxHeight: '150px' }}
         />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="text-xs mt-1 text-gray-400">
           写入项目 CLAUDE.md，SDK 每次会话自动加载
         </div>
       </div>
 
       {/* Session ID */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           Session ID
         </label>
         <input
@@ -184,25 +165,20 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           value={settings.sessionId}
           onChange={e => updateField('sessionId', e.target.value)}
           placeholder="自动生成"
-          className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
         />
-        <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="text-xs mt-1 text-gray-400">
           留空则每次新建会话
         </div>
       </div>
 
       {/* Skip Permissions */}
-      <div className="flex items-center justify-between py-2">
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3 flex items-center justify-between">
         <div>
-          <div className="text-sm" style={{ color: 'var(--color-text)' }}>
+          <div className="text-xs text-gray-900 dark:text-white">
             跳过权限确认
           </div>
-          <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="text-xs text-gray-400">
             dangerouslySkipPermissions
           </div>
         </div>
@@ -210,7 +186,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           onClick={() => updateField('dangerouslySkipPermissions', !settings.dangerouslySkipPermissions)}
           className="relative w-10 h-5 rounded-full transition-colors cursor-pointer"
           style={{
-            backgroundColor: settings.dangerouslySkipPermissions ? 'var(--color-warning)' : 'var(--color-bg-tertiary)',
+            backgroundColor: settings.dangerouslySkipPermissions ? '#f97316' : 'rgba(148, 163, 184, 0.3)',
           }}
         >
           <span
@@ -222,19 +198,22 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         </button>
       </div>
 
-      {/* 保存按钮 */}
-      <button
-        onClick={saveSettings}
-        disabled={!dirty || saving}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{
-          backgroundColor: dirty ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-          color: dirty ? 'white' : 'var(--color-text-muted)',
-        }}
-      >
-        {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
-        {saving ? '保存中...' : '保存设置'}
-      </button>
+      {/* Footer */}
+      <div className="flex justify-end gap-2 pt-2">
+        <button
+          onClick={onClose}
+          className="text-xs px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+        >
+          取消
+        </button>
+        <button
+          onClick={saveSettings}
+          disabled={!dirty || saving}
+          className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saving ? '保存中...' : '保存'}
+        </button>
+      </div>
     </div>
   )
 }

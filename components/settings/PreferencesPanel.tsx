@@ -34,7 +34,6 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
   const setTheme = (newTheme: 'light' | 'dark' | 'system') => {
     setThemeState(newTheme)
     localStorage.setItem('gclaw-theme', newTheme)
-    // 应用主题
     const root = document.documentElement
     root.classList.remove('light', 'dark')
     if (newTheme === 'system') {
@@ -49,14 +48,12 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
     const file = e.target.files?.[0]
     if (!file) return
 
-    // 验证文件类型
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
     if (!allowedTypes.includes(file.type)) {
       toast('不支持的文件类型，仅支持 JPG、PNG、WebP', 'error')
       return
     }
 
-    // 验证文件大小 (10MB)
     if (file.size > 10 * 1024 * 1024) {
       toast('文件大小超过限制（最大 10MB）', 'error')
       return
@@ -82,7 +79,6 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
       toast('上传失败', 'error')
     } finally {
       setUploadingBg(false)
-      // 清空 input 以便可以重复选择同一文件
       if (bgFileInputRef.current) {
         bgFileInputRef.current.value = ''
       }
@@ -90,10 +86,10 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 flex flex-col gap-3">
       {/* 主题切换 */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           主题
         </label>
         <div className="flex gap-2">
@@ -101,12 +97,11 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
             <button
               key={t}
               onClick={() => setTheme(t)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer"
-              style={{
-                borderColor: theme === t ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: theme === t ? 'var(--color-primary-10)' : 'var(--color-bg)',
-                color: theme === t ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                theme === t
+                  ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                  : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400'
+              }`}
             >
               {t === 'light' && <Sun size={14} />}
               {t === 'dark' && <Moon size={14} />}
@@ -118,34 +113,27 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
       </div>
 
       {/* 背景图片 */}
-      <div className="p-4 rounded-lg bg-white/10 dark:bg-slate-800/20 backdrop-blur-md border border-white/20 space-y-3">
-        <label className="block text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          <div className="flex items-center gap-1.5">
-            <ImageIcon size={13} />
-            自定义背景
-          </div>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5">
+          <ImageIcon size={13} />
+          自定义背景
         </label>
 
         {/* 预览区域 */}
         {backgroundImage ? (
-          <div className="relative rounded-xl overflow-hidden h-24 border border-white/20">
-            <img
-              src={backgroundImage}
-              alt="背景预览"
-              className="w-full h-full object-cover"
-            />
+          <div className="relative rounded-lg overflow-hidden h-20 border border-gray-200 dark:border-gray-600">
+            <img src={backgroundImage} alt="背景预览" className="w-full h-full object-cover" />
             <button
               onClick={() => onBackgroundChange?.('')}
-              className="absolute top-2 right-2 p-1.5 rounded-full cursor-pointer transition-all duration-200 hover:bg-black/70"
-              style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: 'white' }}
+              className="absolute top-1.5 right-1.5 p-1 rounded-full cursor-pointer transition-all bg-black/50 hover:bg-black/70 text-white"
               title="移除背景"
             >
-              <XIcon size={14} />
+              <XIcon size={12} />
             </button>
           </div>
         ) : (
-          <div className="h-24 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>暂无背景</span>
+          <div className="h-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+            <span className="text-xs text-gray-400">暂无背景</span>
           </div>
         )}
 
@@ -153,24 +141,21 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
         <button
           onClick={() => !uploadingBg && bgFileInputRef.current?.click()}
           disabled={uploadingBg}
-          className="w-full rounded-xl border-2 border-dashed border-white/20 hover:border-purple-400/50 p-4 text-center cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+          className="w-full mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 p-3 text-center cursor-pointer transition-colors disabled:opacity-50"
         >
           {uploadingBg ? (
-            <div className="flex flex-col items-center gap-2">
-              <Loader size={20} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>上传中...</span>
+            <div className="flex items-center justify-center gap-2">
+              <Loader size={16} className="animate-spin text-purple-600" />
+              <span className="text-xs text-gray-400">上传中...</span>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-1">
-              <Upload size={20} style={{ color: 'var(--color-primary)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>点击上传背景图</span>
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>JPG / PNG / WebP，最大 10MB</span>
+            <div className="flex items-center justify-center gap-2">
+              <Upload size={16} className="text-purple-600" />
+              <span className="text-xs text-gray-600 dark:text-gray-300">上传背景图</span>
             </div>
           )}
         </button>
 
-        {/* 隐藏的文件输入 */}
         <input
           ref={bgFileInputRef}
           type="file"
@@ -180,40 +165,25 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
           disabled={uploadingBg}
         />
 
-        {/* 分隔线 */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
-          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>或输入 URL</span>
-          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
-        </div>
-
         {/* URL 输入 */}
-        <input
-          type="text"
-          value={backgroundImage || ''}
-          onChange={e => onBackgroundChange?.(e.target.value)}
-          placeholder="输入图片 URL"
-          className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all duration-200 focus:border-purple-400/50"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
-          }}
-        />
-
-        <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-          支持 JPG、PNG、WebP 格式图片
+        <div className="mt-2">
+          <input
+            type="text"
+            value={backgroundImage || ''}
+            onChange={e => onBackgroundChange?.(e.target.value)}
+            placeholder="或输入图片 URL"
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          />
         </div>
       </div>
 
       {/* 主题颜色 */}
-      <div className="p-4 rounded-lg border space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
-        <div className="flex items-center gap-1.5">
-          <Palette size={13} style={{ color: 'var(--color-text-secondary)' }} />
-          <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>主题颜色</span>
-        </div>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5">
+          <Palette size={13} />
+          主题颜色
+        </label>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* 预设颜色 */}
           {[
             { label: '紫罗兰', hex: '#8b5cf6' },
             { label: '蓝色', hex: '#3b82f6' },
@@ -233,7 +203,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
               className="w-7 h-7 rounded-full border-2 transition-all cursor-pointer hover:scale-110"
               style={{
                 backgroundColor: c.hex,
-                borderColor: themeColor === c.hex ? 'var(--color-text)' : 'transparent',
+                borderColor: themeColor === c.hex ? 'white' : 'transparent',
                 boxShadow: themeColor === c.hex ? `0 0 0 2px ${c.hex}40` : 'none',
               }}
               title={c.label}
@@ -253,11 +223,10 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
               className="absolute inset-0 w-7 h-7 opacity-0 cursor-pointer"
             />
             <div
-              className="w-7 h-7 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-              style={{ borderColor: 'var(--color-border)' }}
+              className="w-7 h-7 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
               title="自定义颜色"
             >
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+</span>
+              <span className="text-xs text-gray-400">+</span>
             </div>
           </div>
         </div>
@@ -269,8 +238,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
               localStorage.removeItem('gclaw-theme-color')
               resetThemeColorGlobal()
             }}
-            className="text-[11px] cursor-pointer hover:underline"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="text-xs mt-2 cursor-pointer hover:underline text-gray-400"
           >
             恢复默认
           </button>

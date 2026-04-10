@@ -25,7 +25,6 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
-  // apiKey 掩码/实际值切换
   const [apiKeyRawValue, setApiKeyRawValue] = useState('')
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'preferences')
 
@@ -39,7 +38,6 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     try {
       const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
       const data = await res.json()
-      // 只保留全局级字段
       if (data.apiKey && !data.apiKey.startsWith('****')) {
         setApiKeyRawValue(data.apiKey)
       }
@@ -70,7 +68,6 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     if (!settings || !dirty) return
     setSaving(true)
     try {
-      // 构建提交数据：apiKey 使用原始值（非掩码）
       const toSave = { ...settings }
       if (apiKeyRawValue && !apiKeyRawValue.startsWith('****')) {
         toSave.apiKey = apiKeyRawValue
@@ -81,7 +78,6 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         body: JSON.stringify(toSave),
       })
       setDirty(false)
-      // 保存后重新加载（拿到掩码后的值）
       fetchSettings()
       toast('设置已保存', 'success')
     } catch (err) {
@@ -96,13 +92,12 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     return (
       <div className="p-4 space-y-3">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-12 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--color-bg-secondary)' }} />
+          <div key={i} className="h-12 rounded-lg animate-pulse bg-gray-200 dark:bg-white/10" />
         ))}
       </div>
     )
   }
 
-  // Tab 配置：所有用户可见偏好，仅管理员可见其他
   const tabs: { key: SettingsTab; icon: React.ReactNode; label: string; adminOnly: boolean }[] = [
     { key: 'preferences', icon: <Palette size={14} />, label: '偏好', adminOnly: false },
     { key: 'settings', icon: <SettingsIcon size={14} />, label: '设置', adminOnly: true },
@@ -114,18 +109,18 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin)
 
   return (
-    <div className="space-y-0">
+    <div>
       {/* Tab 栏 */}
-      <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="flex px-4 pt-3 gap-1">
         {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors"
-            style={{
-              borderBottomColor: activeTab === tab.key ? 'var(--color-primary)' : 'transparent',
-              color: activeTab === tab.key ? 'var(--color-primary)' : 'var(--color-text-muted)',
-            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+              activeTab === tab.key
+                ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
           >
             {tab.icon}
             {tab.label}
@@ -143,10 +138,10 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
       ) : activeTab === 'security' ? (
         <SecurityPanel />
       ) : activeTab === 'settings' ? (
-        <div className="p-4 space-y-4">
+        <div className="p-4 flex flex-col gap-3">
           {/* API Key */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
               API Key
             </label>
             <div className="relative">
@@ -159,30 +154,24 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
                   updateField('apiKey', val)
                 }}
                 placeholder="sk-ant-..."
-                className="w-full px-3 py-2 pr-10 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-                style={{
-                  borderColor: 'var(--color-border)',
-                  backgroundColor: 'var(--color-bg)',
-                  color: 'var(--color-text)',
-                }}
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 pr-10 outline-none"
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer"
-                style={{ color: 'var(--color-text-muted)' }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer text-gray-400"
               >
                 {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
-            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="text-xs mt-1 text-gray-400">
               留空则使用环境变量 ANTHROPIC_API_KEY
             </div>
           </div>
 
           {/* API Base URL */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
               API 地址
             </label>
             <input
@@ -190,31 +179,29 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
               value={settings.apiBaseUrl}
               onChange={e => updateField('apiBaseUrl', e.target.value)}
               placeholder="https://api.anthropic.com"
-              className="w-full px-3 py-2 rounded-lg border text-sm font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
-              style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-bg)',
-                color: 'var(--color-text)',
-              }}
+              className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
             />
-            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="text-xs mt-1 text-gray-400">
               留空使用默认地址，可填写代理地址
             </div>
           </div>
 
-          {/* 保存按钮 */}
-          <button
-            onClick={saveSettings}
-            disabled={!dirty || saving}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: dirty ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-              color: dirty ? 'white' : 'var(--color-text-muted)',
-            }}
-          >
-            {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
-            {saving ? '保存中...' : '保存设置'}
-          </button>
+          {/* Footer */}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setActiveTab('preferences')}
+              className="text-xs px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={saveSettings}
+              disabled={!dirty || saving}
+              className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
