@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Inter 字体通过系统字体栈回退，不使用 CDN 加载（WebView2 网络请求导致渲染卡顿） */
 
 @tailwind base;
 @tailwind components;
@@ -157,7 +157,8 @@ body {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
 }
 
-/* 星空微粒效果 */
+/* 星空微粒效果 - 禁用（固定定位 radial-gradient 合成层影响 WebView2 性能） */
+/*
 .dark body::before {
   content: '';
   position: fixed;
@@ -173,6 +174,7 @@ body {
   z-index: 0;
   opacity: 0.6;
 }
+*/
 
 /* 全局背景图容器 */
 .app-background {

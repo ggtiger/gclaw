@@ -955,6 +955,15 @@ fn finalize_launch(handle: &tauri::AppHandle, timeout_secs: u64) {
 // ============ 主入口 ============
 
 pub fn run() {
+    // Windows WebView2: 启用 GPU 硬件加速，解决渲染卡顿
+    #[cfg(target_os = "windows")]
+    {
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--enable-gpu-rasterization --enable-zero-copy --enable-features=CanvasOopRasterization,Vulkan",
+        );
+    }
+
     let is_dev = cfg!(debug_assertions);
     let remote_url = std::env::var("GCLAW_REMOTE_URL").ok();
 
