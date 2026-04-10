@@ -492,6 +492,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
                       left: 0,
                       width: '100%',
                       transform: `translateY(${virtualRow.start}px)`,
+                      willChange: 'transform',
+                      contain: 'content',
                     }}
                   >
                     <MessageBubble

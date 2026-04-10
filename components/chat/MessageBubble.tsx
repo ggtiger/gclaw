@@ -13,19 +13,21 @@ interface MessageBubbleProps {
   allTags?: string[]
 }
 
+// 模块级常量，避免每次渲染重建
+const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
+const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+
 export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, allTags = [] }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
 
-  const [hovered, setHovered] = useState(false)
   const [showTagInput, setShowTagInput] = useState(false)
   const [tagQuery, setTagQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const tagInputRef = useRef<HTMLInputElement>(null)
 
   // 空内容或 SDK 占位文本的 assistant 消息不渲染
-  const noisePattern = /^[\s()]*(?:no content[)\s]*)+$/i
-  if (!isUser && !isSystem && (!message.content.trim() || noisePattern.test(message.content))) {
+  if (!isUser && !isSystem && (!message.content.trim() || NOISE_PATTERN.test(message.content))) {
     return null
   }
 
@@ -134,8 +136,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
   return (
     <div
       className={`flex gap-3 w-full group relative ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setShowTagInput(false); setTagQuery('') }}
+      onMouseLeave={() => { setShowTagInput(false); setTagQuery('') }}
     >
       {/* Avatar */}
       <div className="shrink-0">
@@ -154,7 +155,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             {isUser ? '你' : 'Claude'}
           </span>
           <span className="text-[10px] text-slate-400/50">
-            {new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+            {new Date(message.createdAt).toLocaleTimeString('zh-CN', TIME_FORMAT)}
           </span>
         </div>
 
@@ -222,10 +223,9 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
         )}
       </div>
 
-      {/* 悬停操作按钮 */}
-      {hovered && (
+      {/* 悬停操作按钮 - 用 CSS group-hover 代替 JS state，避免滚动时触发重渲染 */}
         <div
-          className="absolute top-2 right-2 flex items-center gap-0.5 animate-fade-in"
+          className="absolute top-2 right-2 items-center gap-0.5 hidden group-hover:flex"
           style={{ zIndex: 10 }}
         >
           {/* 收藏按钮 */}
@@ -303,7 +303,6 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             )}
           </div>
         </div>
-      )}
     </div>
   )
 })

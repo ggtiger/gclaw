@@ -155,7 +155,7 @@ export function SecurityPanel() {
               key={word}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono group cursor-pointer"
               style={{
-                backgroundColor: 'color-mix(in srgb, var(--color-error) 8%, transparent)',
+                backgroundColor: 'var(--color-error-8)',
                 color: 'var(--color-error)',
               }}
             >
@@ -193,7 +193,7 @@ export function SecurityPanel() {
               className="flex-1 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer"
               style={{
                 borderColor: config.retentionDays === opt.value ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: config.retentionDays === opt.value ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : 'var(--color-bg)',
+                backgroundColor: config.retentionDays === opt.value ? 'var(--color-primary-10)' : 'var(--color-bg)',
                 color: config.retentionDays === opt.value ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               }}
             >
@@ -208,7 +208,7 @@ export function SecurityPanel() {
             onClick={handleCleanup}
             className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors"
             style={{
-              backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+              backgroundColor: 'var(--color-warning-10)',
               color: 'var(--color-warning)',
             }}
           >

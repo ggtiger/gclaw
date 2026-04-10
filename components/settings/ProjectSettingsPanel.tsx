@@ -118,7 +118,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
               className="flex-1 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer"
               style={{
                 borderColor: settings.effort === level ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: settings.effort === level ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : 'var(--color-bg)',
+                backgroundColor: settings.effort === level ? 'var(--color-primary-10)' : 'var(--color-bg)',
                 color: settings.effort === level ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               }}
             >

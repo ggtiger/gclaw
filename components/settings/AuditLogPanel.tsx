@@ -144,15 +144,15 @@ export function AuditLogPanel() {
                 style={{
                   backgroundColor:
                     record.action.includes('delete') || record.action.includes('deny')
-                      ? 'color-mix(in srgb, #ef4444 15%, transparent)'
+                      ? 'var(--color-error-10)'
                       : record.action.includes('create') || record.action.includes('allow')
-                        ? 'color-mix(in srgb, #22c55e 15%, transparent)'
-                        : 'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+                        ? 'var(--color-success-15)'
+                        : 'var(--color-primary-15)',
                   color:
                     record.action.includes('delete') || record.action.includes('deny')
-                      ? '#ef4444'
+                      ? 'var(--color-error)'
                       : record.action.includes('create') || record.action.includes('allow')
-                        ? '#22c55e'
+                        ? 'var(--color-success)'
                         : 'var(--color-primary)',
                 }}
               >

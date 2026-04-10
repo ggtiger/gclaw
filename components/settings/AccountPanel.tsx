@@ -110,7 +110,7 @@ export function AccountPanel() {
             ) : (
               <div
                 className="w-full h-full flex items-center justify-center text-lg font-bold"
-                style={{ backgroundColor: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', color: 'var(--color-primary)' }}
+                style={{ backgroundColor: 'var(--color-primary-15)', color: 'var(--color-primary)' }}
               >
                 {initial}
               </div>
@@ -143,7 +143,7 @@ export function AccountPanel() {
           </div>
           <div className="flex items-center gap-2 mt-1">
             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg" style={{
-              backgroundColor: user.role === 'admin' ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)' : 'var(--color-bg-tertiary)',
+              backgroundColor: user.role === 'admin' ? 'var(--color-primary-15)' : 'var(--color-bg-tertiary)',
               color: user.role === 'admin' ? 'var(--color-primary)' : 'var(--color-text-muted)',
             }}>
               <Shield size={10} />
@@ -157,7 +157,7 @@ export function AccountPanel() {
               disabled={uploading}
               className="mt-2 inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-50"
               style={{
-                backgroundColor: 'color-mix(in srgb, var(--color-error) 10%, transparent)',
+                backgroundColor: 'var(--color-error-10)',
                 color: 'var(--color-error)',
               }}
             >
@@ -188,7 +188,7 @@ export function AccountPanel() {
         onClick={logout}
         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
         style={{
-          backgroundColor: 'color-mix(in srgb, var(--color-error) 10%, transparent)',
+          backgroundColor: 'var(--color-error-10)',
           color: 'var(--color-error)',
         }}
       >

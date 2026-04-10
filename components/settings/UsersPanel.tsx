@@ -135,8 +135,8 @@ export function UsersPanel() {
             className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
             style={{
               backgroundColor: user.role === 'admin'
-                ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)'
-                : 'color-mix(in srgb, var(--color-text-muted) 10%, transparent)',
+                ? 'var(--color-primary-15)'
+                : 'var(--color-muted-10)',
               color: user.role === 'admin' ? 'var(--color-primary)' : 'var(--color-text-muted)',
             }}
           >
@@ -153,7 +153,7 @@ export function UsersPanel() {
                 <Shield size={12} style={{ color: 'var(--color-primary)' }} />
               )}
               {user.disabled && (
-                <span className="text-[10px] px-1 py-0 rounded" style={{ backgroundColor: 'color-mix(in srgb, var(--color-error) 10%, transparent)', color: 'var(--color-error)' }}>
+                <span className="text-[10px] px-1 py-0 rounded" style={{ backgroundColor: 'var(--color-error-10)', color: 'var(--color-error)' }}>
                   已禁用
                 </span>
               )}
@@ -190,8 +190,8 @@ export function UsersPanel() {
               style={{
                 color: user.disabled ? 'var(--color-success)' : 'var(--color-error)',
                 backgroundColor: user.disabled
-                  ? 'color-mix(in srgb, var(--color-success) 10%, transparent)'
-                  : 'color-mix(in srgb, var(--color-error) 10%, transparent)',
+                  ? 'var(--color-success-10)'
+                  : 'var(--color-error-10)',
               }}
               title={user.disabled ? '启用' : '禁用'}
             >

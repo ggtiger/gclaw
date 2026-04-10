@@ -162,13 +162,13 @@ export function PasswordForm() {
       </div>
 
       {error && (
-        <div className="px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'color-mix(in srgb, var(--color-error) 10%, transparent)', color: 'var(--color-error)' }}>
+        <div className="px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--color-error-10)', color: 'var(--color-error)' }}>
           {error}
         </div>
       )}
 
       {success && (
-        <div className="px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'color-mix(in srgb, var(--color-success) 10%, transparent)', color: 'var(--color-success)' }}>
+        <div className="px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--color-success-10)', color: 'var(--color-success)' }}>
           密码修改成功
         </div>
       )}

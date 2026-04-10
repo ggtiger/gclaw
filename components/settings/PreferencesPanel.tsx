@@ -104,7 +104,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer"
               style={{
                 borderColor: theme === t ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: theme === t ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)' : 'var(--color-bg)',
+                backgroundColor: theme === t ? 'var(--color-primary-10)' : 'var(--color-bg)',
                 color: theme === t ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               }}
             >
