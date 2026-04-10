@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
 import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Star, Tag, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -301,6 +302,15 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
     return true
   }), [messages, filterStarred, filterTag])
 
+  // 虚拟滚动（只渲染可见区域的消息，大幅减少 DOM 节点）
+  const virtualizer = useVirtualizer({
+    count: filteredMessages.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 120,
+    overscan: 3,
+  })
+  const totalSize = virtualizer.getTotalSize()
+
   // 自动滚动到底部（用 RAF 防抖，减少抖动）
   useEffect(() => {
     if (!shouldAutoScroll.current || !scrollContainerRef.current) return
@@ -466,16 +476,34 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               </div>
             )}
 
-            {filteredMessages.map(msg => (
-              <div key={msg.id} id={`msg-${msg.id}`} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}>
-                <MessageBubble
-                  message={msg}
-                  projectId={projectId}
-                  onMessageUpdate={handleMessageUpdate}
-                  allTags={tagNameList}
-                />
-              </div>
-            ))}
+            {/* 虚拟滚动消息列表 */}
+            <div style={{ height: `${totalSize}px`, width: '100%', position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const msg = filteredMessages[virtualRow.index]
+                return (
+                  <div
+                    key={msg.id}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    id={`msg-${msg.id}`}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <MessageBubble
+                      message={msg}
+                      projectId={projectId}
+                      onMessageUpdate={handleMessageUpdate}
+                      allTags={tagNameList}
+                    />
+                  </div>
+                )
+              })}
+            </div>
 
             {/* 压缩状态指示器 */}
             {statusText && (
