@@ -624,15 +624,13 @@ body {
 /* ═══════════════ Tauri 桌面端性能优化 ═══════════════ */
 /* WebView2 的 backdrop-filter 性能极差，全局禁用并用不透明背景替代 */
 
-/* 禁用所有 backdrop-filter */
+/* 禁用所有 backdrop-filter — 只针对已知类名，不用通配符 */
 .tauri-app .glass,
 .tauri-app .glass-card,
 .tauri-app .glass-surface,
 .tauri-app .panel-card,
 .tauri-app .panel-card-main,
-.tauri-app .header-card,
-.tauri-app [class*="backdrop-blur"],
-.tauri-app [class*="backdrop-filter"] {
+.tauri-app .header-card {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -673,10 +671,10 @@ body {
   background: rgba(30, 41, 59, 0.88) !important;
 }
 
-/* 简化所有 transition，只保留颜色变化 */
-.tauri-app *,
-.tauri-app *::before,
-.tauri-app *::after {
-  transition-property: color, background-color, border-color, opacity !important;
-  transition-duration: 0.1s !important;
+/* Tauri 环境下禁用所有动画（减少合成开销） */
+.tauri-app .animate-fade-in,
+.tauri-app .animate-fade-in-up,
+.tauri-app .animate-slide-in-left,
+.tauri-app .animate-slide-in-right {
+  animation: none !important;
 }

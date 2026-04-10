@@ -467,9 +467,9 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               </div>
             )}
 
-            {/* 消息列表 - 使用 content-visibility 跳过离屏内容渲染 */}
+            {/* 消息列表 */}
             {filteredMessages.map(msg => (
-              <div key={msg.id} id={`msg-${msg.id}`} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 100px' }}>
+              <div key={msg.id} id={`msg-${msg.id}`}>
                 <MessageBubble
                   message={msg}
                   projectId={projectId}
