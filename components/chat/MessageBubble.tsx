@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useRef, useEffect, useCallback } from 'react'
-import { User, Bot, AlertCircle, Star, Tag, X, Check, FileText, Download, ChevronDown } from 'lucide-react'
+import { User, Bot, AlertCircle, Star, Tag, X, Check, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
 import type { ChatMessage, ChatAttachment } from '@/types/chat'
@@ -106,6 +106,36 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
       console.error('Remove tag failed:', err)
     }
   }, [projectId, message.id, onMessageUpdate])
+
+  // 点赞/踩反馈
+  const handleFeedback = useCallback(async (feedback: 'like' | 'dislike') => {
+    try {
+      const res = await fetch(`/api/chat/messages/feedback?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: message.id,
+          feedback,
+          content: message.content.slice(0, 500), // 截取前500字符用于记忆
+        }),
+      })
+      const data = await res.json()
+      if (data.message && onMessageUpdate) {
+        onMessageUpdate(data.message)
+      }
+    } catch (err) {
+      console.error('Feedback failed:', err)
+    }
+  }, [projectId, message.id, message.content, onMessageUpdate])
+
+  // 复制消息内容
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+    } catch (err) {
+      console.error('Copy failed:', err)
+    }
+  }, [message.content])
 
   const handleTagKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -223,6 +253,33 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
           </div>
         )}
 
+        {/* 底部操作按钮（仅 assistant 消息显示） */}
+        {!isUser && (
+          <div className="mt-1.5 flex items-center gap-1">
+            <button
+              onClick={() => handleFeedback('like')}
+              className={`p-1 rounded-md cursor-pointer transition-colors ${message.feedback === 'like' ? 'bg-green-500/15 text-green-600' : 'text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10'}`}
+              title="点赞"
+            >
+              <ThumbsUp size={14} />
+            </button>
+            <button
+              onClick={() => handleFeedback('dislike')}
+              className={`p-1 rounded-md cursor-pointer transition-colors ${message.feedback === 'dislike' ? 'bg-red-500/15 text-red-600' : 'text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'}`}
+              title="踩"
+            >
+              <ThumbsDown size={14} />
+            </button>
+            <button
+              onClick={handleCopy}
+              className="p-1 rounded-md cursor-pointer transition-colors text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10"
+              title="复制"
+            >
+              <Copy size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Stats */}
         {message.stats && (
           <div className="mt-2.5 flex items-center gap-2 text-[11px] px-2 py-1 rounded-md w-fit text-slate-500 dark:text-slate-400 bg-slate-500/5">
@@ -241,22 +298,22 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
         )}
       </div>
 
-      {/* 悬停操作按钮 - 用 CSS group-hover 代替 JS state，避免滚动时触发重渲染 */}
-        <div
-          className="absolute top-2 right-2 items-center gap-0.5 hidden group-hover:flex"
-          style={{ zIndex: 10 }}
+      {/* 悬停操作按钮 - 收藏和标签 */}
+      <div
+        className="absolute top-2 right-2 items-center gap-0.5 hidden group-hover:flex"
+        style={{ zIndex: 10 }}
+      >
+        {/* 收藏按钮 */}
+        <button
+          onClick={handleToggleStar}
+          className={`p-1 rounded-md cursor-pointer transition-colors ${message.isStarred ? 'bg-amber-500/15 text-amber-600' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
+          title={message.isStarred ? '取消收藏' : '收藏'}
         >
-          {/* 收藏按钮 */}
-          <button
-            onClick={handleToggleStar}
-            className={`p-1 rounded-md cursor-pointer transition-colors ${message.isStarred ? 'bg-amber-500/15 text-amber-600' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
-            title={message.isStarred ? '取消收藏' : '收藏'}
-          >
-            <Star size={13} fill={message.isStarred ? 'currentColor' : 'none'} />
-          </button>
+          <Star size={13} fill={message.isStarred ? 'currentColor' : 'none'} />
+        </button>
 
-          {/* 添加标签按钮 */}
-          <div className="relative">
+        {/* 添加标签按钮 */}
+        <div className="relative">
             <button
               onClick={() => setShowTagInput(!showTagInput)}
               className={`p-1 rounded-md cursor-pointer transition-colors ${showTagInput ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
@@ -321,9 +378,9 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             )}
           </div>
         </div>
-    </div>
-  )
-})
+      </div>
+    )
+  })
 
 // ── 附件预览组件 ──
 

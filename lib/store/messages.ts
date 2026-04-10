@@ -304,3 +304,26 @@ export function getStarredMessages(projectId: string): ChatMessage[] {
   const data = readMessagesData(projectId)
   return data.messages.filter(m => m.isStarred)
 }
+
+// ── 反馈 ──
+
+/** 设置消息反馈（点赞/踩） */
+export function setFeedback(projectId: string, messageId: string, feedback: 'like' | 'dislike' | null): ChatMessage | null {
+  const data = readMessagesData(projectId)
+  const msg = data.messages.find(m => m.id === messageId)
+  if (!msg) return null
+
+  if (feedback === null) {
+    delete msg.feedback
+  } else {
+    msg.feedback = feedback
+  }
+  writeMessagesData(projectId, data)
+  return msg
+}
+
+/** 获取消息详情（用于记忆记录） */
+export function getMessageById(projectId: string, messageId: string): ChatMessage | null {
+  const data = readMessagesData(projectId)
+  return data.messages.find(m => m.id === messageId) || null
+}

@@ -632,6 +632,20 @@ body {
   background: #1a1f2e !important;
 }
 
+/* 滚动容器强制 GPU 独立图层 + 优化 */
+.tauri-app .overflow-y-auto {
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 消除所有 transition — 滚动时浏览器不需要检查属性变化 */
+.tauri-app .transition-all,
+.tauri-app .transition-colors,
+.tauri-app .transition-opacity,
+.tauri-app .transition {
+  transition: none !important;
+}
+
 /* 禁用所有 backdrop-filter */
 .tauri-app .glass,
 .tauri-app .glass-card,
