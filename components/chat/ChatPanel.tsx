@@ -440,8 +440,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6 bg-white/95 dark:bg-[#1e293b]/95"
-          style={{ willChange: 'scroll-position' }}
+          className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6 bg-white dark:bg-[#1e293b]"
         >
           <div className="w-full mx-auto flex flex-col gap-4">
             {/* 筛选栏 */}
@@ -570,7 +569,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       )}
 
       {/* 浮动输入区域 */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white/70 via-white/40 to-transparent dark:from-[#1a1a2e]/90 dark:via-[#1a1a2e]/60 dark:to-transparent pt-6 pb-4 px-3 lg:px-4 flex justify-center z-20">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-white/0 dark:from-[#1e293b] dark:via-[#1e293b]/95 dark:to-[#1e293b]/0 pt-8 pb-4 px-3 lg:px-4 flex justify-center z-20">
         <div className="w-full">
           <ChatInput
             onSend={handleSend}

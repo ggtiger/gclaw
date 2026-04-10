@@ -169,7 +169,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   return (
     <div className="px-4 py-3">
       
-      <div className="bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.25)] border border-white/50 dark:border-white/10 p-2 flex flex-col gap-2">
+      <div className="bg-white/90 dark:bg-slate-800/90 rounded-2xl shadow-lg border border-gray-200/60 dark:border-white/10 p-2 flex flex-col gap-2">
         {/* 附件预览区域 */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-2 pt-1">

@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useRef, useEffect, useCallback } from 'react'
-import { User, Bot, AlertCircle, Star, Tag, X, Check, FileText, Download } from 'lucide-react'
+import { User, Bot, AlertCircle, Star, Tag, X, Check, FileText, Download, ChevronDown } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
 import type { ChatMessage, ChatAttachment } from '@/types/chat'
@@ -17,12 +17,17 @@ interface MessageBubbleProps {
 const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
 
+// 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 节点数量
+const COLLAPSE_THRESHOLD = 2000
+
 export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, allTags = [] }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
 
   const [showTagInput, setShowTagInput] = useState(false)
   const [tagQuery, setTagQuery] = useState('')
+  // 长消息默认折叠，点击展开
+  const [expanded, setExpanded] = useState(() => !message.isStreaming && message.content.length <= COLLAPSE_THRESHOLD)
   const [selectedIdx, setSelectedIdx] = useState(0)
   const tagInputRef = useRef<HTMLInputElement>(null)
 
@@ -173,7 +178,20 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
           </div>
         ) : (
           <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-[#f1f5f9] dark:bg-[#1e293b] rounded-2xl rounded-tl-md border border-gray-200/60 dark:border-white/10 text-[var(--color-text)] shadow-sm">
-            <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
+            {/* 长消息折叠：只渲染前 COLLAPSE_THRESHOLD 字符，大幅减少 DOM 节点 */}
+            <MarkdownRenderer
+              content={expanded || message.isStreaming ? message.content : message.content.slice(0, COLLAPSE_THRESHOLD) + '\n\n...'}
+              isStreaming={message.isStreaming}
+            />
+            {!expanded && !message.isStreaming && message.content.length > COLLAPSE_THRESHOLD && (
+              <button
+                onClick={() => setExpanded(true)}
+                className="mt-3 flex items-center gap-1 text-xs font-medium cursor-pointer text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300"
+              >
+                <ChevronDown size={14} />
+                展开完整内容（{Math.ceil(message.content.length / 1000)}k 字符）
+              </button>
+            )}
           </div>
         )}
 
