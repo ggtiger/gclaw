@@ -248,12 +248,12 @@ export function ChatLayout() {
         {!filesFullscreen && (
         <main
           data-tauri-no-drag
-          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden rounded-2xl bg-white/95 dark:bg-[#1e293b]/95 border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
+          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden rounded-2xl bg-white dark:bg-[#1e293b] border border-gray-200/60 dark:border-white/[0.06] shadow-sm relative`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {/* 移动端菜单按钮 */}
           <button
-            className="[@media(min-width:960px)]:hidden absolute top-3 left-3 z-20 p-2 rounded-lg bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-white/[0.06] text-gray-600 dark:text-gray-300"
+            className="[@media(min-width:960px)]:hidden absolute top-3 left-3 z-20 p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/[0.06] text-gray-600 dark:text-gray-300"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
             <Menu size={18} />
@@ -305,7 +305,7 @@ export function ChatLayout() {
           />
           )}
           {/* 面板内容 */}
-          <div className={`w-full h-full overflow-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm`}>
+          <div className={`w-full h-full overflow-hidden flex flex-col rounded-2xl ${glass ? 'glass' : 'bg-white dark:bg-gray-900'} border border-gray-200/60 dark:border-white/[0.06] shadow-sm`}>
             {isSecretary ? <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} /> : <FilesPanel
               projectId={project.currentId}
               isFullscreen={filesFullscreen}
@@ -320,7 +320,7 @@ export function ChatLayout() {
       {/* Mobile overlay for project sidebar */}
       {sidebarOpen && (
         <div className="[@media(min-width:960px)]:hidden fixed inset-0 z-40 flex p-2">
-          <div className="absolute inset-0 bg-black/10 backdrop-blur-sm animate-fade-in" onClick={() => setSidebarOpen(false)} />
+          <div className="absolute inset-0 bg-black/30 animate-fade-in" onClick={() => setSidebarOpen(false)} />
           <div className={`absolute left-2 top-2 bottom-2 animate-slide-in-left rounded-2xl overflow-hidden glass`}>
             <ProjectSidebar
               projects={project.projects}

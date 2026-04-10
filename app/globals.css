@@ -622,9 +622,17 @@ body {
 }
 
 /* ═══════════════ Tauri 桌面端性能优化 ═══════════════ */
-/* WebView2 的 backdrop-filter 性能极差，全局禁用并用不透明背景替代 */
+/* WebView2 GPU 合成层性能差：渐变背景 + 半透明面板 每帧都要重新合成 */
 
-/* 禁用所有 backdrop-filter — 只针对已知类名，不用通配符 */
+/* body 渐变改纯色，避免 GPU 每帧重绘 */
+:root:not(.dark).tauri-app body {
+  background: #f0f2f5 !important;
+}
+.dark.tauri-app body {
+  background: #1a1f2e !important;
+}
+
+/* 禁用所有 backdrop-filter */
 .tauri-app .glass,
 .tauri-app .glass-card,
 .tauri-app .glass-surface,
@@ -635,43 +643,43 @@ body {
   backdrop-filter: none !important;
 }
 
-/* 毛玻璃组件改用不透明背景 - 亮色 */
+/* 所有面板完全不透明（不是 0.92，是 1.0）— 亮色 */
 :root:not(.dark).tauri-app .glass {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: #f7f8fa !important;
 }
 :root:not(.dark).tauri-app .glass-card {
-  background: rgba(255, 255, 255, 0.88) !important;
+  background: #f3f4f6 !important;
 }
 :root:not(.dark).tauri-app .glass-surface {
-  background: rgba(255, 255, 255, 0.90) !important;
+  background: #f5f6f8 !important;
 }
 :root:not(.dark).tauri-app .panel-card,
 :root:not(.dark).tauri-app .panel-card-main {
-  background: rgba(255, 255, 255, 0.90) !important;
+  background: #f5f6f8 !important;
 }
 :root:not(.dark).tauri-app .header-card {
-  background: rgba(255, 255, 255, 0.88) !important;
+  background: #f3f4f6 !important;
 }
 
-/* 毛玻璃组件改用不透明背景 - 暗色 */
+/* 所有面板完全不透明 — 暗色 */
 .dark.tauri-app .glass {
-  background: rgba(30, 41, 59, 0.92) !important;
+  background: #1e293b !important;
 }
 .dark.tauri-app .glass-card {
-  background: rgba(30, 41, 59, 0.88) !important;
+  background: #1c2536 !important;
 }
 .dark.tauri-app .glass-surface {
-  background: rgba(30, 41, 59, 0.90) !important;
+  background: #1d2738 !important;
 }
 .dark.tauri-app .panel-card,
 .dark.tauri-app .panel-card-main {
-  background: rgba(30, 41, 59, 0.90) !important;
+  background: #1d2738 !important;
 }
 .dark.tauri-app .header-card {
-  background: rgba(30, 41, 59, 0.88) !important;
+  background: #1c2536 !important;
 }
 
-/* Tauri 环境下禁用所有动画（减少合成开销） */
+/* Tauri 环境下禁用自定义动画 */
 .tauri-app .animate-fade-in,
 .tauri-app .animate-fade-in-up,
 .tauri-app .animate-slide-in-left,

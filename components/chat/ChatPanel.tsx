@@ -63,7 +63,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
           <button
             key={suggestion.text}
             onClick={() => onSend(suggestion.text)}
-            className="text-left text-sm px-3.5 py-3 rounded-xl border transition-all duration-200 cursor-pointer hover:border-purple-500 hover:shadow-sm hover:-translate-y-0.5 bg-white/40 dark:bg-white/5 backdrop-blur-sm"
+            className="text-left text-sm px-3.5 py-3 rounded-xl border transition-all duration-200 cursor-pointer hover:border-purple-500 hover:shadow-sm hover:-translate-y-0.5 bg-white dark:bg-slate-800"
             style={{
               borderColor: 'var(--color-border)',
               color: 'var(--color-text-secondary)',
@@ -273,7 +273,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
   useEffect(() => {
     loadTags()
-  }, [loadTags, messages])
+  }, [loadTags])
 
   const handleJumpToMessage = (messageId: string) => {
     const el = document.getElementById(`msg-${messageId}`)
