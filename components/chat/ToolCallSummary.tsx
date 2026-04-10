@@ -560,14 +560,14 @@ export const ToolCallSummary = memo(function ToolCallSummary({ summary, askQuest
     <div className="space-y-2">
       {/* TodoWrite 专用卡片 */}
       {todoTools.length > 0 && (
-        <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5 backdrop-blur-md">
+        <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5">
           <TodoWriteView tools={todoTools} />
         </div>
       )}
 
       {/* 工具调用（含 AskUserQuestion） */}
       {generalTools.length > 0 && (
-        <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5 backdrop-blur-md">
+        <div className="rounded-xl overflow-hidden border border-white/20 dark:border-white/[0.06] bg-white/30 dark:bg-white/5">
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium cursor-pointer hover:bg-white/20 dark:hover:bg-white/5 transition-colors"

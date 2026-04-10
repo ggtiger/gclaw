@@ -299,12 +299,19 @@ fn which_python3() -> Option<String> {
     if let Ok(output) = hidden_command(cmd).arg(bin_name).output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
-            if !path.is_empty() { return Some(path); }
+            if !path.is_empty() {
+                // Windows: 排除 Microsoft Store 跳板（WindowsApps 目录下的不是真正的 Python）
+                if cfg!(target_os = "windows") && path.contains("WindowsApps") {
+                    println!("[GClaw] Ignoring Windows Store python stub: {}", path);
+                } else if verify_python(&path) {
+                    return Some(path);
+                }
+            }
         }
     }
     if cfg!(target_os = "windows") {
         for path in &["C:\\Python312\\python.exe", "C:\\Python311\\python.exe"] {
-            if std::path::Path::new(path).exists() { return Some(path.to_string()); }
+            if std::path::Path::new(path).exists() && verify_python(path) { return Some(path.to_string()); }
         }
     } else {
         for path in &["/usr/local/bin/python3", "/opt/homebrew/bin/python3", "/opt/homebrew/bin/python3.12", "/usr/bin/python3"] {
@@ -312,6 +319,21 @@ fn which_python3() -> Option<String> {
         }
     }
     None
+}
+
+/// 验证 python 是否真的可用（排除 Windows Store 跳板等假 python）
+fn verify_python(python_path: &str) -> bool {
+    match hidden_command(python_path).arg("--version").output() {
+        Ok(output) => {
+            let out = String::from_utf8_lossy(&output.stdout);
+            let ok = output.status.success() && out.contains("Python");
+            if !ok {
+                println!("[GClaw] Python verification failed for {}: {}", python_path, out.trim());
+            }
+            ok
+        }
+        Err(_) => false,
+    }
 }
 
 /// 查找 git 二进制路径（macOS GUI 应用需要显式注入）

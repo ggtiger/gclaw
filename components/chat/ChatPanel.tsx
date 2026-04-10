@@ -1,6 +1,7 @@
 'use client'
 
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
+import Image from 'next/image'
 import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Star, Tag, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
@@ -11,6 +12,7 @@ import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
 // BranchSwitcher 已隐藏
 import type { ChatMessage, ChatAttachment, ToolSummary, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import appIcon from '@/public/icon.png'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
@@ -44,7 +46,7 @@ interface ChatPanelProps {
 function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttachment[]) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in-up">
-      <img src="/icon.png" alt="GClaw" className="w-16 h-16 rounded-2xl mb-5 shadow-lg" />
+      <Image src={appIcon} alt="GClaw" width={64} height={64} className="w-16 h-16 rounded-2xl mb-5 shadow-lg" />
       <h2 className="text-xl font-bold mb-1.5" style={{ color: 'var(--color-text)' }}>
         GClaw
       </h2>
@@ -292,12 +294,12 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
     }
   }, [onUpdateMessage])
 
-  // 根据筛选条件过滤消息
-  const filteredMessages = messages.filter(msg => {
+  // 根据筛选条件过滤消息（缓存避免每次渲染重算）
+  const filteredMessages = useMemo(() => messages.filter(msg => {
     if (filterStarred && !msg.isStarred) return false
     if (filterTag && !(msg.tags || []).includes(filterTag)) return false
     return true
-  })
+  }), [messages, filterStarred, filterTag])
 
   // 自动滚动到底部（用 RAF 防抖，减少抖动）
   useEffect(() => {
@@ -310,13 +312,18 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
     return () => cancelAnimationFrame(raf)
   }, [filteredMessages, streamingContent, toolSummary])
 
-  // 检测用户是否手动向上滚动
-  const handleScroll = () => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-    shouldAutoScroll.current = distanceFromBottom < 100
-  }
+  // 检测用户是否手动向上滚动（节流，避免高频触发）
+  const scrollRafRef = useRef<number>(0)
+  const handleScroll = useCallback(() => {
+    if (scrollRafRef.current) return
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = 0
+      const container = scrollContainerRef.current
+      if (!container) return
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+      shouldAutoScroll.current = distanceFromBottom < 100
+    })
+  }, [])
 
   const isEmpty = messages.length === 0 && !streamingContent
 
@@ -460,7 +467,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
             )}
 
             {filteredMessages.map(msg => (
-              <div key={msg.id} id={`msg-${msg.id}`} className="transition-all duration-300 rounded-lg">
+              <div key={msg.id} id={`msg-${msg.id}`}>
                 <MessageBubble
                   message={msg}
                   projectId={projectId}

@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings } from 'lucide-react'
 import type { ProjectInfo, ProjectType } from '@/types/skills'
+import appIcon from '@/public/icon.png'
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[]
@@ -102,7 +104,7 @@ export function ProjectSidebar({
       >
         {/* GClaw 图标 + 名称 + 版本 */}
         <div className="flex items-center gap-2" >
-          <img src="/icon.png" alt="GClaw" className="w-5 h-5 rounded" />
+          <Image src={appIcon} alt="GClaw" width={20} height={20} className="w-5 h-5 rounded" />
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">GClaw</span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v0.1.0</span>
           <div className="flex-1" />

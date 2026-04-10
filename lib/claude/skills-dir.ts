@@ -135,6 +135,15 @@ export function syncProjectSkillsDir(enabledSkillNames: string[], projectId: str
   // 清理旧条目
   cleanDir(projectSkillsDir)
 
+  // Windows 上用 junction（不需要管理员权限），其他平台用默认 symlink
+  const linkDir = (target: string, link: string) => {
+    if (process.platform === 'win32') {
+      fs.symlinkSync(target, link, 'junction')
+    } else {
+      fs.symlinkSync(target, link)
+    }
+  }
+
   // 为启用的技能创建 symlink
   for (const name of enabledSkillNames) {
     try {
@@ -142,7 +151,7 @@ export function syncProjectSkillsDir(enabledSkillNames: string[], projectId: str
       const dirPath = path.join(SKILLS_DIR, name)
       const dirSkillMd = path.join(dirPath, 'SKILL.md')
       if (fs.existsSync(dirSkillMd)) {
-        fs.symlinkSync(dirPath, path.join(projectSkillsDir, name))
+        linkDir(dirPath, path.join(projectSkillsDir, name))
         continue
       }
 

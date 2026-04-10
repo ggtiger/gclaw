@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
 import { LoginForm } from './LoginForm'
 import { RegisterForm } from './RegisterForm'
 import { WindowControls } from '@/components/ui/WindowControls'
+import appIcon from '@/public/icon.png'
 
 export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'register' }) {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
@@ -76,7 +78,7 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
       >
         {/* Logo / 标题 */}
         <div className="text-center mb-6">
-          <img src="/icon.png" alt="GClaw" className="w-12 h-12 rounded-xl mx-auto mb-3" />
+          <Image src={appIcon} alt="GClaw" width={48} height={48} className="w-12 h-12 rounded-xl mx-auto mb-3" />
           <h1 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>
             GClaw
           </h1>
