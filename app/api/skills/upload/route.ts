@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { requireAdmin } from '@/lib/auth/helpers'
 
-const SKILLS_DIR = path.join(process.cwd(), 'skills')
+const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export const dynamic = 'force-dynamic'

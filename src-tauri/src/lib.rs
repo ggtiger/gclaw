@@ -598,6 +598,41 @@ fn install_python_pip(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 将打包的 skills 同步到 data_dir/skills（仅复制不存在的技能，不覆盖用户修改）
+fn sync_bundled_skills(bundled: &std::path::Path, target: &std::path::Path) {
+    if !bundled.exists() { return; }
+    std::fs::create_dir_all(target).ok();
+    if let Ok(entries) = std::fs::read_dir(bundled) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let dest = target.join(&name);
+            if dest.exists() { continue; } // 不覆盖已有的
+            let src = entry.path();
+            if src.is_dir() {
+                copy_dir_recursive(&src, &dest);
+            } else {
+                std::fs::copy(&src, &dest).ok();
+            }
+            println!("[GClaw] Synced bundled skill: {}", name.to_string_lossy());
+        }
+    }
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).ok();
+    if let Ok(entries) = std::fs::read_dir(src) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let dest = dst.join(entry.file_name());
+            if p.is_dir() {
+                copy_dir_recursive(&p, &dest);
+            } else {
+                std::fs::copy(&p, &dest).ok();
+            }
+        }
+    }
+}
+
 // ============ 启动服务器 ============
 
 fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
@@ -608,6 +643,11 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
     let data_dir = app.path().app_data_dir()
         .expect("Failed to get app data dir");
     std::fs::create_dir_all(&data_dir).ok();
+
+    // 将 bundled skills 同步到 data_dir/skills（首次或有新技能时）
+    let skills_dir = data_dir.join("skills");
+    let bundled_skills = resource_dir.join("server").join("skills");
+    sync_bundled_skills(&bundled_skills, &skills_dir);
 
     let node_bin = find_node(app).unwrap_or_else(|| "node".into());
     let node_dir = std::path::Path::new(&node_bin)
@@ -688,7 +728,9 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         .env("PORT", port.to_string())
         .env("HOSTNAME", "127.0.0.1")
         .env("GCLAW_DATA_DIR", data_dir.to_string_lossy().as_ref())
+        .env("GCLAW_SKILLS_DIR", skills_dir.to_string_lossy().as_ref())
         .env("PATH", &enhanced_path);
+    println!("[GClaw] GCLAW_SKILLS_DIR={}", skills_dir.display());
 
     // 内嵌 Python 的 PYTHONHOME
     if runtime_python.exists() {

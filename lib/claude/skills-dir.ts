@@ -3,7 +3,7 @@ import path from 'path'
 import type { SkillInfo } from '@/types/skills'
 import { getProjectDir } from '@/lib/store/projects'
 
-const SKILLS_DIR = path.join(process.cwd(), 'skills')
+const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
 /**
  * 清理目录中所有条目（symlink、文件、目录）

@@ -13,7 +13,7 @@ import fs from 'fs'
 import path from 'path'
 import { getOverviewForInjection } from '@/lib/memory/injection'
 
-const SKILLS_DIR = path.join(process.cwd(), 'skills')
+const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
 /**
  * 同步生成项目的 CLAUDE.md，并初始化 .learnings/ 目录

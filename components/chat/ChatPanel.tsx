@@ -44,9 +44,7 @@ interface ChatPanelProps {
 function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttachment[]) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in-up">
-      <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 bg-gradient-to-br from-purple-500/20 to-purple-600/10">
-        <Bot size={30} className="text-purple-600 dark:text-purple-400" />
-      </div>
+      <img src="/icon.png" alt="GClaw" className="w-16 h-16 rounded-2xl mb-5 shadow-lg" />
       <h2 className="text-xl font-bold mb-1.5" style={{ color: 'var(--color-text)' }}>
         GClaw
       </h2>

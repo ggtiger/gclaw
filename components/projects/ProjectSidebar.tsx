@@ -102,9 +102,7 @@ export function ProjectSidebar({
       >
         {/* GClaw 图标 + 名称 + 版本 */}
         <div className="flex items-center gap-2" >
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-            <span className="text-white text-[10px] font-bold">G</span>
-          </div>
+          <img src="/icon.png" alt="GClaw" className="w-5 h-5 rounded" />
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">GClaw</span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v0.1.0</span>
           <div className="flex-1" />

@@ -66,7 +66,7 @@ const VALID_ACTIONS = new Set(['notify', 'script', 'log'])
 
 // ── 技能目录 ─────────────────────────────────────────────
 
-const SKILLS_DIR = path.join(process.cwd(), 'skills')
+const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
 /**
  * 验证解析后的路径是否在指定基目录内（防止路径遍历）

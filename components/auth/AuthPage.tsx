@@ -76,6 +76,7 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
       >
         {/* Logo / 标题 */}
         <div className="text-center mb-6">
+          <img src="/icon.png" alt="GClaw" className="w-12 h-12 rounded-xl mx-auto mb-3" />
           <h1 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>
             GClaw
           </h1>

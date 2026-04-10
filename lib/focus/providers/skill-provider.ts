@@ -19,7 +19,7 @@ import { loadSingleSkillHooks, readSkillHooksConfig } from '@/lib/claude/skill-h
 import type { ResolvedHookEntry } from '@/lib/claude/skill-hooks'
 import type { FocusTodo, FocusNote, FocusEvent, FocusDataType } from '@/types/focus'
 
-const SKILLS_DIR = path.join(process.cwd(), 'skills')
+const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
 // ── Skill Hooks 数据文件路径约定 ──
 
