@@ -440,7 +440,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6"
+          className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6 bg-white/95 dark:bg-[#1e293b]/95"
           style={{ willChange: 'scroll-position' }}
         >
           <div className="w-full mx-auto flex flex-col gap-4">
@@ -518,9 +518,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 流式输出 */}
             {streamingContent && (
-              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1" style={{
-                backgroundColor: 'var(--glass-msg-assistant)',
-              }}>
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
                     <Bot size={16} className="text-purple-600 dark:text-purple-400" />
@@ -537,9 +535,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 等待响应指示 */}
             {sending && !streamingContent && !toolSummary && (
-              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1" style={{
-                backgroundColor: 'var(--glass-msg-assistant)',
-              }}>
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-2xl mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
                     <Bot size={16} className="text-purple-600 dark:text-purple-400" />
