@@ -693,6 +693,15 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         rd.join("python").join("bin").join("python3")
     };
     if runtime_python.exists() {
+        // Windows: 技能调用 python3 但 Windows 只有 python.exe，创建 python3.exe 副本
+        #[cfg(target_os = "windows")]
+        {
+            let python3_exe = runtime_python.parent().unwrap().join("python3.exe");
+            if !python3_exe.exists() {
+                println!("[GClaw] Creating python3.exe alias for Windows compatibility");
+                let _ = std::fs::copy(&runtime_python, &python3_exe);
+            }
+        }
         if let Some(py_dir) = runtime_python.parent() {
             let s = py_dir.to_string_lossy().to_string();
             if !current_path.contains(&s) && !path_parts.contains(&s) {
@@ -759,6 +768,13 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         let python_home = rd.join("python");
         cmd.env("PYTHONHOME", python_home.to_string_lossy().as_ref());
         println!("[GClaw] PYTHONHOME={}", python_home.display());
+    }
+
+    // Windows: 强制 Python 使用 UTF-8 编码（避免中文乱码）
+    #[cfg(target_os = "windows")]
+    {
+        cmd.env("PYTHONUTF8", "1");
+        cmd.env("PYTHONIOENCODING", "utf-8");
     }
 
     // Windows: 设置 CLAUDE_CODE_GIT_BASH_PATH（Claude Code on Windows 必需）
