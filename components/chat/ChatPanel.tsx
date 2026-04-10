@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Star, Tag, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, Link2, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -74,83 +74,6 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
           </button>
         ))}
       </div>
-    </div>
-  )
-}
-
-/** 筛选栏：按标签和收藏过滤消息 */
-function FilterBar({
-  tags,
-  activeTag,
-  activeStarred,
-  onTagChange,
-  onStarredChange,
-  onClear,
-}: {
-  tags: { name: string; count: number }[]
-  activeTag: string | null
-  activeStarred: boolean
-  onTagChange: (tag: string | null) => void
-  onStarredChange: (v: boolean) => void
-  onClear: () => void
-}) {
-  const hasFilter = activeTag !== null || activeStarred
-  if (!hasFilter && tags.length === 0) return null
-
-  return (
-    <div
-      className="px-3 py-1.5 flex items-center gap-1.5 flex-wrap animate-fade-in"
-      style={{ borderBottom: '1px solid var(--color-border)' }}
-    >
-      <span className="text-[11px] font-medium mr-1" style={{ color: 'var(--color-text-muted)' }}>
-        筛选:
-      </span>
-
-      {/* 收藏筛选 */}
-      <button
-        onClick={() => onStarredChange(!activeStarred)}
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
-        style={{
-          backgroundColor: activeStarred
-            ? 'rgba(253, 224, 71, 0.2)'
-            : 'rgba(148, 163, 184, 0.08)',
-          color: activeStarred ? '#D97706' : 'var(--color-text-muted)',
-        }}
-      >
-        <Star size={10} fill={activeStarred ? 'currentColor' : 'none'} />
-        收藏
-      </button>
-
-      {/* 标签筛选 */}
-      {tags.map(t => (
-        <button
-          key={t.name}
-          onClick={() => onTagChange(activeTag === t.name ? null : t.name)}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors"
-          style={{
-            backgroundColor: activeTag === t.name
-              ? 'rgba(124, 58, 237, 0.15)'
-              : 'rgba(148, 163, 184, 0.08)',
-            color: activeTag === t.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          }}
-        >
-          <Tag size={10} />
-          {t.name}
-          <span className="opacity-60">{t.count}</span>
-        </button>
-      ))}
-
-      {/* 清除筛选 */}
-      {hasFilter && (
-        <button
-          onClick={onClear}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] cursor-pointer transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          <X size={10} />
-          清除
-        </button>
-      )}
     </div>
   )
 }
@@ -251,29 +174,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
     onSend(message, attachments)
   }, [onSend])
 
-  // 筛选状态
-  const [filterTag, setFilterTag] = useState<string | null>(null)
-  const [filterStarred, setFilterStarred] = useState(false)
-  const [allTags, setAllTags] = useState<{ name: string; count: number }[]>([])
-  const [tagNameList, setTagNameList] = useState<string[]>([])
-
   // 分支状态
   // activeBranch removed (branch feature hidden)
-
-  // 加载标签列表
-  const loadTags = useCallback(async () => {
-    if (!projectId) return
-    try {
-      const res = await fetch(`/api/chat/messages/tags?projectId=${encodeURIComponent(projectId)}`)
-      const data = await res.json()
-      setAllTags(data.tags || [])
-      setTagNameList((data.tags || []).map((t: { name: string }) => t.name))
-    } catch {}
-  }, [projectId])
-
-  useEffect(() => {
-    loadTags()
-  }, [loadTags])
 
   const handleJumpToMessage = (messageId: string) => {
     const el = document.getElementById(`msg-${messageId}`)
@@ -294,13 +196,6 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
     }
   }, [onUpdateMessage])
 
-  // 根据筛选条件过滤消息（缓存避免每次渲染重算）
-  const filteredMessages = useMemo(() => messages.filter(msg => {
-    if (filterStarred && !msg.isStarred) return false
-    if (filterTag && !(msg.tags || []).includes(filterTag)) return false
-    return true
-  }), [messages, filterStarred, filterTag])
-
   // 自动滚动到底部（用 RAF 防抖，减少抖动）
   useEffect(() => {
     if (!shouldAutoScroll.current || !scrollContainerRef.current) return
@@ -310,19 +205,23 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       }
     })
     return () => cancelAnimationFrame(raf)
-  }, [filteredMessages, streamingContent, toolSummary])
+  }, [messages, streamingContent, toolSummary])
 
-  // 检测用户是否手动向上滚动（节流，避免高频触发）
+  // 检测用户是否手动向上滚动 — 使用原生 passive 监听器，不阻塞滚动合成
   const scrollRafRef = useRef<number>(0)
-  const handleScroll = useCallback(() => {
-    if (scrollRafRef.current) return
-    scrollRafRef.current = requestAnimationFrame(() => {
-      scrollRafRef.current = 0
-      const container = scrollContainerRef.current
-      if (!container) return
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-      shouldAutoScroll.current = distanceFromBottom < 100
-    })
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const onScroll = () => {
+      if (scrollRafRef.current) return
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = 0
+        const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+        shouldAutoScroll.current = distanceFromBottom < 100
+      })
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
   }, [])
 
   const isEmpty = messages.length === 0 && !streamingContent
@@ -439,20 +338,9 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       ) : (
         <div
           ref={scrollContainerRef}
-          onScroll={handleScroll}
           className="flex-1 overflow-y-auto px-3 pt-4 pb-48 lg:px-4 lg:pt-6 bg-white dark:bg-[#1e293b]"
         >
           <div className="w-full mx-auto flex flex-col gap-4">
-            {/* 筛选栏 */}
-            <FilterBar
-              tags={allTags}
-              activeTag={filterTag}
-              activeStarred={filterStarred}
-              onTagChange={setFilterTag}
-              onStarredChange={setFilterStarred}
-              onClear={() => { setFilterTag(null); setFilterStarred(false) }}
-            />
-
             {/* 加载更多历史消息 */}
             {hasMore && (
               <div className="flex justify-center py-1">
@@ -467,13 +355,12 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
             )}
 
             {/* 消息列表 */}
-            {filteredMessages.map(msg => (
+            {messages.map(msg => (
               <div key={msg.id} id={`msg-${msg.id}`}>
                 <MessageBubble
                   message={msg}
                   projectId={projectId}
                   onMessageUpdate={handleMessageUpdate}
-                  allTags={tagNameList}
                 />
               </div>
             ))}

@@ -20,8 +20,6 @@ export interface ChatMessage {
   isStreaming?: boolean
   toolSummary?: ToolSummary
   stats?: ConversationStats
-  tags?: string[]       // 消息标签
-  isStarred?: boolean   // 是否收藏
   attachments?: ChatAttachment[]  // 附件列表
   feedback?: 'like' | 'dislike'   // 用户反馈：点赞/踩
 }

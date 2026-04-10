@@ -41,9 +41,8 @@ export async function GET(request: NextRequest) {
       role: m.role,
       content: m.content,
       createdAt: m.createdAt,
-      tags: m.tags,
-      isStarred: m.isStarred,
       stats: m.stats,
+      feedback: m.feedback,
     }))
     return new Response(JSON.stringify({ projectName, exportedAt: new Date().toISOString(), messages: data }, null, 2), {
       headers: {

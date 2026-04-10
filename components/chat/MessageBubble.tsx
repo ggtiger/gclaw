@@ -1,7 +1,7 @@
 'use client'
 
-import { memo, useState, useRef, useEffect, useCallback } from 'react'
-import { User, Bot, AlertCircle, Star, Tag, X, Check, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy } from 'lucide-react'
+import { memo, useState, useCallback } from 'react'
+import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
 import type { ChatMessage, ChatAttachment } from '@/types/chat'
@@ -10,102 +10,26 @@ interface MessageBubbleProps {
   message: ChatMessage
   projectId: string
   onMessageUpdate?: (message: ChatMessage) => void
-  allTags?: string[]
 }
 
 // 模块级常量，避免每次渲染重建
 const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
 
-// 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 节点数量
+// 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量
 const COLLAPSE_THRESHOLD = 2000
 
-export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, allTags = [] }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
 
-  const [showTagInput, setShowTagInput] = useState(false)
-  const [tagQuery, setTagQuery] = useState('')
   // 长消息默认折叠，点击展开
   const [expanded, setExpanded] = useState(() => !message.isStreaming && message.content.length <= COLLAPSE_THRESHOLD)
-  const [selectedIdx, setSelectedIdx] = useState(0)
-  const tagInputRef = useRef<HTMLInputElement>(null)
 
   // 空内容或 SDK 占位文本的 assistant 消息不渲染
   if (!isUser && !isSystem && (!message.content.trim() || NOISE_PATTERN.test(message.content))) {
     return null
   }
-
-  // ---- 标签输入自动完成 ----
-  const filteredSuggestions = tagQuery.trim()
-    ? allTags.filter(t =>
-        t.toLowerCase().includes(tagQuery.toLowerCase()) &&
-        !(message.tags || []).includes(t)
-      )
-    : allTags.filter(t => !(message.tags || []).includes(t))
-
-  // 重置选中索引当过滤结果变化
-  useEffect(() => {
-    setSelectedIdx(0)
-  }, [tagQuery])
-
-  useEffect(() => {
-    if (showTagInput && tagInputRef.current) {
-      tagInputRef.current.focus()
-    }
-  }, [showTagInput])
-
-  const handleToggleStar = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    try {
-      const res = await fetch(`/api/chat/messages/tags?projectId=${encodeURIComponent(projectId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'toggleStar', messageId: message.id }),
-      })
-      const data = await res.json()
-      if (data.message && onMessageUpdate) {
-        onMessageUpdate(data.message)
-      }
-    } catch (err) {
-      console.error('Toggle star failed:', err)
-    }
-  }, [projectId, message.id, onMessageUpdate])
-
-  const handleAddTag = useCallback(async (tag: string) => {
-    if (!tag.trim()) return
-    try {
-      const res = await fetch(`/api/chat/messages/tags?projectId=${encodeURIComponent(projectId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'addTag', messageId: message.id, tag: tag.trim() }),
-      })
-      const data = await res.json()
-      if (data.message && onMessageUpdate) {
-        onMessageUpdate(data.message)
-      }
-      setTagQuery('')
-    } catch (err) {
-      console.error('Add tag failed:', err)
-    }
-  }, [projectId, message.id, onMessageUpdate])
-
-  const handleRemoveTag = useCallback(async (tag: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    try {
-      const res = await fetch(`/api/chat/messages/tags?projectId=${encodeURIComponent(projectId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'removeTag', messageId: message.id, tag }),
-      })
-      const data = await res.json()
-      if (data.message && onMessageUpdate) {
-        onMessageUpdate(data.message)
-      }
-    } catch (err) {
-      console.error('Remove tag failed:', err)
-    }
-  }, [projectId, message.id, onMessageUpdate])
 
   // 点赞/踩反馈
   const handleFeedback = useCallback(async (feedback: 'like' | 'dislike') => {
@@ -137,26 +61,6 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
     }
   }, [message.content])
 
-  const handleTagKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      if (filteredSuggestions[selectedIdx]) {
-        handleAddTag(filteredSuggestions[selectedIdx])
-      } else if (tagQuery.trim()) {
-        handleAddTag(tagQuery.trim())
-      }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setSelectedIdx(prev => Math.min(prev + 1, filteredSuggestions.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setSelectedIdx(prev => Math.max(prev - 1, 0))
-    } else if (e.key === 'Escape') {
-      setShowTagInput(false)
-      setTagQuery('')
-    }
-  }
-
   if (isSystem) {
     return (
       <div className="flex items-start gap-2 px-4 py-3 mx-4 my-2 rounded-xl animate-fade-in" style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)' }}>
@@ -169,10 +73,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
   }
 
   return (
-    <div
-      className={`flex gap-3 w-full group relative ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
-      onMouseLeave={() => { setShowTagInput(false); setTagQuery('') }}
-    >
+    <div className={`flex gap-3 w-full ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
       {/* Avatar */}
       <div className="shrink-0">
         <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isUser ? 'bg-purple-500/15' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
@@ -233,154 +134,56 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
           </div>
         )}
 
-        {/* 标签显示 */}
-        {message.tags && message.tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {message.tags.map(tag => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[11px] font-medium cursor-default group/tag bg-purple-500/10 text-purple-600 dark:text-purple-400"
-              >
-                {tag}
-                <button
-                  onClick={(e) => handleRemoveTag(tag, e)}
-                  className="opacity-0 group-hover/tag:opacity-100 transition-opacity cursor-pointer ml-0.5 text-purple-600 dark:text-purple-400"
-                >
-                  <X size={10} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* 底部操作按钮（仅 assistant 消息显示） */}
+        {/* 底部操作按钮 + 模型用量（仅 assistant 消息显示） */}
         {!isUser && (
-          <div className="mt-1.5 flex items-center gap-1">
-            <button
-              onClick={() => handleFeedback('like')}
-              className={`p-1 rounded-md cursor-pointer transition-colors ${message.feedback === 'like' ? 'bg-green-500/15 text-green-600' : 'text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10'}`}
-              title="点赞"
-            >
-              <ThumbsUp size={14} />
-            </button>
-            <button
-              onClick={() => handleFeedback('dislike')}
-              className={`p-1 rounded-md cursor-pointer transition-colors ${message.feedback === 'dislike' ? 'bg-red-500/15 text-red-600' : 'text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'}`}
-              title="踩"
-            >
-              <ThumbsDown size={14} />
-            </button>
-            <button
-              onClick={handleCopy}
-              className="p-1 rounded-md cursor-pointer transition-colors text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10"
-              title="复制"
-            >
-              <Copy size={14} />
-            </button>
-          </div>
-        )}
-
-        {/* Stats */}
-        {message.stats && (
-          <div className="mt-2.5 flex items-center gap-2 text-[11px] px-2 py-1 rounded-md w-fit text-slate-500 dark:text-slate-400 bg-slate-500/5">
-            <span>{message.stats.model}</span>
-            <span className="opacity-40">·</span>
-            <span>输入 {message.stats.inputTokens.toLocaleString()}</span>
-            <span className="opacity-40">·</span>
-            <span>输出 {message.stats.outputTokens.toLocaleString()}</span>
-            {message.stats.costUsd > 0 && (
-              <>
-                <span className="opacity-40">·</span>
-                <span>${message.stats.costUsd.toFixed(4)}</span>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 悬停操作按钮 - 收藏和标签 */}
-      <div
-        className="absolute top-2 right-2 items-center gap-0.5 hidden group-hover:flex"
-        style={{ zIndex: 10 }}
-      >
-        {/* 收藏按钮 */}
-        <button
-          onClick={handleToggleStar}
-          className={`p-1 rounded-md cursor-pointer transition-colors ${message.isStarred ? 'bg-amber-500/15 text-amber-600' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
-          title={message.isStarred ? '取消收藏' : '收藏'}
-        >
-          <Star size={13} fill={message.isStarred ? 'currentColor' : 'none'} />
-        </button>
-
-        {/* 添加标签按钮 */}
-        <div className="relative">
-            <button
-              onClick={() => setShowTagInput(!showTagInput)}
-              className={`p-1 rounded-md cursor-pointer transition-colors ${showTagInput ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10'}`}
-              title="添加标签"
-            >
-              <Tag size={13} />
-            </button>
-
-            {/* 标签输入弹窗 */}
-            {showTagInput && (
-              <div
-                className="absolute right-0 top-full mt-1 w-48 rounded-lg border shadow-lg overflow-hidden"
-                style={{
-                  backgroundColor: 'var(--color-bg)',
-                  borderColor: 'var(--color-border)',
-                  zIndex: 20,
-                }}
-                onClick={e => e.stopPropagation()}
+          <div className="mt-1.5 flex items-center gap-2">
+            {/* 反馈按钮组 */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleFeedback('like')}
+                className={`p-1 rounded-md cursor-pointer transition-colors ${message.feedback === 'like' ? 'bg-green-500/15 text-green-600' : 'text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10'}`}
+                title="点赞"
               >
-                <div className="p-1.5">
-                  <input
-                    ref={tagInputRef}
-                    type="text"
-                    value={tagQuery}
-                    onChange={e => setTagQuery(e.target.value)}
-                    onKeyDown={handleTagKeyDown}
-                    placeholder="输入标签名..."
-                    className="w-full px-2 py-1 text-xs rounded border outline-none focus:border-[var(--color-primary)]"
-                    style={{
-                      borderColor: 'var(--color-border)',
-                      backgroundColor: 'var(--color-bg)',
-                      color: 'var(--color-text)',
-                    }}
-                  />
-                </div>
-                {filteredSuggestions.length > 0 && (
-                  <div className="border-t max-h-32 overflow-y-auto" style={{ borderColor: 'var(--color-border)' }}>
-                    {filteredSuggestions.slice(0, 8).map((tag, idx) => (
-                      <button
-                        key={tag}
-                        onClick={() => handleAddTag(tag)}
-                        className={`w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer transition-colors ${idx === selectedIdx ? 'bg-purple-500/10' : 'bg-transparent'} text-slate-600 dark:text-slate-300`}
-                      >
-                        <Tag size={10} className="text-slate-400" />
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {tagQuery.trim() && !filteredSuggestions.includes(tagQuery.trim()) && (
-                  <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-                    <button
-                      onClick={() => handleAddTag(tagQuery.trim())}
-                      className="w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer transition-colors text-purple-600 dark:text-purple-400"
-                    >
-                      <Check size={10} />
-                      创建 &ldquo;{tagQuery.trim()}&rdquo;
-                    </button>
-                  </div>
+                <ThumbsUp size={14} />
+              </button>
+              <button
+                onClick={() => handleFeedback('dislike')}
+                className={`p-1 rounded-md cursor-pointer transition-colors ${message.feedback === 'dislike' ? 'bg-red-500/15 text-red-600' : 'text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'}`}
+                title="踩"
+              >
+                <ThumbsDown size={14} />
+              </button>
+              <button
+                onClick={handleCopy}
+                className="p-1 rounded-md cursor-pointer transition-colors text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10"
+                title="复制"
+              >
+                <Copy size={14} />
+              </button>
+            </div>
+
+            {/* 模型用量 */}
+            {message.stats && (
+              <div className="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded bg-slate-500/5 text-slate-500 dark:text-slate-400">
+                <span>{message.stats.model}</span>
+                <span className="opacity-40">·</span>
+                <span>输入 {message.stats.inputTokens.toLocaleString()}</span>
+                <span className="opacity-40">·</span>
+                <span>输出 {message.stats.outputTokens.toLocaleString()}</span>
+                {message.stats.costUsd > 0 && (
+                  <>
+                    <span className="opacity-40">·</span>
+                    <span>${message.stats.costUsd.toFixed(4)}</span>
+                  </>
                 )}
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
-    )
-  })
+    </div>
+  )
+})
 
 // ── 附件预览组件 ──
 
