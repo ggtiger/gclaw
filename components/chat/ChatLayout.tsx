@@ -244,11 +244,11 @@ export function ChatLayout() {
         </div>
         )}
 
-        {/* Chat area - 圆角毛玻璃卡片 */}
+        {/* Chat area - 聊天区不用 backdrop-filter（WebView2 滚动性能杀手） */}
         {!filesFullscreen && (
         <main
           data-tauri-no-drag
-          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden rounded-2xl ${glass ? 'glass' : 'bg-white/80 dark:bg-gray-900/80'} border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
+          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden rounded-2xl bg-white/95 dark:bg-[#1e293b]/95 border border-white/40 dark:border-white/[0.06] shadow-sm relative`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {/* 移动端菜单按钮 */}
