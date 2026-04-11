@@ -955,12 +955,13 @@ fn finalize_launch(handle: &tauri::AppHandle, timeout_secs: u64) {
 // ============ 主入口 ============
 
 pub fn run() {
-    // Windows WebView2: 优化渲染性能
+    // Windows WebView2: 仅禁用 SmartScreen，保留 DirectComposition 硬件加速合成
+    // 注意：--disable-direct-composition 会禁用 GPU 合成路径，导致滚动严重卡顿
     #[cfg(target_os = "windows")]
     {
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--disable-direct-composition --disable-features=msSmartScreenProtection",
+            "--disable-features=msSmartScreenProtection",
         );
     }
 

@@ -621,10 +621,9 @@ body {
   border-radius: 0.75rem;
 }
 
-/* ═══════════════ Tauri 桌面端性能优化 ═══════════════ */
-/* WebView2 GPU 合成层性能差：渐变背景 + 半透明面板 每帧都要重新合成 */
+/* ═══════════════ Tauri 桌面端适配 ═══════════════ */
 
-/* body 渐变改纯色，避免 GPU 每帧重绘 */
+/* body 渐变改纯色 */
 :root:not(.dark).tauri-app body {
   background: #f0f2f5 !important;
 }
@@ -632,20 +631,7 @@ body {
   background: #1a1f2e !important;
 }
 
-/* 消息气泡容器：限制重排范围 */
-.tauri-app [id^="msg-"] {
-  contain: layout style;
-}
-
-/* 消除所有 transition — 滚动时浏览器不需要检查属性变化 */
-.tauri-app .transition-all,
-.tauri-app .transition-colors,
-.tauri-app .transition-opacity,
-.tauri-app .transition {
-  transition: none !important;
-}
-
-/* 禁用所有 backdrop-filter */
+/* 禁用 backdrop-filter — WebView2 半透明面板性能差 */
 .tauri-app .glass,
 .tauri-app .glass-card,
 .tauri-app .glass-surface,
@@ -656,7 +642,7 @@ body {
   backdrop-filter: none !important;
 }
 
-/* 所有面板完全不透明（不是 0.92，是 1.0）— 亮色 */
+/* 面板不透明 — 亮色 */
 :root:not(.dark).tauri-app .glass {
   background: #f7f8fa !important;
 }
@@ -674,7 +660,7 @@ body {
   background: #f3f4f6 !important;
 }
 
-/* 所有面板完全不透明 — 暗色 */
+/* 面板不透明 — 暗色 */
 .dark.tauri-app .glass {
   background: #1e293b !important;
 }
@@ -692,32 +678,7 @@ body {
   background: #1c2536 !important;
 }
 
-/* 禁用滚动路径中的 box-shadow — WebView2 每个 shadow 都创建合成层 */
-.tauri-app main .shadow-lg,
-.tauri-app main .shadow-md,
-.tauri-app main .shadow-sm,
-.tauri-app main .shadow-xl,
-.tauri-app main .shadow-2xl,
-.tauri-app main [class*="shadow-purple"],
-.tauri-app main [class*="shadow-slate"] {
-  box-shadow: none !important;
-}
-.tauri-app main .markdown-body pre {
-  box-shadow: none !important;
-}
-
-/* 禁用所有动画（含 Tailwind 内置的 pulse/spin/bounce） */
-.tauri-app .animate-fade-in,
-.tauri-app .animate-fade-in-up,
-.tauri-app .animate-slide-in-left,
-.tauri-app .animate-slide-in-right,
-.tauri-app .animate-pulse,
-.tauri-app .animate-spin,
-.tauri-app .animate-bounce {
-  animation: none !important;
-}
-
-/* 输入区背景改为完全不透明 */
+/* 输入区背景不透明 */
 :root:not(.dark).tauri-app .chat-input > div {
   background: #fff !important;
 }

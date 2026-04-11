@@ -348,16 +348,10 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <EmptyState onSend={handleSend} />
         </div>
       ) : (
-        <div className="relative flex-1 min-h-0">
-          <div
-            ref={scrollContainerRef}
-            className="absolute inset-0 overflow-y-auto"
-            style={{ 
-              // WebView2 性能优化：强制开启 GPU 硬件加速，避免长内容滚动卡顿
-              transform: 'translateZ(0)',
-              willChange: 'transform'
-            }}
-          >
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+        >
             <div className="px-3 pt-4 pb-6 lg:px-4 lg:pt-6">
               <div className="w-full mx-auto flex flex-col gap-4">
             {/* 加载更多历史消息 */}
@@ -464,7 +458,6 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               </div>
             </div>
           </div>
-        </div>
       )}
 
       {/* 权限审批对话框 */}

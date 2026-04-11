@@ -134,15 +134,10 @@ export function ChatLayout() {
       const target = e.target as HTMLElement
       // 交互元素不拖动
       if (target.closest('button, a, input, textarea, select, [role="button"]')) return
-      // 向上查找 drag region
-      let el: HTMLElement | null = target
-      let foundDrag = false
-      while (el) {
-        if (el.hasAttribute('data-tauri-no-drag')) return
-        if (el.hasAttribute('data-tauri-drag-region')) { foundDrag = true; break }
-        el = el.parentElement
-      }
-      if (!foundDrag) return
+      // no-drag 区域内不拖动（聊天区、侧边栏内容等）
+      if (target.closest('[data-tauri-no-drag]')) return
+      // 向上查找 drag region — 用 closest 替代手动 while 循环
+      if (!target.closest('[data-tauri-drag-region]')) return
       e.preventDefault()
       tauriInvoke('plugin:window|start_dragging', { label: 'main' }).catch(() => {})
     }
@@ -218,13 +213,11 @@ export function ChatLayout() {
 
       {/* Main Area - flex row */}
       <div
-        data-tauri-drag-region
         className="flex-1 flex gap-2 px-2 pb-2 pt-2 min-h-0 min-w-0 overflow-hidden relative z-10 "
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         {/* Left: Project Sidebar - 独立圆角卡片 (桌面端 ≥960px) */}
         {!projectSidebarHidden && !filesFullscreen && (
-        <div data-tauri-no-drag className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="hidden [@media(min-width:960px)]:flex flex-shrink-0 transition-all duration-200">
           <ProjectSidebar
             projects={project.projects}
             currentId={project.currentId}
@@ -254,9 +247,7 @@ export function ChatLayout() {
         {/* Chat area - 聊天区不用 backdrop-filter（WebView2 滚动性能杀手） */}
         {!filesFullscreen && (
         <main
-          data-tauri-no-drag
           className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden bg-white dark:bg-[#1e293b] relative`}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <ChatPanel
             messages={chat.messages}
@@ -294,8 +285,7 @@ export function ChatLayout() {
         {!rightPanelHidden && (
         <aside
           className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[280px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
-          style={{ WebkitAppRegion: 'no-drag', width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
-                    data-tauri-no-drag
+          style={{ width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
         >
           {/* 拖拽手柄 - 仅 FilesPanel 且非全屏时显示 */}
           {!isSecretary && !filesFullscreen && (
