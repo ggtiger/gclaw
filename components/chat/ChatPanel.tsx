@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
-import { Bot, Brain, ChevronDown, ChevronUp, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronUp, FileText, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallSummary } from './ToolCallSummary'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -10,6 +10,7 @@ import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
+import Modal from '@/components/ui/Modal'
 // BranchSwitcher 已隐藏
 import type { ChatMessage, ChatAttachment, ToolSummary, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 import appIcon from '@/public/icon.png'
@@ -227,6 +228,45 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
   const isEmpty = messages.length === 0 && !streamingContent
 
+  // ─── 提示词日志 ───
+  const [showPromptLog, setShowPromptLog] = useState(false)
+  const [promptLogs, setPromptLogs] = useState<Array<{
+    timestamp: string
+    model?: string
+    systemPrompt: string
+    userMessage: string
+    attachments: Array<{ filename: string; mimeType: string; isImage: boolean; size?: number }>
+    sdkOptions: { cwd: string; resume: boolean }
+  }> | null>(null)
+  const [expandedLog, setExpandedLog] = useState<number | null>(null)
+  const [promptLogHasMore, setPromptLogHasMore] = useState(false)
+  const [promptLogLoading, setPromptLogLoading] = useState(false)
+
+  const loadPromptLogs = useCallback(async (append = false) => {
+    if (promptLogLoading) return
+    setPromptLogLoading(true)
+    try {
+      const offset = append ? (promptLogs?.length || 0) : 0
+      const res = await fetch(`/api/chat/prompt-log?projectId=${encodeURIComponent(projectId)}&limit=10&offset=${offset}`)
+      const data = await res.json()
+      if (append) {
+        setPromptLogs(prev => [...(prev || []), ...(data.logs || [])])
+      } else {
+        setPromptLogs(data.logs || [])
+        setExpandedLog(null)
+      }
+      setPromptLogHasMore(data.hasMore || false)
+      setShowPromptLog(true)
+    } catch {
+      if (!append) {
+        setPromptLogs([])
+        setShowPromptLog(true)
+      }
+    } finally {
+      setPromptLogLoading(false)
+    }
+  }, [projectId, promptLogs?.length, promptLogLoading])
+
   return (
     <div className="relative flex flex-col h-full">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
@@ -299,6 +339,14 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <div className="flex items-center gap-1.5 flex-nowrap flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SearchBar projectId={projectId} onJumpToMessage={handleJumpToMessage} />
             <div className="flex-shrink-0"><ExportButton projectId={projectId} /></div>
+            <button
+              onClick={() => loadPromptLogs()}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"
+              title="查看提示词日志"
+            >
+              <FileText size={14} />
+              <span className="hidden sm:inline whitespace-nowrap">日志</span>
+            </button>
             <button
               onClick={() => onClearChat?.()}
               className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"
@@ -483,6 +531,96 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           onOpenAgents={onOpenAgents}
         />
       </div>
+
+      {/* 提示词日志弹窗 */}
+      <Modal open={showPromptLog} onClose={() => setShowPromptLog(false)} title="提示词日志" wide>
+        <div className="px-6 py-4 space-y-3">
+          {promptLogs === null ? (
+            <div className="text-center text-sm text-slate-400 py-8">加载中...</div>
+          ) : promptLogs.length === 0 ? (
+            <div className="text-center text-sm text-slate-400 py-8">暂无记录</div>
+          ) : (
+            promptLogs.map((log, idx) => (
+              <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setExpandedLog(expandedLog === idx ? null : idx)}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                  <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                    {new Date(log.timestamp).toLocaleString('zh-CN')}
+                  </span>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate flex-1">
+                    {log.userMessage.substring(0, 60)}{log.userMessage.length > 60 ? '...' : ''}
+                  </span>
+                  {log.attachments.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                      {log.attachments.length} 附件
+                    </span>
+                  )}
+                  {log.model && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {log.model.split('-').slice(0, 2).join('-')}
+                    </span>
+                  )}
+                  {expandedLog === idx ? <ChevronUp size={12} className="text-slate-400" /> : <ChevronDown size={12} className="text-slate-400" />}
+                </button>
+                {expandedLog === idx && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-3 space-y-3">
+                    {/* 用户消息 */}
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">用户消息</div>
+                      <pre className="text-xs whitespace-pre-wrap break-all bg-slate-50 dark:bg-slate-800/50 rounded p-2 text-slate-700 dark:text-slate-300 max-h-40 overflow-y-auto">{log.userMessage}</pre>
+                    </div>
+                    {/* 附件 */}
+                    {log.attachments.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">附件 ({log.attachments.length})</div>
+                        <div className="space-y-1">
+                          {log.attachments.map((att, i) => (
+                            <div key={i} className="text-xs bg-slate-50 dark:bg-slate-800/50 rounded px-2 py-1 flex items-center gap-2">
+                              <span className="text-slate-600 dark:text-slate-300">{att.filename}</span>
+                              <span className="text-slate-400 dark:text-slate-500">{att.mimeType}</span>
+                              {att.size && <span className="text-slate-400 dark:text-slate-500">{(att.size / 1024).toFixed(1)}KB</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* 系统提示词 */}
+                    {log.systemPrompt && (
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">系统提示词 (CLAUDE.md) — {(log.systemPrompt.length / 1024).toFixed(1)}KB</div>
+                        <pre className="text-xs whitespace-pre-wrap break-all bg-slate-50 dark:bg-slate-800/50 rounded p-2 text-slate-700 dark:text-slate-300 max-h-60 overflow-y-auto">{log.systemPrompt}</pre>
+                      </div>
+                    )}
+                    {/* SDK 配置 */}
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">SDK 配置</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
+                        {log.model && <div>Model: {log.model}</div>}
+                        <div>CWD: {log.sdkOptions.cwd}</div>
+                        <div>Resume: {log.sdkOptions.resume ? '是' : '否'}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          {/* 加载更多 */}
+          {promptLogHasMore && (
+            <div className="flex justify-center pt-2 pb-1">
+              <button
+                onClick={() => loadPromptLogs(true)}
+                disabled={promptLogLoading}
+                className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium px-4 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors disabled:opacity-50"
+              >
+                {promptLogLoading ? '加载中...' : '加载更多'}
+              </button>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

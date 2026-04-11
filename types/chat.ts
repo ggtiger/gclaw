@@ -7,6 +7,7 @@ export interface ChatAttachment {
   size: number              // 文件大小（bytes）
   url: string               // 下载/预览 URL
   type: 'image' | 'document' | 'code' | 'file'  // 分类
+  aesKey?: string           // 微信媒体解密密钥（可选）
 }
 
 // ── 消息 ──

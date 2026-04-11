@@ -8,9 +8,11 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  /** 是否使用宽模式（90vw，适合内容多的弹窗如日志查看） */
+  wide?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children }: ModalProps) {
+export default function Modal({ open, onClose, title, children, wide }: ModalProps) {
   // ESC 键关闭支持
   useEffect(() => {
     if (!open) return;
@@ -31,7 +33,7 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
       {/* 内容区域 */}
       <div
-        className="relative max-w-2xl w-full mx-4 max-h-[80vh] bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden"
+        className={`relative w-full mx-4 flex flex-col overflow-hidden rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 ${wide ? 'max-w-[90vw] max-h-[90vh]' : 'max-w-2xl max-h-[80vh]'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* 标题栏 */}

@@ -1,6 +1,7 @@
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk'
 import type { HookCallback, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'crypto'
+import fs from 'fs'
 import path from 'path'
 import { convertSDKMessage, createConvertContext } from './stream-parser'
 import { syncProjectSkillsDir, loadSkillEnvVars } from './skills-dir'
@@ -490,6 +491,21 @@ export async function* executeChat(
 
   async function* runQuery(resumeId?: string): AsyncGenerator<SSEEvent> {
     const prompt = buildPrompt(resumeId)
+
+    // 记录完整提示词到日志文件
+    logAiPrompt({
+      projectId,
+      sdkCwd,
+      message,
+      attachments: options.attachments,
+      model,
+      sessionId: resumeId || lastSessionId,
+      sdkOptions: {
+        cwd: sdkCwd,
+        resume: !!resumeId,
+      },
+    })
+
     const qi = sdkQuery({ prompt, options: buildSdkOptions(resumeId) })
     let msgIdx = 0
 
@@ -865,4 +881,77 @@ function extractContextTags(text: string): string[] {
 
 export function isProcessRunning(): boolean {
   return projectAbortControllers.size > 0
+}
+
+// ======================== AI 提示词日志 ========================
+
+const PROMPT_LOG_DIR = process.env.GCLAW_DATA_DIR
+  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
+  : path.join(process.cwd(), 'data')
+
+interface PromptLogEntry {
+  timestamp: string
+  projectId: string
+  model?: string
+  sessionId?: string | null
+  /** 系统提示词（CLAUDE.md 内容） */
+  systemPrompt: string
+  /** 用户消息文本 */
+  userMessage: string
+  /** 附件摘要（不含 base64 数据） */
+  attachments: Array<{ filename: string; mimeType: string; isImage: boolean; size?: number }>
+  /** SDK 配置 */
+  sdkOptions: { cwd: string; resume: boolean }
+}
+
+/**
+ * 记录发送给 AI 的完整提示词到日志文件
+ * 写入 data/ai-prompt-log.jsonl，每行一条 JSON 记录
+ */
+function logAiPrompt(params: {
+  projectId: string
+  sdkCwd: string
+  message: string
+  attachments?: AttachmentData[]
+  model?: string
+  sessionId?: string | null
+  sdkOptions: { cwd: string; resume: boolean }
+}): void {
+  try {
+    // 读取 CLAUDE.md（SDK 会自动注入此文件）
+    const claudeMdPath = path.join(params.sdkCwd, 'CLAUDE.md')
+    let systemPrompt = ''
+    try {
+      if (fs.existsSync(claudeMdPath)) {
+        systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8')
+      }
+    } catch { /* ignore */ }
+
+    const entry: PromptLogEntry = {
+      timestamp: new Date().toISOString(),
+      projectId: params.projectId,
+      model: params.model,
+      sessionId: params.sessionId,
+      systemPrompt,
+      userMessage: params.message,
+      attachments: (params.attachments || []).map(att => ({
+        filename: att.filename,
+        mimeType: att.mimeType,
+        isImage: att.isImage,
+        size: att.content.length,
+      })),
+      sdkOptions: params.sdkOptions,
+    }
+
+    const logDir = PROMPT_LOG_DIR
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true })
+    }
+    const logFile = path.join(logDir, 'ai-prompt-log.jsonl')
+    fs.appendFileSync(logFile, JSON.stringify(entry) + '\n', 'utf-8')
+
+    console.log(`[GClaw] 提示词已记录: ${(systemPrompt.length / 1024).toFixed(1)}KB 系统提示 + ${params.message.length}字用户消息 + ${entry.attachments.length}附件 → ai-prompt-log.jsonl`)
+  } catch (err) {
+    console.warn('[GClaw] 记录提示词日志失败:', err instanceof Error ? err.message : err)
+  }
 }

@@ -160,6 +160,7 @@ export async function POST(request: NextRequest) {
       })
 
       try {
+        console.log(`[ChatStream] 发送给 AI: text="${message.substring(0, 200)}${message.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
         for await (const event of executeChat(message, { projectId, onAskUserQuestion, attachments: attachmentData }, onPermissionRequest)) {
           // 累积完整内容
           if (event.event === 'delta' && typeof event.data.content === 'string') {

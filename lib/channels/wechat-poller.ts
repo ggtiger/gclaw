@@ -29,6 +29,17 @@ const SYNC_BUF_FILE = path.join(DATA_DIR, '_sync_buf.json')
 const MAX_CONSECUTIVE_FAILURES = 3
 const BACKOFF_DELAY_MS = 30_000
 
+/** 消息合并超时：有文字时短超时（3s），仅附件时长超时（60s） */
+const PENDING_TEXT_TIMEOUT_MS = 3_000
+const PENDING_ATTACH_TIMEOUT_MS = 60_000
+
+/** 消息缓冲区（文字 + 附件统一缓冲，超时后合并发送） */
+interface PendingMessage {
+  textParts: string[]                              // 累积的文本片段
+  attachments: import('@/types/chat').ChatAttachment[]  // 累积的附件
+  timer: ReturnType<typeof setTimeout>
+}
+
 export type WechatConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 interface WechatConnection {
@@ -49,6 +60,8 @@ class WechatPollerService {
   /** key = `${projectId}:${channelId}` */
   private connections = new Map<string, WechatConnection>()
   private readonly MAX_CACHED_IDS = 500
+  /** 消息缓冲区 key = `${connKey}:${senderId}` */
+  private pendingMessages = new Map<string, PendingMessage>()
 
   /**
    * 启动长轮询连接
@@ -229,7 +242,10 @@ class WechatPollerService {
   }
 
   /**
-   * 处理单条消息：调用 Agent + 回复
+   * 处理单条消息（统一缓冲）
+   * 所有消息先进缓冲区，超时后合并发送：
+   *   - 有文字时短超时 3s（文字先到 → 等图片跟上）
+   *   - 仅附件时长超时 60s（图片先到 → 等文字）
    */
   private async handleMessage(
     key: string,
@@ -237,67 +253,112 @@ class WechatPollerService {
     token: string,
     parsed: ParsedWeixinMessage,
   ): Promise<void> {
-    // 构建传给 Agent 的文本（多媒体消息附加额外上下文）
-    let agentInput = parsed.text
-    if (parsed.messageType === 'voice' && parsed.voicePayload) {
-      agentInput = `[语音消息] ${parsed.text}`
-      if (parsed.voicePayload.duration) {
-        agentInput += ` (时长: ${parsed.voicePayload.duration}秒)`
-      }
-    } else if (parsed.messageType === 'image' && parsed.imagePayload) {
-      agentInput = `[图片消息]`
-      if (parsed.imagePayload.imageUrl) {
-        agentInput += ` 图片URL: ${parsed.imagePayload.imageUrl}`
-      }
-      if (parsed.imagePayload.width && parsed.imagePayload.height) {
-        agentInput += ` (${parsed.imagePayload.width}x${parsed.imagePayload.height})`
-      }
-    } else if (parsed.messageType === 'file' && parsed.filePayload) {
-      agentInput = `[文件消息] ${parsed.filePayload.fileName}`
-      if (parsed.filePayload.fileUrl) {
-        agentInput += ` 文件URL: ${parsed.filePayload.fileUrl}`
+    const senderKey = `${key}:${parsed.senderId}`
+
+    // 构建当前消息的文本和附件
+    let textPart: string | null = null
+    let attachment: import('@/types/chat').ChatAttachment | null = null
+
+    if (parsed.messageType === 'image' || parsed.messageType === 'file') {
+      attachment = this.buildAttachment(parsed)
+    } else {
+      textPart = parsed.text
+      if (parsed.messageType === 'voice' && parsed.voicePayload) {
+        textPart = `[语音消息] ${parsed.text}`
+        if (parsed.voicePayload.duration) {
+          textPart += ` (时长: ${parsed.voicePayload.duration}秒)`
+        }
       }
     }
 
-    // 构建附件列表（用于前端 UI 展示）
-    const attachments: import('@/types/chat').ChatAttachment[] = []
+    // 获取或创建缓冲区
+    let pending = this.pendingMessages.get(senderKey)
+    if (pending) {
+      clearTimeout(pending.timer)
+    } else {
+      pending = { textParts: [], attachments: [], timer: null as any }
+      this.pendingMessages.set(senderKey, pending)
+    }
+
+    // 追加到缓冲区
+    if (textPart) pending.textParts.push(textPart)
+    if (attachment) pending.attachments.push(attachment)
+
+    // 超时策略：有文字 → 短超时 3s；仅附件 → 长超时 60s
+    const hasText = pending.textParts.length > 0
+    const timeout = hasText ? PENDING_TEXT_TIMEOUT_MS : PENDING_ATTACH_TIMEOUT_MS
+
+    pending.timer = setTimeout(() => {
+      this.pendingMessages.delete(senderKey)
+      const text = pending!.textParts.length > 0
+        ? pending!.textParts.join('\n')
+        : '[图片消息]'
+      console.log(`[WechatPoller] ${senderKey} 缓冲超时发送: text=${pending!.textParts.length}, attachments=${pending!.attachments.length}`)
+      this.dispatchToAgent(key, conn, token, parsed.senderId, text, pending!.attachments)
+        .catch(err => console.error(`[WechatPoller] ${senderKey} 发送失败:`, err))
+    }, timeout)
+
+    console.log(`[WechatPoller] ${senderKey} 缓冲: +${parsed.messageType}, 当前 text=${pending.textParts.length}, att=${pending.attachments.length}, timeout=${timeout / 1000}s`)
+  }
+
+  /**
+   * 统一发送给 Agent 并回复渠道
+   */
+  private async dispatchToAgent(
+    key: string,
+    conn: WechatConnection,
+    token: string,
+    senderId: string,
+    agentInput: string,
+    attachments: import('@/types/chat').ChatAttachment[],
+  ): Promise<void> {
+    const reply = await handleChannelMessage(
+      conn.projectId, conn.channel, agentInput,
+      attachments.length > 0 ? attachments : undefined,
+    )
+
+    const contextToken = conn.contextTokenCache.get(senderId)
+    const success = await sendWechatMessage({
+      token,
+      toUserId: senderId,
+      content: reply,
+      contextToken,
+    })
+
+    if (success) {
+      console.log(`[WechatPoller] ${key} 回复成功: to=${senderId}`)
+    } else {
+      console.error(`[WechatPoller] ${key} 回复失败: to=${senderId}`)
+    }
+  }
+
+  /**
+   * 从解析后的消息构建 ChatAttachment
+   */
+  private buildAttachment(parsed: ParsedWeixinMessage): import('@/types/chat').ChatAttachment | null {
     if (parsed.messageType === 'image' && parsed.imagePayload?.imageUrl) {
-      attachments.push({
+      return {
         id: `att_${Date.now()}_img`,
         filename: 'image.jpg',
         mimeType: 'image/jpeg',
         size: parsed.imagePayload.size || 0,
         url: parsed.imagePayload.imageUrl,
         type: 'image',
-      })
-    } else if (parsed.messageType === 'file' && parsed.filePayload?.fileUrl) {
-      attachments.push({
+        aesKey: parsed.imagePayload.aesKey,
+      }
+    }
+    if (parsed.messageType === 'file' && parsed.filePayload?.fileUrl) {
+      return {
         id: `att_${Date.now()}_file`,
         filename: parsed.filePayload.fileName || 'file',
         mimeType: parsed.filePayload.fileType || 'application/octet-stream',
         size: parsed.filePayload.size || 0,
         url: parsed.filePayload.fileUrl,
         type: 'file',
-      })
+        aesKey: parsed.filePayload.aesKey,
+      }
     }
-
-    // 调用 Agent 获取回复
-    const reply = await handleChannelMessage(conn.projectId, conn.channel, agentInput, attachments.length > 0 ? attachments : undefined)
-
-    // 通过 ilink API 回复
-    const contextToken = conn.contextTokenCache.get(parsed.senderId)
-    const success = await sendWechatMessage({
-      token,
-      toUserId: parsed.senderId,
-      content: reply,
-      contextToken,
-    })
-
-    if (success) {
-      console.log(`[WechatPoller] ${key} 回复成功: to=${parsed.senderId}`)
-    } else {
-      console.error(`[WechatPoller] ${key} 回复失败: to=${parsed.senderId}`)
-    }
+    return null
   }
 
   // ======================== syncBuf 持久化 ========================
