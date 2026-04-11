@@ -352,7 +352,11 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           <div
             ref={scrollContainerRef}
             className="absolute inset-0 overflow-y-auto"
-            style={{ overscrollBehavior: 'contain' }}
+            style={{ 
+              // WebView2 性能优化：强制开启 GPU 硬件加速，避免长内容滚动卡顿
+              transform: 'translateZ(0)',
+              willChange: 'transform'
+            }}
           >
             <div className="px-3 pt-4 pb-6 lg:px-4 lg:pt-6">
               <div className="w-full mx-auto flex flex-col gap-4">
