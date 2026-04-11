@@ -228,7 +228,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
   const isEmpty = messages.length === 0 && !streamingContent
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#1e293b]">
+    <div className="relative flex flex-col h-full bg-white dark:bg-[#1e293b]">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
       {!initialLoading && (
         <div
@@ -453,8 +453,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               </div>
             )}
 
-            {/* 底部间距 */}
-            <div className="h-4" />
+            {/* 底部间距：为固定输入框留白 */}
+            <div className="h-32" />
               </div>
             </div>
           </div>
@@ -467,23 +467,21 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
         </div>
       )}
 
-      {/* 输入区域 - 正常 flex 布局，不叠在滚动区域上 */}
-      <div className="flex-shrink-0 pb-3 px-3 lg:px-4">
-        <div className="w-full">
-          <ChatInput
-            onSend={handleSend}
-            onAbort={onAbort}
-            sending={sending}
-            projectId={projectId}
-            onTemplateSelect={(template) => {
-              if (template.firstMessage) {
-                handleSend(template.firstMessage)
-              }
-            }}
-            onOpenSkills={onOpenSkills}
-            onOpenAgents={onOpenAgents}
-          />
-        </div>
+      {/* 输入区域 - 固定在底部，四周透明 */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 px-3 lg:px-4 pb-3">
+        <ChatInput
+          onSend={handleSend}
+          onAbort={onAbort}
+          sending={sending}
+          projectId={projectId}
+          onTemplateSelect={(template) => {
+            if (template.firstMessage) {
+              handleSend(template.firstMessage)
+            }
+          }}
+          onOpenSkills={onOpenSkills}
+          onOpenAgents={onOpenAgents}
+        />
       </div>
     </div>
   )
