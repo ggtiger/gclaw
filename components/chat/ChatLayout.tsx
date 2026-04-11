@@ -211,6 +211,16 @@ export function ChatLayout() {
         />
       )}
 
+      {/* 装饰光晕 — 跟随主题颜色的三色光晕 */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-30 dark:opacity-12"
+          style={{ background: 'radial-gradient(circle, var(--halo-color-1) 0%, transparent 70%)' }} />
+        <div className="absolute top-1/3 -right-20 w-80 h-80 rounded-full opacity-25 dark:opacity-10"
+          style={{ background: 'radial-gradient(circle, var(--halo-color-2) 0%, transparent 70%)' }} />
+        <div className="absolute -bottom-24 left-1/3 w-72 h-72 rounded-full opacity-25 dark:opacity-10"
+          style={{ background: 'radial-gradient(circle, var(--halo-color-3) 0%, transparent 70%)' }} />
+      </div>
+
       {/* Main Area - flex row */}
       <div
         className="flex-1 flex gap-2 px-2 pb-2 pt-2 min-h-0 min-w-0 overflow-hidden relative z-10 "
@@ -247,7 +257,7 @@ export function ChatLayout() {
         {/* Chat area - 聊天区不用 backdrop-filter（WebView2 滚动性能杀手） */}
         {!filesFullscreen && (
         <main
-          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden bg-white dark:bg-[#1e293b] relative`}
+          className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden glass relative`}
         >
           <ChatPanel
             messages={chat.messages}

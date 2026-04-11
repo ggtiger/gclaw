@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
       }
 
       // 异步写入记忆，不阻塞主流程
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/memory/remember`, {
+      const baseUrl = new URL(request.url).origin
+      fetch(`${baseUrl}/api/memory/remember`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(memoryBody),

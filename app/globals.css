@@ -47,20 +47,27 @@
   --color-muted-10: rgba(148, 163, 184, 0.1);
   /* 代码块背景 */
   --color-code-bg: #1e1e2e;
-  /* 毛玻璃效果变量 - 亮色模式（更透明，与暗色模式一致） */
-  --glass-bg: rgba(255, 255, 255, 0.25);
-  --glass-border: rgba(139, 92, 246, 0.12);
-  --glass-card-bg: rgba(255, 255, 255, 0.3);
-  --glass-card-border: rgba(139, 92, 246, 0.08);
-  --glass-card-hover: rgba(255, 255, 255, 0.45);
-  --glass-surface: rgba(255, 255, 255, 0.25);
-  --glass-msg-assistant: rgba(241, 245, 249, 0.35);
-  /* 面板背景 - 更透明 */
-  --panel-bg-light: rgba(255, 255, 255, 0.2);
-  --panel-bg: rgba(255, 255, 255, 0.15);
-  --panel-border: rgba(255, 255, 255, 0.25);
+  /* 毛玻璃效果变量 - 亮色模式（透明毛玻璃） */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(148, 163, 184, 0.18);
+  --glass-card-bg: rgba(255, 255, 255, 0.25);
+  --glass-card-border: rgba(148, 163, 184, 0.12);
+  --glass-card-hover: rgba(255, 255, 255, 0.4);
+  --glass-surface: rgba(255, 255, 255, 0.2);
+  --glass-msg-assistant: rgba(241, 245, 249, 0.3);
+  /* 面板背景 - 毛玻璃透明 */
+  --panel-bg-light: rgba(255, 255, 255, 0.45);
+  --panel-bg: rgba(255, 255, 255, 0.35);
+  --panel-border: rgba(148, 163, 184, 0.15);
   /* Header 背景 */
-  --header-bg: rgba(255, 255, 255, 0.15);
+  --header-bg: rgba(255, 255, 255, 0.35);
+  /* 背景渐变（默认紫色系，被 theme-color.ts 动态覆盖） */
+  --bg-gradient-light: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 30%, #ddd6fe 60%, #f5f3ff 100%);
+  --bg-gradient-dark: linear-gradient(135deg, #0c1222 0%, #0f1b2d 35%, #132a3a 65%, #1a1025 100%);
+  /* 装饰光晕颜色（默认，被 theme-color.ts 动态覆盖） */
+  --halo-color-1: rgba(139,92,246,0.45);
+  --halo-color-2: rgba(59,130,246,0.4);
+  --halo-color-3: rgba(236,72,153,0.35);
 }
 
 .dark {
@@ -102,20 +109,20 @@
   --color-muted-10: rgba(100, 116, 139, 0.1);
   /* 代码块背景 */
   --color-code-bg: #1e1e2e;
-  /* 毛玻璃效果变量 (暗色) - 更透明 */
-  --glass-bg: rgba(30, 41, 59, 0.3);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-card-bg: rgba(30, 41, 59, 0.35);
-  --glass-card-border: rgba(255, 255, 255, 0.04);
-  --glass-card-hover: rgba(30, 41, 59, 0.45);
-  --glass-surface: rgba(30, 41, 59, 0.3);
-  --glass-msg-assistant: rgba(30, 41, 59, 0.25);
-  /* 面板背景 - 更透明 */
-  --panel-bg-light: rgba(30, 41, 59, 0.3);
-  --panel-bg: rgba(30, 41, 59, 0.2);
-  --panel-border: rgba(255, 255, 255, 0.06);
+  /* 毛玻璃效果变量 (暗色) - 透明毛玻璃 */
+  --glass-bg: rgba(15, 23, 42, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-card-bg: rgba(30, 41, 59, 0.3);
+  --glass-card-border: rgba(255, 255, 255, 0.06);
+  --glass-card-hover: rgba(30, 41, 59, 0.4);
+  --glass-surface: rgba(30, 41, 59, 0.25);
+  --glass-msg-assistant: rgba(30, 41, 59, 0.2);
+  /* 面板背景 - 毛玻璃透明 */
+  --panel-bg-light: rgba(15, 23, 42, 0.45);
+  --panel-bg: rgba(15, 23, 42, 0.35);
+  --panel-border: rgba(255, 255, 255, 0.08);
   /* Header 背景 */
-  --header-bg: rgba(30, 41, 59, 0.2);
+  --header-bg: rgba(15, 23, 42, 0.35);
 }
 
 html, body {
@@ -147,14 +154,13 @@ body {
   font-feature-settings: 'liga' 1, 'calt' 1;
 }
 
-/* 全局渐变背景 - 亮色模式 */
+/* 全局渐变背景 - 跟随主题颜色 */
 :root:not(.dark) body {
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+  background: var(--bg-gradient-light);
 }
 
-/* 全局渐变背景 - 暗色模式（参考 Secretary 截图深蓝灰色） */
 .dark body {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  background: var(--bg-gradient-dark);
 }
 
 /* 星空微粒效果 - 禁用（固定定位 radial-gradient 合成层影响 WebView2 性能） */
@@ -194,10 +200,10 @@ body {
   border: 1px solid var(--glass-border);
 }
 
-/* 亮色模式下侧边栏 glass 需要更高的白色不透明度 */
+/* 亮色模式下 glass 使用 CSS 变量（统一毛玻璃效果） */
 :root:not(.dark) .glass {
-  background: rgba(255, 255, 255, 0.82);
-  border-color: rgba(139, 92, 246, 0.1);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 .glass-card {
@@ -623,73 +629,10 @@ body {
 
 /* ═══════════════ Tauri 桌面端适配 ═══════════════ */
 
-/* body 渐变改纯色 */
+/* Tauri 桌面端 — 同样跟随主题颜色 */
 :root:not(.dark).tauri-app body {
-  background: #f0f2f5 !important;
+  background: var(--bg-gradient-light) !important;
 }
 .dark.tauri-app body {
-  background: #1a1f2e !important;
-}
-
-/* 禁用 backdrop-filter — WebView2 半透明面板性能差 */
-.tauri-app .glass,
-.tauri-app .glass-card,
-.tauri-app .glass-surface,
-.tauri-app .panel-card,
-.tauri-app .panel-card-main,
-.tauri-app .header-card {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
-
-/* 面板不透明 — 亮色 */
-:root:not(.dark).tauri-app .glass {
-  background: #f7f8fa !important;
-}
-:root:not(.dark).tauri-app .glass-card {
-  background: #f3f4f6 !important;
-}
-:root:not(.dark).tauri-app .glass-surface {
-  background: #f5f6f8 !important;
-}
-:root:not(.dark).tauri-app .panel-card,
-:root:not(.dark).tauri-app .panel-card-main {
-  background: #f5f6f8 !important;
-}
-:root:not(.dark).tauri-app .header-card {
-  background: #f3f4f6 !important;
-}
-
-/* 面板不透明 — 暗色 */
-.dark.tauri-app .glass {
-  background: #1e293b !important;
-}
-.dark.tauri-app .glass-card {
-  background: #1c2536 !important;
-}
-.dark.tauri-app .glass-surface {
-  background: #1d2738 !important;
-}
-.dark.tauri-app .panel-card,
-.dark.tauri-app .panel-card-main {
-  background: #1d2738 !important;
-}
-.dark.tauri-app .header-card {
-  background: #1c2536 !important;
-}
-
-/* 输入区背景不透明 */
-:root:not(.dark).tauri-app .chat-input > div {
-  background: #fff !important;
-}
-.dark.tauri-app .chat-input > div {
-  background: #1e293b !important;
-}
-
-/* 浮动输入区：纯色背景替代渐变 */
-.tauri-app [class*="bg-gradient-to-t"] {
-  background: #fff !important;
-}
-.dark.tauri-app [class*="bg-gradient-to-t"] {
-  background: #1e293b !important;
+  background: var(--bg-gradient-dark) !important;
 }

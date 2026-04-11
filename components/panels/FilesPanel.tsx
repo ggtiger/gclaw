@@ -549,7 +549,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-transparent">
+    <div className="flex flex-col h-full bg-transparent">
       {/* 工具栏 */}
       <div
         data-tauri-drag-region

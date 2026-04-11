@@ -60,7 +60,7 @@ export default function FocusPanel({ projectId, onHide }: Props) {
   const memoryCount = semantic.length + procedural.length
 
   return (
-    <div className="flex flex-col overflow-hidden h-full bg-white dark:bg-transparent">
+    <div className="flex flex-col overflow-hidden h-full bg-transparent">
       {/* Header */}
       <div
         data-tauri-drag-region

@@ -96,7 +96,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
         </div>
 
         {isUser ? (
-          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-purple-600 text-white rounded-lg rounded-tr-sm shadow-lg shadow-purple-500/20">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-purple-600/80 backdrop-blur-md text-white rounded-lg rounded-tr-sm shadow-lg shadow-purple-500/20 border border-purple-400/20">
             {message.content !== '(附件)' && message.content}
             {/* 附件预览 */}
             {message.attachments && message.attachments.length > 0 && (
@@ -108,7 +108,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             )}
           </div>
         ) : (
-          <div className="p-4 text-sm leading-relaxed break-words max-w-full bg-[#f1f5f9] dark:bg-[#1e293b] rounded-lg rounded-tl-sm border border-gray-200/60 dark:border-white/10 text-[var(--color-text)] shadow-sm">
+          <div className="p-4 text-sm leading-relaxed break-words max-w-full rounded-lg rounded-tl-sm border text-[var(--color-text)] shadow-sm glass-card">
             {/* 长消息折叠：只渲染前 COLLAPSE_THRESHOLD 字符，大幅减少 DOM 节点 */}
             <MarkdownRenderer
               content={expanded || message.isStreaming ? message.content : message.content.slice(0, COLLAPSE_THRESHOLD) + '\n\n...'}

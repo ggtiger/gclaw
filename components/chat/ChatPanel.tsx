@@ -228,7 +228,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
   const isEmpty = messages.length === 0 && !streamingContent
 
   return (
-    <div className="relative flex flex-col h-full bg-white dark:bg-[#1e293b]">
+    <div className="relative flex flex-col h-full">
       {/* 固定工具栏：项目名 + 搜索 + 导出 + 清空 */}
       {!initialLoading && (
         <div
@@ -417,7 +417,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 流式输出 */}
             {streamingContent && (
-              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
                     <Bot size={16} className="text-purple-600 dark:text-purple-400" />
@@ -434,7 +434,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
 
             {/* 等待响应指示 */}
             {sending && !streamingContent && !toolSummary && (
-              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 bg-[#f1f5f9] dark:bg-[#1e293b]">
+              <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
                     <Bot size={16} className="text-purple-600 dark:text-purple-400" />

@@ -546,20 +546,26 @@ export function useChat(projectId: string) {
                   stats: stats || undefined,
                   toolSummary: snapshotSummary,
                 }
-                // 如果当前显示的是该项目，直接更新 messages
-                if (currentProjectIdRef.current === sendProjectId) {
-                  setMessages(prev => [...prev, assistantMsg])
-                } else {
-                  // 否则存入 buffer 待切回时合并
-                  getBuffer(sendProjectId).pendingMessages.push(assistantMsg)
-                }
+                // 延迟一帧加入 messages，确保流式内容先渲染出来
+                requestAnimationFrame(() => {
+                  if (currentProjectIdRef.current === sendProjectId) {
+                    setMessages(prev => [...prev, assistantMsg])
+                  } else {
+                    getBuffer(sendProjectId).pendingMessages.push(assistantMsg)
+                  }
+                  updateState(sendProjectId, b => {
+                    b.content = ''
+                    b.lastStats = stats
+                    b.toolSummary = null
+                  })
+                })
+              } else {
+                updateState(sendProjectId, b => {
+                  b.content = ''
+                  b.lastStats = stats
+                  b.toolSummary = null
+                })
               }
-
-              updateState(sendProjectId, b => {
-                b.content = ''
-                b.lastStats = stats
-                b.toolSummary = null  // 已快照到消息中，清空全局状态
-              })
               break
             }
 
@@ -602,11 +608,14 @@ export function useChat(projectId: string) {
         }
       }
     } finally {
-      updateState(sendProjectId, b => {
-        b.sending = false
-        b.content = ''
+      // 延迟清除 sending 状态，确保流式内容有至少一帧的渲染机会
+      requestAnimationFrame(() => {
+        updateState(sendProjectId, b => {
+          b.sending = false
+          b.content = ''
+        })
+        setActive(sendProjectId, false)
       })
-      setActive(sendProjectId, false)
       const b = getBuffer(sendProjectId)
       delete (b as StreamBuffer & { _controller?: AbortController })._controller
     }
