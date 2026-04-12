@@ -11,7 +11,9 @@
 
 import fs from 'fs'
 import path from 'path'
-import { getOverviewForInjection } from '@/lib/memory/injection'
+import { getOverviewForInjection, refreshOverviewAsync } from '@/lib/memory/injection'
+import { addProcedural, searchProcedural } from '@/lib/memory/procedural-manager'
+import { retrieve } from '@/lib/memory/retrieval'
 import { getProjects, getProjectById } from '@/lib/store/projects'
 import { getAgents } from '@/lib/store/agents'
 
@@ -32,7 +34,8 @@ export function syncProjectClaudeMd(
   systemPrompt: string,
   enabledSkills: string[],
   userId?: string,
-  projectId?: string
+  projectId?: string,
+  userMessage?: string
 ): void {
   // ── 初始化项目的 .learnings/ 目录（从技能模板复制）──
   initProjectLearnings(projectCwd, enabledSkills)
@@ -62,10 +65,18 @@ export function syncProjectClaudeMd(
     }
   }
 
-  // ── 技能经验摘要（从项目 cwd/.learnings/ 扫描）──
-  const learningsSummary = collectLearningsSummary(projectCwd)
+  // ── 技能经验摘要（从项目 cwd/.learnings/ 扫描，含 aging + promote）──
+  const learningsSummary = collectLearningsSummary(projectCwd, userId)
   if (learningsSummary) {
     sections.push(learningsSummary)
+  }
+
+  // ── 主动检索：根据用户消息动态注入相关记忆 ──
+  if (userId && userMessage) {
+    const relevantMemory = retrieveRelevantMemory(userId, userMessage, projectId)
+    if (relevantMemory) {
+      sections.push(relevantMemory)
+    }
   }
 
   // 写入或清理 CLAUDE.md
@@ -137,10 +148,22 @@ function initProjectLearnings(projectCwd: string, enabledSkills: string[]): void
 /**
  * 从项目 cwd/.learnings/ 扫描 pending 条目摘要
  * 返回 Markdown 格式，注入到 CLAUDE.md 供 Agent 参考
+ *
+ * 包含两个预处理步骤：
+ * 1. autoAgeLearnings: >7 天的 pending 条目自动降为 resolved
+ * 2. promoteLearningsToMemory: 高价值条目回流到程序记忆系统
  */
-function collectLearningsSummary(projectCwd: string): string {
+function collectLearningsSummary(projectCwd: string, userId?: string): string {
   const learningsDir = path.join(projectCwd, '.learnings')
   if (!fs.existsSync(learningsDir)) return ''
+
+  // ── 预处理 1：自动 aging（>7 天 pending → resolved）──
+  autoAgeLearnings(projectCwd)
+
+  // ── 预处理 2：高价值条目回流到程序记忆 ──
+  if (userId) {
+    promoteLearningsToMemory(projectCwd, userId)
+  }
 
   const allEntries: { file: string; entries: string[] }[] = []
 
@@ -227,6 +250,230 @@ function extractPendingEntries(content: string): string[] {
   }
 
   return entries
+}
+
+// ── 改进 2：自动 aging ──
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * 自动老化 .learnings/ 中超过 7 天的 pending 条目
+ * 将状态改为 resolved，避免 CLAUDE.md 注入过时噪音
+ */
+function autoAgeLearnings(projectCwd: string): void {
+  const learningsDir = path.join(projectCwd, '.learnings')
+  if (!fs.existsSync(learningsDir)) return
+
+  const now = Date.now()
+
+  try {
+    const files = fs.readdirSync(learningsDir).filter(f => f.endsWith('.md'))
+    for (const file of files) {
+      const filePath = path.join(learningsDir, file)
+      let content = fs.readFileSync(filePath, 'utf-8')
+      let modified = false
+
+      // 按条目块处理：匹配 ## [ID] ... 分隔线 之间的内容
+      content = content.replace(
+        /(## \[[A-Z]+-\d{8}-\w+\][^\n]*\n)((?:.*\n)*?)(\*\*Status\*\*:\s*)pending(\b)/g,
+        (match, heading: string, body: string, statusPrefix: string, _suffix: string) => {
+          // 提取 Logged 时间
+          const loggedMatch = body.match(/\*\*Logged\*\*:\s*(\S+)/)
+          if (!loggedMatch) return match
+
+          const loggedTime = new Date(loggedMatch[1]).getTime()
+          if (isNaN(loggedTime)) return match
+
+          if (now - loggedTime > SEVEN_DAYS_MS) {
+            modified = true
+            return `${heading}${body}${statusPrefix}resolved`
+          }
+          return match
+        }
+      )
+
+      if (modified) {
+        fs.writeFileSync(filePath, content, 'utf-8')
+        console.log(`[GClaw] autoAgeLearnings: aged pending entries in ${file}`)
+      }
+    }
+  } catch {
+    // 忽略 aging 错误
+  }
+}
+
+// ── 改进 1：高价值条目回流到程序记忆 ──
+
+/**
+ * 将 .learnings/LEARNINGS.md 中高价值条目回流到程序记忆系统
+ * - best_practice + pending → 写入程序记忆（type=best_practice, confidence=0.8）
+ * - correction + resolved → 写入程序记忆（type=error_resolution, confidence=0.7）
+ * 回流后标记条目为 promoted，去重检查避免重复写入
+ */
+function promoteLearningsToMemory(projectCwd: string, userId: string): void {
+  const learningsDir = path.join(projectCwd, '.learnings')
+  const learningsFile = path.join(learningsDir, 'LEARNINGS.md')
+  if (!fs.existsSync(learningsFile)) return
+
+  try {
+    let content = fs.readFileSync(learningsFile, 'utf-8')
+    let modified = false
+
+    // 解析条目块
+    const entryRegex = /## \[([A-Z]+-\d{8}-\w+)\]\s*(\w+)\n((?:(?!^## \[).+\n)*)/gm
+    let match: RegExpExecArray | null
+
+    const entriesToProcess: Array<{
+      fullMatch: string
+      id: string
+      category: string
+      body: string
+      status: string
+      summary: string
+    }> = []
+
+    while ((match = entryRegex.exec(content)) !== null) {
+      const id = match[1]
+      const category = match[2]
+      const body = match[3]
+
+      // 提取状态
+      const statusMatch = body.match(/\*\*Status\*\*:\s*(\w+)/)
+      const status = statusMatch ? statusMatch[1] : ''
+
+      // 只处理目标类别
+      if (category === 'best_practice' && status === 'pending') {
+        const summary = extractSummaryFromBody(body)
+        entriesToProcess.push({ fullMatch: match[0], id, category, body, status, summary })
+      } else if (category === 'correction' && status === 'resolved') {
+        const summary = extractSummaryFromBody(body)
+        entriesToProcess.push({ fullMatch: match[0], id, category, body, status, summary })
+      }
+    }
+
+    for (const entry of entriesToProcess) {
+      // 去重：用条目标题搜索已有程序记忆
+      const existing = searchProcedural(userId, {
+        query: entry.summary.slice(0, 50),
+        limit: 3,
+      })
+      if (existing.some(p => p.title === entry.summary.slice(0, 80))) {
+        continue // 已存在，跳过
+      }
+
+      // 写入程序记忆
+      const procType = entry.category === 'best_practice' ? 'best_practice' as const : 'error_resolution' as const
+      const confidence = entry.category === 'best_practice' ? 0.8 : 0.7
+
+      try {
+        addProcedural(userId, {
+          type: procType,
+          title: entry.summary.slice(0, 80),
+          content: entry.summary,
+          scope: 'user',
+          tags: ['promoted-from-learnings', entry.category],
+          confidence,
+        })
+
+        // 标记原条目为 promoted
+        const oldStatusLine = `**Status**: ${entry.status}`
+        const newStatusLine = `**Status**: promoted`
+        content = content.replace(
+          entry.fullMatch,
+          entry.fullMatch.replace(oldStatusLine, newStatusLine)
+        )
+        modified = true
+        console.log(`[GClaw] promoteLearnings: ${entry.id} (${entry.category}) → procedural memory`)
+      } catch {
+        // 忽略单条回流失败
+      }
+    }
+
+    if (modified) {
+      fs.writeFileSync(learningsFile, content, 'utf-8')
+
+      // 异步刷新总纲（不阻塞）
+      refreshOverviewAsync(userId).catch(() => {})
+    }
+  } catch {
+    // 忽略回流错误
+  }
+}
+
+/**
+ * 从条目 body 中提取摘要文本
+ */
+function extractSummaryFromBody(body: string): string {
+  // 匹配 ### 摘要 后的第一行非空内容
+  const summaryMatch = body.match(/### 摘要\n\s*(.+)/)
+  if (summaryMatch) return summaryMatch[1].trim()
+  // 降级：取第一行非空非标题内容
+  const lines = body.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('**') && !trimmed.startsWith('---')) {
+      return trimmed.slice(0, 80)
+    }
+  }
+  return ''
+}
+
+// ── 改进 3：主动检索注入 ──
+
+/**
+ * 根据用户消息检索相关记忆，格式化为 CLAUDE.md section
+ * 只注入 semantic + procedural（episodic 太碎），最多 5 条，每条截断到 80 字
+ */
+function retrieveRelevantMemory(userId: string, userMessage: string, projectId?: string): string {
+  try {
+    const result = retrieve({
+      userId,
+      projectId,
+      query: userMessage,
+      level: 'all',
+      limit: 5,
+    })
+
+    const items: Array<{ label: string; title: string; content: string; confidence: number }> = []
+
+    for (const s of result.semantic.slice(0, 3)) {
+      items.push({
+        label: `语义/${s.type}`,
+        title: s.title,
+        content: s.content.slice(0, 80),
+        confidence: s.confidence,
+      })
+    }
+
+    for (const p of result.procedural.slice(0, 3)) {
+      items.push({
+        label: `程序/${p.type}`,
+        title: p.title,
+        content: p.content.slice(0, 80),
+        confidence: p.confidence,
+      })
+    }
+
+    // 按 confidence 降序排列，最多取 5 条
+    items.sort((a, b) => b.confidence - a.confidence)
+    const topItems = items.slice(0, 5)
+
+    if (topItems.length === 0) return ''
+
+    const lines: string[] = [
+      '## 相关记忆（本次对话可能相关）',
+      '',
+    ]
+
+    for (const item of topItems) {
+      lines.push(`- **[${item.label}] ${item.title}**: ${item.content}`)
+    }
+
+    return lines.join('\n')
+  } catch {
+    // 检索失败静默跳过，不影响正常对话
+    return ''
+  }
 }
 
 /**

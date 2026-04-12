@@ -41,6 +41,17 @@ export async function middleware(request: NextRequest) {
     })
   }
 
+  // 非浏览器请求（curl / 技能 / 内部服务）自动放行 API 路由
+  // 浏览器 fetch() 自动发送 Sec-Fetch-Site 头，curl 不会
+  const secFetchSite = request.headers.get('sec-fetch-site')
+  if (!secFetchSite && pathname.startsWith('/api/')) {
+    const requestHeaders = new Headers(request.headers)
+    requestHeaders.set('x-internal-call', 'true')
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+  }
+
   // 验证 token
   const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value
 

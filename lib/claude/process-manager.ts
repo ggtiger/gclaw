@@ -148,10 +148,10 @@ export async function* executeChat(
     }
   }
 
-  // 同步项目 CLAUDE.md（系统提示词 + 用户记忆总纲 + .learnings 摘要）和初始化 .learnings/ 模板
+  // 同步项目 CLAUDE.md（系统提示词 + 用户记忆总纲 + .learnings 摘要 + 主动检索记忆）和初始化 .learnings/ 模板
   const projectInfo = getProjectById(projectId)
   const userId = projectInfo?.ownerId
-  syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills, userId, projectId)
+  syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills, userId, projectId, message)
 
   // 加载技能 .env 环境变量，注入 SDK env
   const skillEnv = loadSkillEnvVars(enabledSkills)
@@ -161,6 +161,7 @@ export async function* executeChat(
     GCLAW_API_BASE: `http://localhost:${port}`,
     GCLAW_PROJECT_ID: projectId,
     GCLAW_USER_ID: userId || '',
+    GCLAW_INTERNAL_API_KEY: process.env.INTERNAL_API_KEY || 'gclaw-internal-api-key',
   }
   const sdkEnv: Record<string, string | undefined> = { ...process.env, ...skillEnv, ...gclawEnv }
 

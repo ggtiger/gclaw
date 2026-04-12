@@ -1,72 +1,99 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus } from 'lucide-react'
-import type { TaskType, TaskSchedule } from '@/types/schedules'
+import { useState, useEffect } from 'react'
+import { Plus, Pencil, X } from 'lucide-react'
+import type { TaskType, TaskSchedule, ScheduledTask } from '@/types/schedules'
+import { CronBuilder } from './CronBuilder'
 
 interface TaskFormProps {
   projectId?: string
-  onCreated: () => void
+  task?: ScheduledTask | null    // 有值 = 编辑模式
+  onSaved: () => void
+  onCancel?: () => void           // 编辑模式取消回调
 }
 
-export function TaskForm({ projectId, onCreated }: TaskFormProps) {
-  const [name, setName] = useState('')
-  const [type, setType] = useState<TaskType>('chat-message')
-  const [scheduleMode, setScheduleMode] = useState<'once' | 'interval' | 'cron'>('once')
-  const [runAt, setRunAt] = useState('')
-  const [intervalMin, setIntervalMin] = useState(30)
-  const [cronExpr, setCronExpr] = useState('0 9 * * *')
-  const [message, setMessage] = useState('')
-  const [command, setCommand] = useState('')
-  const [webhookUrl, setWebhookUrl] = useState('')
+function toLocalDatetime(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function TaskForm({ projectId, task, onSaved, onCancel }: TaskFormProps) {
+  const isEdit = !!task
+
+  const [name, setName] = useState(task?.name || '')
+  const [type, setType] = useState<TaskType>(task?.type || 'chat-message')
+  const [scheduleMode, setScheduleMode] = useState<'once' | 'interval' | 'cron'>(task?.schedule.mode || 'once')
+  const [runAt, setRunAt] = useState(toLocalDatetime(task?.schedule.runAt))
+  const [intervalMin, setIntervalMin] = useState(() => {
+    if (task?.schedule.intervalMs) return Math.round(task.schedule.intervalMs / 60_000)
+    return 30
+  })
+  const [cronExpr, setCronExpr] = useState(task?.schedule.cron || '0 9 * * *')
+  const [message, setMessage] = useState((task?.config?.message as string) || '')
+  const [command, setCommand] = useState((task?.config?.command as string) || '')
+  const [webhookUrl, setWebhookUrl] = useState((task?.config?.url as string) || '')
   const [saving, setSaving] = useState(false)
+
+  // 当 task 变化时同步状态（用于编辑不同任务）
+  useEffect(() => {
+    if (!task) return
+    setName(task.name)
+    setType(task.type)
+    setScheduleMode(task.schedule.mode)
+    setRunAt(toLocalDatetime(task.schedule.runAt))
+    setIntervalMin(task.schedule.intervalMs ? Math.round(task.schedule.intervalMs / 60_000) : 30)
+    setCronExpr(task.schedule.cron || '0 9 * * *')
+    setMessage((task.config?.message as string) || '')
+    setCommand((task.config?.command as string) || '')
+    setWebhookUrl((task.config?.url as string) || '')
+  }, [task])
+
+  const buildSchedule = (): TaskSchedule => {
+    switch (scheduleMode) {
+      case 'once':
+        return { mode: 'once', runAt: runAt || new Date(Date.now() + 5 * 60_000).toISOString() }
+      case 'interval':
+        return { mode: 'interval', intervalMs: intervalMin * 60 * 1000 }
+      case 'cron':
+        return { mode: 'cron', cron: cronExpr }
+    }
+  }
+
+  const buildConfig = (): Record<string, unknown> => {
+    switch (type) {
+      case 'chat-message': return { message }
+      case 'script': return { command }
+      case 'webhook': return { url: webhookUrl, method: 'POST' }
+      default: return {}
+    }
+  }
 
   const handleSubmit = async () => {
     if (!name.trim()) return
     setSaving(true)
 
-    let schedule: TaskSchedule
-    let config: Record<string, unknown> = {}
-
-    switch (scheduleMode) {
-      case 'once':
-        schedule = { mode: 'once', runAt: runAt || new Date(Date.now() + 5 * 60_000).toISOString() }
-        break
-      case 'interval':
-        schedule = { mode: 'interval', intervalMs: intervalMin * 60 * 1000 }
-        break
-      case 'cron':
-        schedule = { mode: 'cron', cron: cronExpr }
-        break
-    }
-
-    switch (type) {
-      case 'chat-message':
-        config = { message }
-        break
-      case 'script':
-        config = { command }
-        break
-      case 'webhook':
-        config = { url: webhookUrl, method: 'POST' }
-        break
-    }
+    const schedule = buildSchedule()
+    const config = buildConfig()
 
     try {
-      const res = await fetch('/api/schedules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), type, schedule, config, projectId }),
-      })
-      if (res.ok) {
-        setName('')
-        setMessage('')
-        setCommand('')
-        setWebhookUrl('')
-        onCreated()
+      if (isEdit && task) {
+        await fetch(`/api/schedules?id=${task.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), type, schedule, config }),
+        })
+      } else {
+        await fetch('/api/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), type, schedule, config, projectId }),
+        })
       }
+      onSaved()
     } catch (err) {
-      console.error('Failed to create task:', err)
+      console.error(`Failed to ${isEdit ? 'update' : 'create'} task:`, err)
     } finally {
       setSaving(false)
     }
@@ -74,9 +101,16 @@ export function TaskForm({ projectId, onCreated }: TaskFormProps) {
 
   return (
     <div className="space-y-3 p-4 border border-gray-200/60 dark:border-white/10 rounded-lg">
-      <div className="flex items-center gap-2 text-sm font-medium text-[var(--color-text)]">
-        <Plus size={14} />
-        新建定时任务
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium text-[var(--color-text)]">
+          {isEdit ? <Pencil size={14} /> : <Plus size={14} />}
+          {isEdit ? '编辑定时任务' : '新建定时任务'}
+        </div>
+        {isEdit && onCancel && (
+          <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+            <X size={14} className="text-[var(--color-text-secondary)]" />
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -150,16 +184,7 @@ export function TaskForm({ projectId, onCreated }: TaskFormProps) {
       )}
 
       {scheduleMode === 'cron' && (
-        <div>
-          <label className="block text-xs text-[var(--color-text-secondary)] mb-1">Cron 表达式（分 时 日 月 周）</label>
-          <input
-            type="text"
-            value={cronExpr}
-            onChange={e => setCronExpr(e.target.value)}
-            placeholder="0 9 * * *"
-            className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-800 text-[var(--color-text)] min-w-0"
-          />
-        </div>
+        <CronBuilder value={cronExpr} onChange={setCronExpr} />
       )}
 
       {type === 'chat-message' && (
@@ -201,14 +226,25 @@ export function TaskForm({ projectId, onCreated }: TaskFormProps) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={saving || !name.trim()}
-        className="w-full py-2 text-sm font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {saving ? '创建中...' : '创建任务'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={saving || !name.trim()}
+          className="flex-1 py-2 text-sm font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? (isEdit ? '保存中...' : '创建中...') : (isEdit ? '保存修改' : '创建任务')}
+        </button>
+        {isEdit && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-white/10 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+          >
+            取消
+          </button>
+        )}
+      </div>
     </div>
   )
 }

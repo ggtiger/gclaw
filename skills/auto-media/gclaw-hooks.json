@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "schedules": [
+    {
+      "name": "热点早报",
+      "description": "每天早上9点扫描热点、生成文案、发布",
+      "cron": "0 9 * * *",
+      "task": {
+        "type": "custom",
+        "action": "node ${SKILL_DIR}/scripts/auto-publish.js '{\"mode\":\"full\"}'"
+      }
+    },
+    {
+      "name": "午间热点",
+      "description": "每天中午12点扫描热点、生成文案、发布",
+      "cron": "0 12 * * *",
+      "task": {
+        "type": "custom",
+        "action": "node ${SKILL_DIR}/scripts/auto-publish.js '{\"mode\":\"full\"}'"
+      }
+    },
+    {
+      "name": "晚间热点",
+      "description": "每天晚上18点扫描热点、生成文案、发布",
+      "cron": "0 18 * * *",
+      "task": {
+        "type": "custom",
+        "action": "node ${SKILL_DIR}/scripts/auto-publish.js '{\"mode\":\"full\"}'"
+      }
+    }
+  ]
+}

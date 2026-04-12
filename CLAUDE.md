@@ -12,6 +12,7 @@ GClaw 是基于 Claude Agent SDK 的 AI 对话应用平台。Web UI 聊天界面
 npm run dev      # 启动 Next.js 开发服务器
 npm run build    # 生产构建
 npm run lint     # ESLint 检查（使用 next lint 默认配置，无独立 eslint 配置文件）
+npx tsc --noEmit # TypeScript 类型检查（无测试框架，用此验证编译）
 ```
 
 无测试框架配置。
@@ -21,6 +22,7 @@ npm run lint     # ESLint 检查（使用 next lint 默认配置，无独立 esl
 - Next.js 15 (App Router) + React 19 + TypeScript (strict)
 - Tailwind CSS 3.4 + CSS 变量（亮/暗模式 + 毛玻璃效果）
 - `@anthropic-ai/claude-agent-sdk` v0.1.76
+- Tauri v2 桌面端（`src-tauri/`），standalone 模式 Node.js 长驻进程
 - 文件系统 JSON 持久化（`data/` 目录，无数据库）
 - 路径别名：`@/*` 映射到项目根目录
 - tsconfig 已排除 `skills/` 目录
@@ -47,6 +49,9 @@ npm run lint     # ESLint 检查（使用 next lint 默认配置，无独立 esl
 | 事件总线 | `lib/claude/gclaw-events.ts` | 全局单例 GClawEventBus，连接 SDK Hook、技能通知和 Web UI |
 | 聊天状态 | `hooks/useChat.ts` | 前端核心 hook：SSE 解析、多项目 StreamBuffer、消息管理 |
 | 渠道服务 | `lib/channels/channel-service.ts` | 统一处理钉钉/飞书/微信消息，调用 executeChat 后回复渠道 |
+| 定时任务调度器 | `lib/scheduler/scheduler.ts` | globalThis 单例，每秒扫描到期任务，懒启动 |
+| 任务执行器 | `lib/scheduler/executors.ts` | 注册表 + 5 种内置执行器（chat-message/script/webhook/execute-skill/custom） |
+| Cron 解析器 | `lib/scheduler/cron-parser.ts` | 简易 5 位 cron 表达式解析 |
 
 ### 多项目并发
 
@@ -68,6 +73,22 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 
 三种渠道适配器：`lib/channels/dingtalk.ts`、`lib/channels/feishu.ts`、`lib/channels/wechat.ts`。渠道消息经 `channel-service.ts` 统一处理后调用 `executeChat()`，回复推送到渠道同时通过 SSE 推送到前端。
 
+### 定时任务调度
+
+调度器是 globalThis 单例（`lib/scheduler/scheduler.ts`），首次通过 API 访问时懒启动。执行器注册表（`executors.ts`）支持 5 种任务类型，`chat-message` 类型参考 `channel-service.ts` 模式直接消费 `executeChat()` 的 AsyncGenerator。
+
+技能可通过 `gclaw-hooks.json` 的 `schedules` 字段声明定时任务，`loadSkillHooks()` 加载时自动注册。
+
+### globalThis 单例模式
+
+多个模块使用 `globalThis` 挂载单例防止 HMR 丢失状态：
+- `gclawEventBus` — `lib/claude/gclaw-events.ts`
+- `projectAbortControllers` — `lib/claude/process-manager.ts`
+- `__gclaw_scheduler__` — `lib/scheduler/scheduler.ts`
+- `StreamBuffer` Map — `hooks/useChat.ts`（模块级变量，非 globalThis）
+
+新增全局单例时应遵循此模式。
+
 ### API 路由
 
 ```
@@ -79,6 +100,8 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 /api/agents          — 智能体 CRUD
 /api/channels/*      — 渠道管理 + webhook + SSE 事件
 /api/skills/*        — 技能管理 + 市场
+/api/schedules       — 定时任务 CRUD
+/api/schedules/trigger — 定时任务手动触发
 /api/settings        — 全局/项目设置
 ```
 
@@ -87,6 +110,7 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 所有数据存储在 `data/` 目录（已 gitignore），无数据库：
 - `data/global.json` — 全局设置
 - `data/projects.json` — 项目列表
+- `data/schedules.json` — 全局定时任务
 - `data/projects/{id}/` — 每个项目的设置、消息、技能、智能体、渠道配置
 
 ## 开发注意事项

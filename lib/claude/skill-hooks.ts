@@ -12,6 +12,7 @@ import { gclawEventBus } from './gclaw-events'
 import type { GClawEventType } from './gclaw-events'
 import { createTask } from '../store/schedules'
 import { getScheduler } from '../scheduler/scheduler'
+import { getProjectDir } from '../store/projects'
 
 // ── 类型定义 ─────────────────────────────────────────────
 
@@ -213,10 +214,16 @@ function createHookCallback(
           // 如果配置了 agentMessage，通过 SDK hook 返回值注入到 Agent 上下文
           systemMessage = entry.agentMessage || entry.message
           break
-        case 'script':
-          await handleScript(entry, projectId, input)
-          systemMessage = entry.agentMessage
+        case 'script': {
+          const scriptOutput = await handleScript(entry, projectId, input)
+          // 优先使用脚本 stdout，拼接 agentMessage
+          if (scriptOutput && entry.agentMessage) {
+            systemMessage = `${scriptOutput}\n\n${entry.agentMessage}`
+          } else {
+            systemMessage = scriptOutput || entry.agentMessage
+          }
           break
+        }
         case 'log':
           handleLog(entry, input)
           break
@@ -265,10 +272,10 @@ function handleScript(
   entry: ResolvedHookEntry,
   projectId: string,
   input: Record<string, unknown>
-): Promise<void> {
+): Promise<string | undefined> {
   return new Promise((resolve) => {
     if (!entry.script) {
-      resolve()
+      resolve(undefined)
       return
     }
 
@@ -276,12 +283,12 @@ function handleScript(
     // 安全校验：脚本路径必须在技能目录内
     if (!isPathWithin(scriptPath, entry.skillDir)) {
       console.warn(`[SkillHooks] Script path escapes skill directory: ${scriptPath}`)
-      resolve()
+      resolve(undefined)
       return
     }
     if (!fs.existsSync(scriptPath)) {
       console.warn(`[SkillHooks] Script not found: ${scriptPath}`)
-      resolve()
+      resolve(undefined)
       return
     }
 
@@ -297,7 +304,11 @@ function handleScript(
 
     const child = spawn('bash', [scriptPath], {
       cwd: entry.skillDir,
-      env: { ...process.env, GCLAW_PROJECT_ID: projectId },
+      env: {
+        ...process.env,
+        GCLAW_PROJECT_ID: projectId,
+        GCLAW_PROJECT_DIR: getProjectDir(projectId),
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 10000, // 10 秒超时
     })
@@ -305,19 +316,21 @@ function handleScript(
     child.stdin.write(context)
     child.stdin.end()
 
+    let stdout = ''
     let stderr = ''
+    child.stdout.on('data', (data) => { stdout += data.toString() })
     child.stderr.on('data', (data) => { stderr += data.toString() })
 
     child.on('close', (code) => {
       if (code !== 0 && stderr) {
         console.warn(`[SkillHooks] Script "${entry.script}" exited with code ${code}: ${stderr}`)
       }
-      resolve()
+      resolve(stdout.trim() || undefined)
     })
 
     child.on('error', (err) => {
       console.error(`[SkillHooks] Script spawn error:`, err)
-      resolve()
+      resolve(undefined)
     })
   })
 }
@@ -351,7 +364,7 @@ function handleLog(
       ? `  tool: ${(input as { tool_name?: string }).tool_name}`
       : '',
     (input as { tool_response?: unknown }).tool_response != null
-      ? `  response(500): ${String((input as { tool_response?: unknown }).tool_response).slice(0, 500)}`
+      ? `  response(500): ${JSON.stringify((input as { tool_response?: unknown }).tool_response).slice(0, 500)}`
       : '',
     (input as { error?: string }).error
       ? `  error: ${(input as { error?: string }).error}`
