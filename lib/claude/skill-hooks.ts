@@ -10,6 +10,8 @@ import { spawn } from 'child_process'
 import type { HookCallback } from '@anthropic-ai/claude-agent-sdk'
 import { gclawEventBus } from './gclaw-events'
 import type { GClawEventType } from './gclaw-events'
+import { createTask } from '../store/schedules'
+import { getScheduler } from '../scheduler/scheduler'
 
 // ── 类型定义 ─────────────────────────────────────────────
 
@@ -17,6 +19,7 @@ import type { GClawEventType } from './gclaw-events'
 export interface SkillHooksConfig {
   version: number
   hooks: Partial<Record<string, SkillHookEntry[]>>
+  schedules?: import('@/types/schedules').SkillScheduleEntry[]
 }
 
 /** 单条 Hook 声明 */
@@ -121,6 +124,11 @@ export function loadSkillHooks(
       }
 
       console.log(`[SkillHooks] Loaded hooks from skill "${skillName}":`, Array.from(grouped.keys()))
+
+      // 注册 skill schedules
+      if (config.schedules && Array.isArray(config.schedules)) {
+        registerSkillSchedules(skillName, config.schedules)
+      }
     } catch (err) {
       console.error(`[SkillHooks] Failed to load gclaw-hooks.json for skill "${skillName}":`, err)
     }
@@ -412,5 +420,37 @@ export function readSkillHooksConfig(skillName: string): SkillHooksConfig | null
   } catch (err) {
     console.error(`[SkillHooks] Failed to read gclaw-hooks.json for skill "${skillName}":`, err)
     return null
+  }
+}
+
+// ── Skill Schedules 注册 ──────────────────────────────────
+
+/**
+ * 注册技能的定时任务声明到调度器
+ * 使用 createdBy: 'skill:xxx' 标记来源，避免重复注册
+ */
+function registerSkillSchedules(
+  skillName: string,
+  schedules: import('@/types/schedules').SkillScheduleEntry[]
+): void {
+  for (const entry of schedules) {
+    try {
+      const task = createTask({
+        name: entry.name,
+        type: entry.type,
+        schedule: entry.schedule,
+        config: entry.config,
+        enabled: entry.enabled !== false,
+        status: 'idle',
+        createdBy: `skill:${skillName}`,
+      })
+
+      // 触发调度器初始化并刷新 nextRunAt
+      getScheduler().refreshNextRun(task)
+
+      console.log(`[SkillHooks] Registered schedule "${entry.name}" from skill "${skillName}" (id: ${task.id})`)
+    } catch (err) {
+      console.error(`[SkillHooks] Failed to register schedule "${entry.name}" from skill "${skillName}":`, err)
+    }
   }
 }

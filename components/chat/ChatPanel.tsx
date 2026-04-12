@@ -34,6 +34,8 @@ interface ChatPanelProps {
   onOpenChannels?: () => void
   onOpenSkills?: () => void
   onOpenAgents?: () => void
+  onOpenSchedules?: () => void
+  onScheduleSend?: (message: string, schedule: { mode: 'once' | 'interval'; runAt?: string; intervalMs?: number; label: string }) => void
   sidebarHidden?: boolean
   onToggleSidebar?: () => void
   onOpenMobileSidebar?: () => void
@@ -80,7 +82,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -529,6 +531,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
           }}
           onOpenSkills={onOpenSkills}
           onOpenAgents={onOpenAgents}
+          onOpenSchedules={onOpenSchedules}
+          onScheduleSend={onScheduleSend}
         />
       </div>
 

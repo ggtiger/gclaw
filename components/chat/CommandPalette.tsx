@@ -26,7 +26,7 @@ interface CommandPaletteProps {
   onSwitchProject?: (projectId: string) => void
   projects?: Array<{ id: string; name: string }>
   currentProjectId?: string
-  onOpenModal?: (panel: 'skills' | 'agents' | 'channels' | 'settings') => void
+  onOpenModal?: (panel: 'skills' | 'agents' | 'channels' | 'settings' | 'schedules') => void
 }
 
 /**
@@ -166,6 +166,15 @@ export function CommandPalette({
         category: '面板',
         keywords: ['settings', '设置', '配置', '面板'],
         action: () => { onOpenModal?.('settings'); onClose() },
+      },
+      {
+        id: 'schedules',
+        label: '/schedules',
+        description: '定时任务管理',
+        icon: <Hash size={16} />,
+        category: '面板',
+        keywords: ['schedules', '定时', '任务', '调度', '计划'],
+        action: () => { onOpenModal?.('schedules'); onClose() },
       },
     ]
 

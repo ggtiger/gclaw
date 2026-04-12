@@ -12,6 +12,7 @@ import { AccountPanel } from '../settings/AccountPanel'
 import { AgentsPanel } from '../agents/AgentsPanel'
 import { AgentTemplatePanel } from '../agents/AgentTemplatePanel'
 import { ChannelsPanel } from '../channels/ChannelsPanel'
+import { SchedulesPanel } from '../schedules/SchedulesPanel'
 import { ProjectSidebar } from '../projects/ProjectSidebar'
 import FocusPanel from '../panels/FocusPanel'
 import FilesPanel from '../panels/FilesPanel'
@@ -35,7 +36,7 @@ export function ChatLayout() {
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
   const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | null>(null)
+  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | 'schedules' | null>(null)
   const [filesFullscreen, setFilesFullscreen] = useState(false)
   const [rightPanelHidden, setRightPanelHidden] = useState(false)
 
@@ -358,6 +359,37 @@ export function ChatLayout() {
             onOpenChannels={() => setModalOpen('channels')}
             onOpenSkills={() => setModalOpen('skills')}
             onOpenAgents={() => setModalOpen('agents')}
+            onOpenSchedules={() => setModalOpen('schedules')}
+            onScheduleSend={async (message, schedule) => {
+              try {
+                const res = await fetch('/api/schedules', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: `定时消息: ${message.slice(0, 20)}...`,
+                    type: 'chat-message',
+                    schedule: {
+                      mode: schedule.mode,
+                      runAt: schedule.runAt,
+                      intervalMs: schedule.intervalMs,
+                    },
+                    config: { message },
+                    projectId: project.currentId,
+                  }),
+                })
+                if (res.ok) {
+                  chat.addLocalMessage({
+                    id: `msg_${Date.now()}_scheduled`,
+                    role: 'system',
+                    content: `已设置定时发送: ${schedule.label}`,
+                    messageType: 'text',
+                    createdAt: new Date().toISOString(),
+                  })
+                }
+              } catch (err) {
+                console.error('Failed to schedule message:', err)
+              }
+            }}
           />
         </main>
         )}
@@ -431,7 +463,7 @@ export function ChatLayout() {
         onSwitchProject={project.switchProject}
         projects={project.projects}
         currentProjectId={project.currentId}
-        onOpenModal={(panel) => setModalOpen(panel)}
+        onOpenModal={(panel) => setModalOpen(panel as typeof modalOpen)}
       />
 
       {/* Modal 弹出框 */}
@@ -459,6 +491,9 @@ export function ChatLayout() {
       </Modal>
       <Modal open={modalOpen === 'account'} onClose={() => setModalOpen(null)} title="账户">
         <AccountPanel />
+      </Modal>
+      <Modal open={modalOpen === 'schedules'} onClose={() => setModalOpen(null)} title="定时任务">
+        <SchedulesPanel projectId={project.currentId} />
       </Modal>
     </div>
   )

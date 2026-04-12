@@ -13,6 +13,12 @@ export type GClawEventType =
   | 'hook:error'          // Hook 执行异常（内部诊断）
   | 'memory:write'        // 记忆写入
   | 'memory:consolidate'  // 巩固完成
+  | 'task:started'        // 定时任务开始执行
+  | 'task:completed'      // 定时任务执行成功
+  | 'task:failed'         // 定时任务执行失败
+  | 'task:created'        // 定时任务创建
+  | 'task:updated'        // 定时任务更新
+  | 'task:deleted'        // 定时任务删除
 
 export interface GClawEvent {
   type: GClawEventType

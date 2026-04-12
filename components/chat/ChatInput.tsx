@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen } from 'lucide-react'
+import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen, Clock } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
+import { SchedulePicker } from './SchedulePicker'
 import type { ChatAttachment } from '@/types/chat'
 import type { AgentInfo } from '@/types/skills'
 
@@ -34,13 +35,16 @@ interface ChatInputProps {
   onTemplateSelect?: (template: Template) => void
   onOpenSkills?: () => void
   onOpenAgents?: () => void
+  onScheduleSend?: (message: string, schedule: { mode: 'once' | 'interval'; runAt?: string; intervalMs?: number; label: string }) => void
+  onOpenSchedules?: () => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [optimizing, setOptimizing] = useState(false)
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
@@ -397,6 +401,22 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           </div>
         )}
 
+        {/* 定时发送选择器 */}
+        {showSchedulePicker && (
+          <SchedulePicker
+            onSelect={(schedule) => {
+              setShowSchedulePicker(false)
+              if (onScheduleSend && input.trim()) {
+                onScheduleSend(input.trim(), schedule)
+                setInput('')
+                if (textareaRef.current) textareaRef.current.style.height = 'auto'
+              }
+            }}
+            onClose={() => setShowSchedulePicker(false)}
+            onOpenSchedules={onOpenSchedules}
+          />
+        )}
+
         <div className="flex justify-between items-center px-1 pb-1">
           {/* 左侧功能按钮组 */}
           <div className="flex items-center gap-0.5 flex-nowrap overflow-x-auto">
@@ -436,6 +456,22 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
             >
               <Bot size={15} />
               <span className="hidden sm:inline whitespace-nowrap">智能体</span>
+            </button>
+            <div className="h-4 w-px bg-[var(--color-border)] mx-0.5" />
+            <button
+              className="flex items-center gap-1 px-2 py-1.5 text-[var(--color-text-secondary)] hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg transition-colors text-xs"
+              title={input.trim() ? '定时发送' : '定时任务管理'}
+              type="button"
+              onClick={() => {
+                if (input.trim()) {
+                  setShowSchedulePicker(!showSchedulePicker)
+                } else {
+                  onOpenSchedules?.()
+                }
+              }}
+            >
+              <Clock size={15} />
+              <span className="hidden sm:inline whitespace-nowrap">定时</span>
             </button>
             <div className="h-4 w-px bg-[var(--color-border)] mx-0.5" />
             <button
