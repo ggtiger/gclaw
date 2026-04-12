@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getAgents, saveAgents } from '@/lib/store/agents'
+import { getProjectById, getProjects } from '@/lib/store/projects'
 import type { AgentInfo } from '@/types/skills'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +12,29 @@ function getProjectId(request: NextRequest): string {
 export async function GET(request: NextRequest) {
   const projectId = getProjectId(request)
   const agents = getAgents(projectId)
-  return Response.json({ agents })
+
+  // 秘书项目：返回子项目列表（含协调人信息），供 @-mention 使用
+  let subProjects = undefined
+  const project = getProjectById(projectId)
+  if (project?.type === 'secretary') {
+    const allProjects = getProjects()
+    subProjects = allProjects
+      .filter(p => p.id !== projectId && p.type !== 'secretary')
+      .map(p => {
+        const pAgents = getAgents(p.id).filter(a => a.enabled)
+        const coordinator = pAgents.find(a => a.isCoordinator)
+        const members = pAgents.filter(a => !a.isCoordinator)
+        return {
+          id: p.id,
+          name: p.name,
+          mode: p.mode,
+          coordinator: coordinator?.name,
+          memberNames: members.map(m => m.name),
+        }
+      })
+  }
+
+  return Response.json({ agents, subProjects })
 }
 
 export async function POST(request: NextRequest) {

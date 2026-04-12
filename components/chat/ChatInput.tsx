@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square, Paperclip, Zap, Bot, X, Image as ImageIcon, FileText, Sparkles } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
 import type { ChatAttachment } from '@/types/chat'
+import type { AgentInfo } from '@/types/skills'
 
 interface Template {
   id: string
@@ -12,6 +13,16 @@ interface Template {
   systemPrompt: string
   firstMessage: string
   isBuiltIn: boolean
+}
+
+// @-mention 候选项（Agent 或 子项目）
+interface MentionItem {
+  type: 'agent' | 'project'
+  name: string
+  description: string
+  isCoordinator?: boolean
+  coordinator?: string
+  memberNames?: string[]
 }
 
 interface ChatInputProps {
@@ -33,6 +44,76 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
+
+  // ── @-mention 自动完成 ──
+  const [mentionItems, setMentionItems] = useState<MentionItem[]>([])
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionStart, setMentionStart] = useState(-1)
+  const [mentionIndex, setMentionIndex] = useState(0)
+
+  // 加载 agents + 子项目列表（一次性 API）
+  useEffect(() => {
+    if (!projectId) return
+    fetch(`/api/agents?projectId=${projectId}`)
+      .then(r => r.json())
+      .then(data => {
+        const agents: AgentInfo[] = data.agents || []
+        const items: MentionItem[] = agents
+          .filter(a => a.enabled)
+          .map(a => ({
+            type: 'agent' as const,
+            name: a.name,
+            description: a.description,
+            isCoordinator: a.isCoordinator,
+          }))
+
+        // 秘书项目：添加子项目
+        if (data.subProjects) {
+          for (const sp of data.subProjects) {
+            items.push({
+              type: 'project',
+              name: sp.name,
+              description: sp.coordinator
+                ? `协调人: ${sp.coordinator}`
+                : (sp.memberNames?.length ? `成员: ${sp.memberNames.join('、')}` : '暂无智能体'),
+              coordinator: sp.coordinator,
+              memberNames: sp.memberNames,
+            })
+          }
+        }
+
+        setMentionItems(items)
+      })
+      .catch(() => {})
+  }, [projectId])
+
+  // 过滤匹配的 mention items
+  const filteredItems = useMemo(() => {
+    if (mentionQuery === null) return []
+    const q = mentionQuery.toLowerCase()
+    return mentionItems.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      item.description.toLowerCase().includes(q)
+    )
+  }, [mentionQuery, mentionItems])
+
+  // 选择 mention item
+  const selectMention = useCallback((item: MentionItem) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const cursorPos = textarea.selectionStart
+    const before = input.slice(0, mentionStart)
+    const after = input.slice(cursorPos)
+    const newText = `${before}@${item.name} ${after}`
+    setInput(newText)
+    setMentionQuery(null)
+
+    requestAnimationFrame(() => {
+      const pos = before.length + item.name.length + 2
+      textarea.setSelectionRange(pos, pos)
+      textarea.focus()
+    })
+  }, [input, mentionStart])
 
   // 自动调整 textarea 高度
   const adjustHeight = useCallback(() => {
@@ -101,20 +182,63 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     onSend(hasInput ? input : (hasAttachments ? '(附件)' : ''), attachments)
     setInput('')
     setAttachments([])
-    // 重置高度
+    setMentionQuery(null)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
   }, [input, attachments, sending, disabled, uploading, onSend])
 
+  // 处理输入变化 + 检测 @-mention
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    const cursorPos = e.target.selectionStart
+    setInput(value)
+
+    const textBeforeCursor = value.slice(0, cursorPos)
+    const atMatch = textBeforeCursor.match(/@([^@\s]*)$/)
+    if (atMatch) {
+      const atPos = cursorPos - atMatch[0].length
+      if (atPos === 0 || textBeforeCursor[atPos - 1] === ' ' || textBeforeCursor[atPos - 1] === '\n') {
+        setMentionQuery(atMatch[1])
+        setMentionStart(atPos)
+        setMentionIndex(0)
+        return
+      }
+    }
+    setMentionQuery(null)
+  }, [])
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (mentionQuery !== null && filteredItems.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setMentionIndex(i => (i + 1) % filteredItems.length)
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setMentionIndex(i => (i - 1 + filteredItems.length) % filteredItems.length)
+          return
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault()
+          selectMention(filteredItems[mentionIndex])
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setMentionQuery(null)
+          return
+        }
+      }
+
       if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
         e.preventDefault()
         handleSubmit()
       }
     },
-    [handleSubmit]
+    [mentionQuery, filteredItems, mentionIndex, selectMention, handleSubmit]
   )
 
   const handleCompositionStart = useCallback(() => {
@@ -166,10 +290,13 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
 
   const canSend = (input.trim() || attachments.length > 0) && !disabled && !uploading
 
+  // 统计子项目数量，用于 placeholder
+  const projectCount = mentionItems.filter(i => i.type === 'project').length
+
   return (
     <div className="chat-input px-2 py-2">
-      
-      <div className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-lg border border-gray-200/50 dark:border-white/10 p-2 flex flex-col gap-2 shadow-sm">
+
+      <div className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-lg border border-gray-200/50 dark:border-white/10 p-2 flex flex-col gap-2 shadow-sm relative">
         {/* 附件预览区域 */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-2 pt-1">
@@ -213,16 +340,63 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           onPaste={handlePaste}
-          placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+          placeholder={projectCount > 0
+            ? `@项目名 或 @智能体 发送任务... (Enter 发送)`
+            : `输入消息... (Enter 发送, Shift+Enter 换行, @ 提及智能体)`}
           rows={1}
           disabled={disabled}
           className="w-full resize-none border-none bg-transparent focus:ring-0 focus:outline-none p-3 text-sm text-[var(--color-text)] placeholder-[var(--color-text-secondary)]/70 min-h-[56px] max-h-32"
         />
+
+        {/* @-mention 下拉候选列表 */}
+        {mentionQuery !== null && filteredItems.length > 0 && (
+          <div className="absolute left-3 right-3 bottom-full mb-1 z-50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-lg border border-gray-200/60 dark:border-white/10 shadow-lg max-h-56 overflow-y-auto">
+            <div className="px-2 py-1.5 text-[10px] text-[var(--color-text-secondary)] border-b border-gray-100 dark:border-white/5 sticky top-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md">
+              {projectCount > 0
+                ? '选择项目或智能体 (↑↓ 切换, Enter 确认, Esc 关闭)'
+                : '选择智能体 (↑↓ 切换, Enter 确认, Esc 关闭)'}
+            </div>
+            {filteredItems.map((item, idx) => (
+              <button
+                key={`${item.type}-${item.name}`}
+                type="button"
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                  idx === mentionIndex
+                    ? 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                    : 'text-[var(--color-text)] hover:bg-gray-50 dark:hover:bg-white/5'
+                }`}
+                onClick={() => selectMention(item)}
+                onMouseEnter={() => setMentionIndex(idx)}
+              >
+                {item.type === 'project' ? (
+                  <span className="flex items-center gap-1 flex-shrink-0">
+                    <FolderOpen size={14} className="text-blue-500" />
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 flex-shrink-0">
+                    <Bot size={14} className="text-purple-500" />
+                    {item.isCoordinator && <Crown size={12} className="text-amber-500" />}
+                  </span>
+                )}
+                <span className="font-medium">{item.name}</span>
+                {item.type === 'project' && item.coordinator && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex-shrink-0">
+                    {item.coordinator}
+                  </span>
+                )}
+                <span className="text-[var(--color-text-secondary)] text-xs truncate flex-1">
+                  {item.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex justify-between items-center px-1 pb-1">
           {/* 左侧功能按钮组 */}
           <div className="flex items-center gap-0.5 flex-nowrap overflow-x-auto">

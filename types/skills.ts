@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // ── 项目信息 ──
 export type ProjectType = 'secretary' | 'development' | 'office'
 export type ProjectRole = 'owner' | 'editor' | 'viewer'
+export type ProjectMode = 'team' | 'government' | 'company' | 'classroom'
 
 export interface ProjectMember {
   userId: string
@@ -72,6 +73,7 @@ export interface ProjectInfo {
   id: string
   name: string
   type: ProjectType
+  mode?: ProjectMode
   ownerId?: string
   ownerName?: string
   members?: ProjectMember[]
@@ -88,4 +90,30 @@ export interface AgentInfo {
   tools: string[]
   disallowedTools: string[]
   enabled: boolean
+  isCoordinator?: boolean
+  templateId?: string
+}
+
+// ── 全局 Agent 模板 ──
+export interface AgentTemplate {
+  id: string
+  name: string
+  description: string
+  prompt: string
+  model: 'sonnet' | 'opus' | 'haiku' | 'inherit'
+  tools: string[]
+  disallowedTools: string[]
+  category?: string
+  isBuiltIn: boolean
+  createdAt: string
+}
+
+// ── 模式定义（硬编码） ──
+export interface ModeDefinition {
+  id: ProjectMode
+  name: string
+  description: string
+  coordinatorName: string
+  coordinatorPrompt: string
+  roleTemplates: string[]
 }

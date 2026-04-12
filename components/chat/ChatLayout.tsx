@@ -10,6 +10,7 @@ import { SettingsPanel } from '../settings/SettingsPanel'
 import { ProjectSettingsPanel } from '../settings/ProjectSettingsPanel'
 import { AccountPanel } from '../settings/AccountPanel'
 import { AgentsPanel } from '../agents/AgentsPanel'
+import { AgentTemplatePanel } from '../agents/AgentTemplatePanel'
 import { ChannelsPanel } from '../channels/ChannelsPanel'
 import { ProjectSidebar } from '../projects/ProjectSidebar'
 import FocusPanel from '../panels/FocusPanel'
@@ -34,7 +35,7 @@ export function ChatLayout() {
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
   const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'channels' | 'settings' | 'projectSettings' | 'account' | null>(null)
+  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | null>(null)
   const [filesFullscreen, setFilesFullscreen] = useState(false)
   const [rightPanelHidden, setRightPanelHidden] = useState(false)
 
@@ -94,6 +95,76 @@ export function ChatLayout() {
   const currentProject = project.projects.find(p => p.id === project.currentId)
   const projectType = currentProject?.type || 'secretary'
   const isSecretary = projectType === 'secretary'
+
+  // 子项目列表（秘书项目用于 @转发）
+  const [subProjects, setSubProjects] = useState<Array<{ id: string; name: string }>>([])
+  useEffect(() => {
+    if (!isSecretary || !project.currentId) {
+      setSubProjects([])
+      return
+    }
+    fetch(`/api/agents?projectId=${project.currentId}`)
+      .then(res => res.json())
+      .then(data => {
+        setSubProjects(data.subProjects || [])
+      })
+      .catch(() => {})
+  }, [isSecretary, project.currentId])
+
+  // 包装 sendMessage：检测 @项目名 并转发（秘书项目不调用 SDK）
+  const handleSendWithRelay = useCallback(async (text: string, attachments?: unknown[]) => {
+    // 非秘书项目 或 没有子项目：正常发送
+    if (!isSecretary || subProjects.length === 0) {
+      await chat.sendMessage(text, attachments as import('@/types/chat').ChatAttachment[])
+      return
+    }
+
+    // 检测 @项目名
+    const relayTargets: Array<{ projectId: string; projectName: string }> = []
+    for (const sp of subProjects) {
+      const escaped = sp.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const mentionPattern = new RegExp(`@${escaped}(?:\\s|$)`, 'u')
+      if (mentionPattern.test(text)) {
+        relayTargets.push({ projectId: sp.id, projectName: sp.name })
+      }
+    }
+
+    // 没有 @项目名：正常发送
+    if (relayTargets.length === 0) {
+      await chat.sendMessage(text, attachments as import('@/types/chat').ChatAttachment[])
+      return
+    }
+
+    // 有 @项目名：只转发，不调用秘书 SDK
+    // 1. 本地添加用户消息（即时显示，持久化由 relay API 完成）
+    chat.addLocalMessage({
+      id: `msg_${Date.now()}_relay_user`,
+      role: 'user',
+      content: text,
+      messageType: 'text',
+      createdAt: new Date().toISOString(),
+    })
+
+    // 2. 逐个转发到子项目（sendToProject 读取 SSE 流，子项目有实时执行效果）
+    for (const target of relayTargets) {
+      chat.addLocalMessage({
+        id: `msg_${Date.now()}_relay_ok_${target.projectId}`,
+        role: 'system',
+        content: `已转发到「${target.projectName}」`,
+        messageType: 'text',
+        createdAt: new Date().toISOString(),
+      })
+      // 不 await，并行执行多个子项目
+      chat.sendToProject(
+        target.projectId,
+        text,
+        currentProject?.name || '秘书',
+        project.currentId,
+      ).catch(err => {
+        console.error(`[Relay] Failed for ${target.projectName}:`, err)
+      })
+    }
+  }, [chat, isSecretary, subProjects, currentProject?.name, project.currentId])
 
   const themeIcon = () => {
     switch (theme) {
@@ -235,7 +306,7 @@ export function ChatLayout() {
             collapsed={projectSidebarCollapsed}
             onToggleCollapse={() => setProjectSidebarCollapsed(!projectSidebarCollapsed)}
             onSwitch={project.switchProject}
-            onCreate={(name) => project.createProject(name)}
+            onCreate={(name, type, mode) => project.createProject(name, type, mode)}
             onRename={project.renameProject}
             onDelete={project.deleteProject}
             glass={glass}
@@ -278,7 +349,7 @@ export function ChatLayout() {
             onOpenMobileSidebar={() => setSidebarOpen(true)}
             rightPanelHidden={rightPanelHidden}
             onToggleRightPanel={() => setRightPanelHidden(false)}
-            onSend={chat.sendMessage}
+            onSend={handleSendWithRelay}
             onAbort={chat.abortChat}
             onClearChat={chat.clearChat}
             onRespondPermission={chat.respondPermission}
@@ -330,7 +401,7 @@ export function ChatLayout() {
               collapsed={false}
               onToggleCollapse={() => setSidebarOpen(false)}
               onSwitch={(id) => { project.switchProject(id); setSidebarOpen(false) }}
-              onCreate={(name) => project.createProject(name)}
+              onCreate={(name, type, mode) => project.createProject(name, type, mode)}
               onRename={project.renameProject}
               onDelete={project.deleteProject}
               glass={glass}
@@ -368,7 +439,10 @@ export function ChatLayout() {
         <SkillsPanel projectId={project.currentId} />
       </Modal>
       <Modal open={modalOpen === 'agents'} onClose={() => setModalOpen(null)} title="智能体管理">
-        <AgentsPanel projectId={project.currentId} />
+        <AgentsPanel projectId={project.currentId} onOpenTemplateLibrary={() => setModalOpen('agentTemplates')} />
+      </Modal>
+      <Modal open={modalOpen === 'agentTemplates'} onClose={() => setModalOpen('agents')} title="Agent 模板库">
+        <AgentTemplatePanel />
       </Modal>
       <Modal open={modalOpen === 'channels'} onClose={() => setModalOpen(null)} title="渠道管理">
         <ChannelsPanel projectId={project.currentId} />

@@ -686,6 +686,248 @@ export function useChat(projectId: string) {
     setMessages(prev => prev.map(m => m.id === updated.id ? updated : m))
   }, [])
 
+  /** 添加本地消息（不经过 API，仅前端状态） */
+  const addLocalMessage = useCallback((msg: ChatMessage) => {
+    setMessages(prev => [...prev, msg])
+  }, [])
+
+  /**
+   * 转发消息到子项目：调用 relay API 并读取 SSE 流
+   * 子项目的 StreamBuffer 会被更新，切换过去时能看到实时执行效果
+   */
+  const sendToProject = useCallback(async (
+    targetProjectId: string,
+    message: string,
+    fromProjectName?: string,
+    fromProjectId?: string,
+  ) => {
+    const targetBuf = getBuffer(targetProjectId)
+    if (targetBuf.sending) return
+
+    // 初始化目标项目的 buffer
+    updateState(targetProjectId, buf => {
+      buf.sending = true
+      buf.content = ''
+      buf.thinkingContent = ''
+      buf.toolSummary = null
+      buf.lastStats = null
+      buf.permissionRequest = null
+      buf.askQuestion = null
+      buf.pendingMessages = []
+      buf.statusText = null
+    })
+    setActive(targetProjectId, true)
+
+    const controller = new AbortController()
+    ;(getBuffer(targetProjectId) as StreamBuffer & { _controller?: AbortController })._controller = controller
+
+    try {
+      const res = await fetch('/api/chat/relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toProjectId: targetProjectId,
+          message,
+          fromProjectName,
+          fromProjectId,
+        }),
+        signal: controller.signal,
+      })
+
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let sseBuffer = ''
+      let accContent = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        sseBuffer += decoder.decode(value, { stream: true })
+
+        const parts = sseBuffer.split('\n\n')
+        sseBuffer = parts.pop() || ''
+
+        for (const part of parts) {
+          if (!part.trim()) continue
+
+          let eventType = ''
+          let eventData = ''
+
+          for (const line of part.split('\n')) {
+            if (line.startsWith('event: ')) eventType = line.slice(7)
+            else if (line.startsWith('data: ')) eventData = line.slice(6)
+          }
+
+          if (!eventType || !eventData) continue
+
+          let data: Record<string, unknown>
+          try { data = JSON.parse(eventData) } catch { continue }
+
+          switch (eventType) {
+            case 'init':
+              updateState(targetProjectId, b => { b.sessionId = data.sessionId as string })
+              break
+
+            case 'delta':
+              accContent += data.content as string
+              if (!/^[\s()]*(?:no content[)\s]*)+$/i.test(accContent)) {
+                updateState(targetProjectId, b => { b.content = accContent })
+              }
+              break
+
+            case 'thinking':
+              updateState(targetProjectId, b => {
+                b.thinkingContent += (data.content as string)
+              })
+              break
+
+            case 'tool_use': {
+              const tool: ToolCallItem = {
+                toolUseId: data.toolUseId as string,
+                toolName: data.toolName as string,
+                input: data.input as Record<string, unknown>,
+                status: 'pending',
+              }
+              updateState(targetProjectId, b => {
+                const prev = b.toolSummary
+                const pending = prev?.pendingTools || []
+                const completed = prev?.completedTools || []
+                const existingIdx = pending.findIndex(t => t.toolUseId === tool.toolUseId)
+                if (existingIdx >= 0) {
+                  const updated = [...pending]
+                  updated[existingIdx] = { ...updated[existingIdx], input: tool.input }
+                  b.toolSummary = { pendingTools: updated, completedTools: completed }
+                } else {
+                  b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
+                }
+              })
+              break
+            }
+
+            case 'tool_result': {
+              const resultId = data.toolUseId as string
+              const isError = data.isError as boolean
+              updateState(targetProjectId, b => {
+                if (!b.toolSummary) return
+                const pending = b.toolSummary.pendingTools.filter(t => t.toolUseId !== resultId)
+                const completedTool = b.toolSummary.pendingTools.find(t => t.toolUseId === resultId)
+                const isAskQuestion = completedTool?.toolName === 'AskUserQuestion'
+                const effectiveIsError = isAskQuestion ? false : isError
+                const completed = [
+                  ...b.toolSummary.completedTools,
+                  ...(completedTool
+                    ? [{ ...completedTool, status: effectiveIsError ? 'error' as const : 'completed' as const, output: data.content as string, isError: effectiveIsError }]
+                    : []),
+                ]
+                b.toolSummary = { pendingTools: pending, completedTools: completed }
+              })
+              break
+            }
+
+            case 'tool_progress': {
+              const elapsed = data.elapsedSeconds as number
+              updateState(targetProjectId, b => {
+                if (!b.toolSummary) return
+                const idx = b.toolSummary.pendingTools.findIndex(t => t.toolUseId === data.toolUseId as string)
+                if (idx >= 0) {
+                  const updated = [...b.toolSummary.pendingTools]
+                  updated[idx] = { ...updated[idx], elapsedSeconds: elapsed }
+                  b.toolSummary = { ...b.toolSummary, pendingTools: updated }
+                }
+              })
+              break
+            }
+
+            case 'status':
+              updateState(targetProjectId, b => {
+                b.statusText = (data.status as string) || null
+              })
+              break
+
+            case 'done': {
+              const stats: ConversationStats | null = data.usage
+                ? {
+                    costUsd: (data.costUsd as number) || 0,
+                    inputTokens: (data.usage as Record<string, number>).inputTokens || 0,
+                    outputTokens: (data.usage as Record<string, number>).outputTokens || 0,
+                    cachedTokens: (data.usage as Record<string, number>).cachedTokens || 0,
+                    model: (data.model as string) || '',
+                  }
+                : null
+
+              let finalContent = accContent || (data.fullContent as string) || ''
+              const noisePattern = /^[\s()]*(?:no content[)\s]*)+$/i
+              if (noisePattern.test(finalContent)) finalContent = ''
+
+              if (finalContent.trim()) {
+                const assistantMsg: ChatMessage = {
+                  id: `msg_${Date.now()}_assistant`,
+                  role: 'assistant',
+                  content: finalContent,
+                  messageType: 'text',
+                  createdAt: new Date().toISOString(),
+                  stats: stats || undefined,
+                }
+                // 如果当前就在目标项目，直接加入 messages
+                if (currentProjectIdRef.current === targetProjectId) {
+                  setMessages(prev => [...prev, assistantMsg])
+                } else {
+                  getBuffer(targetProjectId).pendingMessages.push(assistantMsg)
+                }
+                updateState(targetProjectId, b => {
+                  b.content = ''
+                  b.lastStats = stats
+                  b.toolSummary = null
+                })
+              } else {
+                updateState(targetProjectId, b => {
+                  b.content = ''
+                  b.lastStats = stats
+                  b.toolSummary = null
+                })
+              }
+              break
+            }
+
+            case 'error': {
+              const errorMsg: ChatMessage = {
+                id: `msg_${Date.now()}_system`,
+                role: 'system',
+                content: data.message as string,
+                messageType: 'text',
+                createdAt: new Date().toISOString(),
+              }
+              if (currentProjectIdRef.current === targetProjectId) {
+                setMessages(prev => [...prev, errorMsg])
+              } else {
+                getBuffer(targetProjectId).pendingMessages.push(errorMsg)
+              }
+              break
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('[Relay] Error:', err)
+      }
+    } finally {
+      requestAnimationFrame(() => {
+        updateState(targetProjectId, b => {
+          b.sending = false
+          b.content = ''
+        })
+        setActive(targetProjectId, false)
+      })
+      delete (getBuffer(targetProjectId) as StreamBuffer & { _controller?: AbortController })._controller
+    }
+  }, [updateState])
+
   return {
     messages,
     initialLoading,
@@ -707,5 +949,7 @@ export function useChat(projectId: string) {
     respondPermission,
     respondAskQuestion,
     updateMessage,
+    addLocalMessage,
+    sendToProject,
   }
 }

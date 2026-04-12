@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings, Settings2 } from 'lucide-react'
-import type { ProjectInfo, ProjectType } from '@/types/skills'
+import type { ProjectInfo, ProjectMode, ProjectType } from '@/types/skills'
+import { ModeSelector } from './ModeSelector'
 import appIcon from '@/public/icon.png'
 
 interface ProjectSidebarProps {
@@ -13,7 +14,7 @@ interface ProjectSidebarProps {
   collapsed: boolean
   onToggleCollapse: () => void
   onSwitch: (id: string) => void
-  onCreate: (name: string, type?: ProjectType) => void
+  onCreate: (name: string, type?: ProjectType, mode?: ProjectMode) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   glass?: boolean
@@ -35,15 +36,17 @@ export function ProjectSidebar({
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<ProjectType>('development')
+  const [newMode, setNewMode] = useState<ProjectMode | undefined>(undefined)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const handleCreate = () => {
     if (newName.trim()) {
-      onCreate(newName.trim(), newType)
+      onCreate(newName.trim(), newType, newMode)
       setNewName('')
       setNewType('development')
+      setNewMode(undefined)
       setCreating(false)
     }
   }
@@ -186,6 +189,8 @@ export function ProjectSidebar({
               <span>办公</span>
             </button>
           </div>
+          {/* 协作模式选择 */}
+          <ModeSelector value={newMode} onChange={setNewMode} />
         </div>
       )}
 

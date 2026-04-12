@@ -11,7 +11,8 @@ import {
 import { addAuditLog } from '@/lib/store/audit-log'
 import { getAuthUser } from '@/lib/auth/helpers'
 import { getDefaultSkills, setEnabledSkills } from '@/lib/store/skills'
-import type { ProjectType } from '@/types/skills'
+import type { ProjectMode, ProjectType } from '@/types/skills'
+import { initializeProjectAgents } from '@/lib/modes/template-initializer'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { name, type } = body
+  const { name, type, mode } = body
 
   if (!name || typeof name !== 'string') {
     return Response.json({ error: 'name is required' }, { status: 400 })
@@ -60,14 +61,23 @@ export async function POST(request: NextRequest) {
   const validTypes: ProjectType[] = ['secretary', 'development', 'office']
   const projectType: ProjectType = validTypes.includes(type) ? type : 'development'
 
+  // 验证 mode 是否为有效值
+  const validModes: ProjectMode[] = ['team', 'government', 'company', 'classroom']
+  const projectMode: ProjectMode | undefined = validModes.includes(mode) ? mode : undefined
+
   const user = getAuthUser(request)
-  const project = createProject(name.trim(), user?.userId, projectType)
-  addAuditLog('project:create', user?.username || 'system', { projectName: name.trim(), type: projectType }, project.id)
+  const project = createProject(name.trim(), user?.userId, projectType, projectMode)
+  addAuditLog('project:create', user?.username || 'system', { projectName: name.trim(), type: projectType, mode: projectMode }, project.id)
 
   // 应用默认技能
   const defaultSkills = getDefaultSkills()
   if (defaultSkills.length > 0) {
     setEnabledSkills(project.id, defaultSkills)
+  }
+
+  // 按模式初始化 Agent
+  if (projectMode) {
+    initializeProjectAgents(project.id, name.trim(), projectMode)
   }
 
   return Response.json({ project })

@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Bot, Plus, Trash2, ChevronDown, ChevronRight,
-  Save, AlertCircle, RefreshCw
+  Save, AlertCircle, RefreshCw, Download, Crown
 } from 'lucide-react'
-import type { AgentInfo } from '@/types/skills'
+import type { AgentInfo, AgentTemplate } from '@/types/skills'
 
 const MODEL_OPTIONS = [
   { value: 'inherit', label: '继承主模型' },
@@ -23,7 +23,7 @@ const EMPTY_AGENT: Omit<AgentInfo, 'enabled'> = {
   disallowedTools: [],
 }
 
-export function AgentsPanel({ projectId }: { projectId: string }) {
+export function AgentsPanel({ projectId, onOpenTemplateLibrary }: { projectId: string; onOpenTemplateLibrary?: () => void }) {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +32,7 @@ export function AgentsPanel({ projectId }: { projectId: string }) {
   const [draft, setDraft] = useState<Omit<AgentInfo, 'enabled'>>(EMPTY_AGENT)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
 
   const fetchAgents = useCallback(async () => {
     setLoading(true)
@@ -113,6 +114,36 @@ export function AgentsPanel({ projectId }: { projectId: string }) {
     }
   }, [expandedAgent])
 
+  const importFromTemplate = useCallback(async (template: AgentTemplate) => {
+    setImporting(true)
+    try {
+      const agentData = {
+        name: template.name,
+        description: template.description,
+        prompt: template.prompt,
+        model: template.model,
+        tools: template.tools,
+        disallowedTools: template.disallowedTools,
+        templateId: template.id,
+      }
+      const res = await fetch(`/api/agents?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(agentData),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setError(err.error || '导入失败')
+        return
+      }
+      await fetchAgents()
+    } catch {
+      setError('导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }, [fetchAgents, projectId])
+
   if (loading) {
     return (
       <div className="p-4 space-y-3">
@@ -131,7 +162,7 @@ export function AgentsPanel({ projectId }: { projectId: string }) {
         <span>子智能体可通过 Claude 的 Task 工具被自动调用，执行特定领域的任务。</span>
       </div>
 
-      {/* 刷新 + 新建按钮 */}
+      {/* 刷新 + 新建 + 模板库按钮 */}
       <div className="flex gap-2 mb-3">
         <button
           onClick={fetchAgents}
@@ -153,6 +184,17 @@ export function AgentsPanel({ projectId }: { projectId: string }) {
           <Plus size={14} />
           新建
         </button>
+        {onOpenTemplateLibrary && (
+          <button
+            onClick={onOpenTemplateLibrary}
+            disabled={importing}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer disabled:opacity-50"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface)' }}
+          >
+            <Download size={14} />
+            模板库
+          </button>
+        )}
       </div>
 
       {/* 错误提示 */}
@@ -202,6 +244,9 @@ export function AgentsPanel({ projectId }: { projectId: string }) {
                   {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   <Bot size={16} style={{ color: 'var(--color-primary)' }} />
                   <span className="text-sm font-medium truncate">{agent.name}</span>
+                  {agent.isCoordinator && (
+                    <Crown size={12} className="flex-shrink-0 text-amber-500" />
+                  )}
                   <span
                     className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
                     style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)' }}

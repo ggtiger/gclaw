@@ -12,6 +12,8 @@
 import fs from 'fs'
 import path from 'path'
 import { getOverviewForInjection } from '@/lib/memory/injection'
+import { getProjects, getProjectById } from '@/lib/store/projects'
+import { getAgents } from '@/lib/store/agents'
 
 const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
@@ -30,7 +32,7 @@ export function syncProjectClaudeMd(
   systemPrompt: string,
   enabledSkills: string[],
   userId?: string,
-  _projectId?: string
+  projectId?: string
 ): void {
   // ── 初始化项目的 .learnings/ 目录（从技能模板复制）──
   initProjectLearnings(projectCwd, enabledSkills)
@@ -49,6 +51,14 @@ export function syncProjectClaudeMd(
     const overview = getOverviewForInjection(userId)
     if (overview) {
       sections.push(overview)
+    }
+  }
+
+  // ── 秘书项目：注入管理项目列表 ──
+  if (projectId) {
+    const secretarySection = buildSecretaryProjectSection(projectId)
+    if (secretarySection) {
+      sections.push(secretarySection)
     }
   }
 
@@ -217,4 +227,56 @@ function extractPendingEntries(content: string): string[] {
   }
 
   return entries
+}
+
+/**
+ * 为秘书项目构建「管理项目」section
+ * 列出所有非秘书项目及其协调人和成员
+ */
+function buildSecretaryProjectSection(projectId: string): string {
+  const project = getProjectById(projectId)
+  if (!project || project.type !== 'secretary') return ''
+
+  const allProjects = getProjects()
+  const managedProjects = allProjects.filter(p =>
+    p.id !== projectId && p.type !== 'secretary'
+  )
+
+  if (managedProjects.length === 0) return ''
+
+  const lines: string[] = [
+    '## 你管理的项目',
+    '',
+  ]
+
+  for (const p of managedProjects) {
+    const agents = getAgents(p.id).filter(a => a.enabled)
+    const coordinator = agents.find(a => a.isCoordinator)
+    const members = agents.filter(a => !a.isCoordinator)
+
+    const modeLabel = p.mode ? `（${p.mode}）` : ''
+
+    if (coordinator) {
+      lines.push(`- **${p.name}** ${modeLabel}`)
+      lines.push(`  协调人：${coordinator.name}`)
+      if (members.length > 0) {
+        lines.push(`  成员：${members.map(m => m.name).join('、')}`)
+      }
+    } else if (agents.length > 0) {
+      lines.push(`- **${p.name}** ${modeLabel}`)
+      lines.push(`  成员：${agents.map(m => m.name).join('、')}`)
+    } else {
+      lines.push(`- **${p.name}** ${modeLabel}（暂无智能体）`)
+    }
+    lines.push('')
+  }
+
+  lines.push('## 调度方式')
+  lines.push('')
+  lines.push('1. 分析用户需求，判断涉及哪个项目')
+  lines.push('2. 使用 Agent 工具调用对应项目的协调人，例如 Agent("项目经理", "任务描述")')
+  lines.push('3. 协调人会自行分配给团队成员（SDK 原生支持嵌套 Agent 调用）')
+  lines.push('4. 简单问题直接回答，不需要分配')
+
+  return lines.join('\n')
 }

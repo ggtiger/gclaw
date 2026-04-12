@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import type { ProjectInfo, ProjectMember, ProjectRole, ProjectType } from '@/types/skills'
+import type { ProjectInfo, ProjectMember, ProjectRole, ProjectMode, ProjectType } from '@/types/skills'
 import { getAllUsers } from './users'
 import { addAuditLog } from './audit-log'
 
@@ -101,7 +101,7 @@ export function getProjectById(id: string): ProjectInfo | undefined {
   return getProjects().find(p => p.id === id)
 }
 
-export function createProject(name: string, ownerId?: string, type: ProjectType = 'secretary'): ProjectInfo {
+export function createProject(name: string, ownerId?: string, type: ProjectType = 'secretary', mode?: ProjectMode): ProjectInfo {
   ensureDataDir()
   const id = randomUUID().slice(0, 8)
   const now = new Date().toISOString()
@@ -112,7 +112,7 @@ export function createProject(name: string, ownerId?: string, type: ProjectType 
     joinedAt: now,
   }] : []
 
-  const project: ProjectInfo = { id, name, type, ownerId, members, createdAt: now, updatedAt: now }
+  const project: ProjectInfo = { id, name, type, mode, ownerId, members, createdAt: now, updatedAt: now }
 
   fs.mkdirSync(path.join(PROJECTS_DIR, id), { recursive: true })
 
