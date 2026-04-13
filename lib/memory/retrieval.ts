@@ -73,11 +73,22 @@ function matchEpisodic(entry: EpisodicEntry, query: RetrievalQuery): boolean {
 
   if (query.query) {
     const q = query.query.toLowerCase()
-    const textMatch =
-      entry.summary.toLowerCase().includes(q) ||
-      (entry.detail && entry.detail.toLowerCase().includes(q)) ||
-      entry.tags.some(t => t.toLowerCase().includes(q))
-    if (!textMatch) return false
+    const memoryText = `${entry.summary} ${entry.detail || ''}`.toLowerCase()
+
+    // 精确子串匹配
+    if (q.includes(entry.summary.toLowerCase()) || memoryText.includes(q)) {
+      return true
+    }
+
+    // 关键词重叠匹配
+    const queryKeywords = extractMatchKeywords(q)
+    const memoryKeywords = extractMatchKeywords(memoryText)
+    const overlap = queryKeywords.filter((k: string) => memoryKeywords.includes(k))
+    if (overlap.length >= 1) {
+      return true
+    }
+
+    return false
   }
 
   return true
@@ -138,11 +149,24 @@ function matchSemantic(entry: SemanticEntry, query: RetrievalQuery): boolean {
 
   if (query.query) {
     const q = query.query.toLowerCase()
-    const textMatch =
-      entry.title.toLowerCase().includes(q) ||
-      entry.content.toLowerCase().includes(q) ||
-      entry.tags.some(t => t.toLowerCase().includes(q))
-    if (!textMatch) return false
+    // 双向匹配：用户消息包含记忆内容，或记忆内容包含用户消息中的关键词
+    const memoryText = `${entry.title} ${entry.content}`.toLowerCase()
+
+    // 1. 精确子串：用户消息包含记忆标题/内容
+    if (q.includes(entry.title.toLowerCase()) || memoryText.includes(q)) {
+      return true
+    }
+
+    // 2. 关键词匹配：从用户消息和记忆条目中提取关键词，计算重叠率
+    const queryKeywords = extractMatchKeywords(q)
+    const memoryKeywords = extractMatchKeywords(memoryText)
+    const overlap = queryKeywords.filter(k => memoryKeywords.includes(k))
+    // 至少 1 个关键词重叠即可（中文 bigram 粒度足够细）
+    if (overlap.length >= 1) {
+      return true
+    }
+
+    return false
   }
 
   return true
@@ -162,6 +186,11 @@ function scoreSemantic(entry: SemanticEntry, query: RetrievalQuery, _now: number
 
   // 来源数量加分（多个情节点提炼 = 更可靠）
   score += Math.min(entry.sources.length * 0.05, 0.2)
+
+  // 验证加分（用户确认过的记忆更可靠）
+  if (entry.lastVerifiedAt) {
+    score += 0.3
+  }
 
   return score
 }
@@ -194,12 +223,22 @@ function matchProcedural(entry: ProceduralEntry, query: RetrievalQuery): boolean
 
   if (query.query) {
     const q = query.query.toLowerCase()
-    const textMatch =
-      entry.title.toLowerCase().includes(q) ||
-      entry.content.toLowerCase().includes(q) ||
-      entry.triggers.some(t => t.toLowerCase().includes(q)) ||
-      entry.tags.some(t => t.toLowerCase().includes(q))
-    if (!textMatch) return false
+    const memoryText = `${entry.title} ${entry.content}`.toLowerCase()
+
+    // 精确子串匹配
+    if (q.includes(entry.title.toLowerCase()) || memoryText.includes(q)) {
+      return true
+    }
+
+    // 关键词重叠匹配
+    const queryKeywords = extractMatchKeywords(q)
+    const memoryKeywords = extractMatchKeywords(memoryText)
+    const overlap = queryKeywords.filter((k: string) => memoryKeywords.includes(k))
+    if (overlap.length >= 1) {
+      return true
+    }
+
+    return false
   }
 
   return true
@@ -284,4 +323,25 @@ function bumpAccessCounts(
   } catch {
     // 访问计数更新失败不影响检索结果
   }
+}
+
+// ── 匹配工具 ──
+
+// 使用 Node.js 内置 Intl.Segmenter 做中文分词（零依赖）
+const zhSegmenter = new Intl.Segmenter('zh', { granularity: 'word' })
+
+/** 从文本中提取用于匹配的关键词（Intl.Segmenter 中文分词 + 英文单词） */
+function extractMatchKeywords(text: string): string[] {
+  const segments = [...zhSegmenter.segment(text)]
+  const words = segments
+    .filter(s => s.isWordLike && s.segment.length >= 2)
+    .map(s => s.segment.toLowerCase())
+
+  // 过滤高频无意义词
+  const noise = new Set([
+    '这是', '也是', '这是', '好的', '是的', '没有', '就是',
+    '这个', '那个', '什么', '怎么', '如何', '一个', '一些',
+  ])
+
+  return [...new Set(words.filter(w => !noise.has(w)))]
 }

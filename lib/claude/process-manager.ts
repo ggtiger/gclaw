@@ -709,30 +709,18 @@ export function getRunningProjects(): string[] {
 
 /**
  * 对话结束后仅从用户消息中提取记忆（不含 AI 回复）
- * 提取偏好、决策、身份声明等有长期价值的信息
+ * 策略：轻量启发式过滤 → LLM 判断是否有记忆价值 → 巩固
  */
 async function autoRecordFromUserMessage(
   userId: string,
   projectId: string,
   userMessage: string
 ): Promise<void> {
-  // 短消息跳过（日常闲聊无提取价值）
-  if (userMessage.trim().length <= 5) return
-
-  // 关键词快速过滤：只有包含偏好/决策/身份/错误等信号的消息才提取
-  const msg = userMessage.toLowerCase()
-  const hasSignal = [
-    /(?:不要|别|禁止|avoid)\s*(?:使用|用)/i,
-    /(?:使用|prefer|喜欢|偏好|讨厌|不喜欢)\s*/i,
-    /(?:我是|我用|我是做)\s*/i,
-    /(?:决定|采用|切换到|迁移到|升级到)\s*/i,
-    /(?:报错|出错了|失败了|崩溃|crash)/i,
-    /(?:遇到|出现|碰到|发现)\s*(?:了)?\s*(?:错误|bug|问题|异常)/i,
-  ].some(p => p.test(msg))
-
-  if (!hasSignal) return
+  // 轻量过滤：跳过明显无价值的消息
+  if (!isWorthExtracting(userMessage)) return
 
   // LLM 提取（只传用户消息，AI 回复传空）
+  // LLM prompt 已包含"只提取有长期价值的信息，跳过日常闲聊，宁缺毋滥"
   const entries = await extractWithLLM(userMessage, '', projectId)
 
   if (entries && entries.length > 0) {
@@ -740,14 +728,8 @@ async function autoRecordFromUserMessage(
       writeEpisodic(userId, entry)
       console.log(`[GClaw] Auto-recorded from user message: type=${entry.type} summary="${entry.summary.slice(0, 60)}"`)
     }
-  } else {
-    // LLM 未提取到，用正则降级
-    const fallback = extractFromUserMessage(userMessage, projectId)
-    if (fallback) {
-      writeEpisodic(userId, fallback)
-      console.log(`[GClaw] Auto-recorded (regex fallback): type=${fallback.type} summary="${fallback.summary.slice(0, 60)}"`)
-    }
   }
+  // LLM 未提取到 → 说明 LLM 判断无记忆价值，不降级到正则
 
   // 巩固 + 刷新总纲
   const result = runConsolidation(userId, projectId)
@@ -757,50 +739,16 @@ async function autoRecordFromUserMessage(
   }
 }
 
-/**
- * 正则降级：从用户消息中提取情节记忆
- */
-function extractFromUserMessage(
-  userMessage: string,
-  projectId: string
-): Omit<import('@/types/memory').EpisodicEntry, 'id' | 'timestamp'> | null {
-  // 偏好检测
-  const prefMatch = userMessage.match(/(?:不要|别|禁止|avoid)\s*(?:使用|用)?\s*(.+?)(?:，|,|$)/i)
-    || userMessage.match(/(?:使用|prefer|喜欢|偏好)\s*(.+?)(?:来|进行|做|查询|搜索|$)/i)
-    || userMessage.match(/(?:我是|我用|我是做)\s*(.+?)(?:的|$)/i)
-  if (prefMatch) {
-    return {
-      projectId,
-      type: 'preference',
-      summary: userMessage.slice(0, 150),
-      tags: ['auto-extracted', 'preference'],
-      source: 'hook',
-    }
-  }
+// 明显无记忆价值的消息模式（只过滤最明显的，其余交给 LLM 判断）
+const NOISE_PATTERNS = [
+  /^[\s\S]{0,4}$/,                           // 4 字以内
+  /^(好的|好|收到|明白|ok|OK|嗯|哦|行|可以|谢谢|感谢|不用|算了|没事|对|是|不|没有)\s*[！!。.？?]*$/i,  // 纯确认/感谢
+  /^(继续|再说|下次|先这样|就这样)\s*[吧呢]*\s*[！!。.]*$/i,  // 结束语
+]
 
-  // 决策检测
-  if (/(?:决定|采用|切换到|迁移到|升级到|选择)\s*(?:使用|了|用)?\s*/i.test(userMessage)) {
-    return {
-      projectId,
-      type: 'decision',
-      summary: userMessage.slice(0, 150),
-      tags: ['auto-extracted', 'decision'],
-      source: 'hook',
-    }
-  }
-
-  // 错误检测
-  if (/(?:报错|出错了|失败了|崩溃|crash|遇到.*错误|发现.*bug)/i.test(userMessage)) {
-    return {
-      projectId,
-      type: 'error',
-      summary: userMessage.slice(0, 150),
-      tags: ['auto-extracted', 'error'],
-      source: 'hook',
-    }
-  }
-
-  return null
+function isWorthExtracting(message: string): boolean {
+  const trimmed = message.trim()
+  return !NOISE_PATTERNS.some(p => p.test(trimmed))
 }
 
 export function isProcessRunning(): boolean {

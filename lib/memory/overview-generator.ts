@@ -28,6 +28,8 @@ const OVERVIEW_PROMPT = `你是一个用户画像总结助手。根据下方提�
 6. 临时性/一次性信息可以省略（如具体某天的天气）
 7. 不要添加标题、分类头、列表符号或任何额外装饰
 8. 只返回总纲内容，不要其他文字
+9. 带 [新] 标记的条目必须体现在总纲中（合并到已有标签或新增标签）
+10. 兴趣爱好、偏好类条目不要省略，这是用户画像的重要组成部分
 
 ## 示例输出
 
@@ -173,13 +175,28 @@ async function generateOverviewWithLLM(userId: string): Promise<string | null> {
 
   if (activeSemantic.length === 0 && activeProcedural.length === 0) return null
 
-  // 构建输入：将所有活跃条目打包为文本
+  // 标记最近 3 天的条目
+  const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000
+
+  // 按时间倒序排列，最近的条目在前
+  const sortedSemantic = [...activeSemantic].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt)
+  )
+  const sortedProcedural = [...activeProcedural].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt)
+  )
+
+  // 构建输入：最近的条目标记 [新]
   const inputLines: string[] = []
-  for (const e of activeSemantic) {
-    inputLines.push(`[语义/${e.type}] ${e.title}: ${e.content}`)
+  for (const e of sortedSemantic) {
+    const isNew = new Date(e.updatedAt).getTime() > threeDaysAgo
+    const prefix = isNew ? '[新] ' : ''
+    inputLines.push(`${prefix}[语义/${e.type}] ${e.title}: ${e.content}`)
   }
-  for (const e of activeProcedural) {
-    inputLines.push(`[程序/${e.type}] ${e.title}: ${e.content}`)
+  for (const e of sortedProcedural) {
+    const isNew = new Date(e.updatedAt).getTime() > threeDaysAgo
+    const prefix = isNew ? '[新] ' : ''
+    inputLines.push(`${prefix}[程序/${e.type}] ${e.title}: ${e.content}`)
   }
 
   const userPrompt = inputLines.join('\n')

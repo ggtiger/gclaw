@@ -19,7 +19,7 @@ const MAX_REPLY = 1000
 /** 情节记忆草稿（LLM 提取结果），扩展 title 字段供巩固使用 */
 export type EpisodicDraft = Omit<EpisodicEntry, 'id' | 'timestamp'> & { title?: string }
 
-const SYSTEM_PROMPT = `你是一个记忆提取助手。从用户和AI的对话中提取值得记住的信息。
+const SYSTEM_PROMPT = `你是一个记忆提取助手。从用户消息中提取值得长期记住的信息。
 
 你必须返回一个 JSON 对象，格式如下：
 {
@@ -36,8 +36,8 @@ const SYSTEM_PROMPT = `你是一个记忆提取助手。从用户和AI的对话�
 
 提取规则：
 1. type 类型说明：
-   - preference: 用户表达的偏好、习惯、身份声明（如"不要用X"、"我喜欢Y"、"我是Z"）
-   - decision: 用户做出的技术决策或选择（如"采用X框架"、"切换到Y方案"）
+   - preference: 用户表达的偏好、习惯、兴趣、身份声明（如"不要用X"、"我喜欢Y"、"我是Z"、"关注AI资讯"、"想看电影"）
+   - decision: 用户做出的决策或选择（如"采用X框架"、"切换到Y方案"）
    - error: 用户遇到的错误及AI给出的解决方案
    - discovery: 发现的环境特性、系统行为、工具特点
    - milestone: 项目里程碑、功能完成、版本发布
@@ -78,11 +78,10 @@ export async function extractWithLLM(
   const truncatedUser = userMessage.slice(0, MAX_USER_MSG)
   const truncatedReply = assistantReply.slice(0, MAX_REPLY)
 
-  const userPrompt = `## 用户消息
-${truncatedUser}
-
-## AI 回复
-${truncatedReply}`
+  // AI 回复为空时（自动提取场景），只传用户消息
+  const userPrompt = truncatedReply.trim()
+    ? `## 用户消息\n${truncatedUser}\n\n## AI 回复\n${truncatedReply}`
+    : `## 用户消息\n${truncatedUser}\n\n注意：以上是用户当前发送的消息，请从中提取有记忆价值的信息。`
 
   try {
     const response = await Promise.race([

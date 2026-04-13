@@ -434,14 +434,13 @@ function retrieveRelevantMemory(userId: string, userMessage: string, projectId?:
       limit: 5,
     })
 
-    const items: Array<{ label: string; title: string; content: string; confidence: number }> = []
+    const items: Array<{ label: string; title: string; content: string }> = []
 
     for (const s of result.semantic.slice(0, 3)) {
       items.push({
         label: `语义/${s.type}`,
         title: s.title,
         content: s.content.slice(0, 80),
-        confidence: s.confidence,
       })
     }
 
@@ -450,12 +449,10 @@ function retrieveRelevantMemory(userId: string, userMessage: string, projectId?:
         label: `程序/${p.type}`,
         title: p.title,
         content: p.content.slice(0, 80),
-        confidence: p.confidence,
       })
     }
 
-    // 按 confidence 降序排列，最多取 5 条
-    items.sort((a, b) => b.confidence - a.confidence)
+    // retrieve() 已按评分排序，直接取 top 5
     const topItems = items.slice(0, 5)
 
     if (topItems.length === 0) return ''
