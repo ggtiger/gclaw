@@ -28,7 +28,9 @@ import { WindowControls } from '@/components/ui/WindowControls'
 
 export function ChatLayout() {
   const project = useProject()
-  const chat = useChat(project.currentId)
+  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | 'schedules' | null>(null)
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'preferences' | 'settings'>('preferences')
+  const chat = useChat(project.currentId, () => { setSettingsInitialTab('settings'); setModalOpen('settings') })
   const activeProjectIds = useActiveProjects()
   const { theme, setTheme, backgroundImage, setBackgroundImage } = useTheme()
   const { user, loading: authLoading } = useAuth()
@@ -36,7 +38,6 @@ export function ChatLayout() {
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
   const [projectSidebarHidden, setProjectSidebarHidden] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | 'schedules' | null>(null)
   const [filesFullscreen, setFilesFullscreen] = useState(false)
   const [rightPanelHidden, setRightPanelHidden] = useState(false)
 
@@ -360,6 +361,7 @@ export function ChatLayout() {
             onOpenSkills={() => setModalOpen('skills')}
             onOpenAgents={() => setModalOpen('agents')}
             onOpenSchedules={() => setModalOpen('schedules')}
+            onOpenSettings={() => setModalOpen('settings')}
             onScheduleSend={async (message, schedule) => {
               try {
                 const res = await fetch('/api/schedules', {
@@ -484,6 +486,7 @@ export function ChatLayout() {
           projectId={project.currentId}
           backgroundImage={backgroundImage}
           onBackgroundChange={setBackgroundImage}
+          initialTab={settingsInitialTab}
         />
       </Modal>
       <Modal open={modalOpen === 'projectSettings'} onClose={() => setModalOpen(null)} title="项目设置">

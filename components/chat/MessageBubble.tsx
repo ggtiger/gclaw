@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useCallback } from 'react'
-import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X } from 'lucide-react'
+import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
 import type { ChatMessage, ChatAttachment } from '@/types/chat'
@@ -10,6 +10,7 @@ interface MessageBubbleProps {
   message: ChatMessage
   projectId: string
   onMessageUpdate?: (message: ChatMessage) => void
+  onOpenSettings?: () => void
 }
 
 // 模块级常量，避免每次渲染重建
@@ -19,7 +20,7 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-di
 // 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量
 const COLLAPSE_THRESHOLD = 2000
 
-export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
 
@@ -62,11 +63,24 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
   }, [message.content])
 
   if (isSystem) {
+    const needsSettings = message.content.includes('API Key') || message.content.includes('设置')
     return (
       <div className="flex items-start gap-2 px-4 py-3 mx-4 my-2 rounded-xl animate-fade-in" style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)' }}>
         <AlertCircle size={16} className="text-[var(--color-error)] mt-0.5 flex-shrink-0" />
-        <div className="text-sm" style={{ color: 'var(--color-error)' }}>
-          {message.content}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm" style={{ color: 'var(--color-error)' }}>
+            {message.content}
+          </div>
+          {needsSettings && onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/15 transition-colors font-medium"
+              style={{ color: 'var(--color-error)' }}
+            >
+              <Settings size={12} />
+              前往设置
+            </button>
+          )}
         </div>
       </div>
     )

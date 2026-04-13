@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server'
 import { executeChat, type AttachmentData } from '@/lib/claude/process-manager'
 import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { addMessage } from '@/lib/store/messages'
+import { getSettings } from '@/lib/store/settings'
 import { assertValidProjectId } from '@/lib/store/projects'
 import type { ChatMessage, ChatAttachment, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
@@ -101,6 +102,19 @@ export async function POST(request: NextRequest) {
     assertValidProjectId(projectId)
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid projectId' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // 前置检查：API Key 是否已配置
+  const settings = getSettings(projectId)
+  const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return new Response(JSON.stringify({
+      error: '未配置 API Key，请先在设置中配置 Anthropic API Key',
+      code: 'NO_API_KEY',
+    }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })

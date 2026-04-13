@@ -75,7 +75,7 @@ export function useActiveProjects(): Set<string> {
 // useChat hook
 // ============================================================
 
-export function useChat(projectId: string) {
+export function useChat(projectId: string, onSettingsRequired?: () => void) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streamingContent, setStreamingContent] = useState('')
   const [thinkingContent, setThinkingContent] = useState('')
@@ -358,8 +358,33 @@ export function useChat(projectId: string) {
         signal: controller.signal,
       })
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        let errorMsg = `HTTP ${res.status}`
+        let errorCode = ''
+        try {
+          const errData = JSON.parse(await res.text())
+          errorMsg = errData.error || errorMsg
+          errorCode = errData.code || ''
+        } catch {}
+
+        if (errorCode === 'NO_API_KEY') {
+          const sysMsg: ChatMessage = {
+            id: `msg_${Date.now()}_system`,
+            role: 'system',
+            content: errorMsg,
+            messageType: 'text',
+            createdAt: new Date().toISOString(),
+          }
+          setMessages(prev => [...prev, sysMsg])
+          onSettingsRequired?.()
+          return
+        }
+
+        throw new Error(errorMsg)
+      }
+
+      if (!res.body) {
+        throw new Error('No response body')
       }
 
       const reader = res.body.getReader()
