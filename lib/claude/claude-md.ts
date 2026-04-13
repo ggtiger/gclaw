@@ -455,6 +455,8 @@ function retrieveRelevantMemory(userId: string, userMessage: string, projectId?:
     // retrieve() 已按评分排序，直接取 top 5
     const topItems = items.slice(0, 5)
 
+    console.log(`[GClaw] Relevant memory: query="${userMessage.slice(0, 40)}" semantic=${result.semantic.length} procedural=${result.procedural.length} items=${topItems.length}`)
+
     if (topItems.length === 0) return ''
 
     const lines: string[] = [

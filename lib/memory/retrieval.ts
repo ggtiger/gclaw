@@ -327,21 +327,54 @@ function bumpAccessCounts(
 
 // ── 匹配工具 ──
 
-// 使用 Node.js 内置 Intl.Segmenter 做中文分词（零依赖）
-const zhSegmenter = new Intl.Segmenter('zh', { granularity: 'word' })
+// 延迟初始化中文分词器（避免模块加载时 Intl.Segmenter 不可用导致整个模块崩溃）
+let _zhSegmenter: Intl.Segmenter | null = null
+function getZhSegmenter(): Intl.Segmenter | null {
+  if (_zhSegmenter === undefined) return null
+  if (_zhSegmenter) return _zhSegmenter
+  try {
+    _zhSegmenter = new Intl.Segmenter('zh', { granularity: 'word' })
+    return _zhSegmenter
+  } catch {
+    _zhSegmenter = null as unknown as Intl.Segmenter
+    return null
+  }
+}
 
-/** 从文本中提取用于匹配的关键词（Intl.Segmenter 中文分词 + 英文单词） */
+/** 从文本中提取用于匹配的关键词 */
 function extractMatchKeywords(text: string): string[] {
-  const segments = [...zhSegmenter.segment(text)]
-  const words = segments
-    .filter(s => s.isWordLike && s.segment.length >= 2)
-    .map(s => s.segment.toLowerCase())
+  const segmenter = getZhSegmenter()
 
-  // 过滤高频无意义词
-  const noise = new Set([
-    '这是', '也是', '这是', '好的', '是的', '没有', '就是',
+  if (segmenter) {
+    // Intl.Segmenter 可用：精确分词
+    const segments = [...segmenter.segment(text)]
+    const words = segments
+      .filter(s => s.isWordLike && s.segment.length >= 2)
+      .map(s => s.segment.toLowerCase())
+    const noise = new Set([
+      '这是', '也是', '好的', '是的', '没有', '就是',
+      '这个', '那个', '什么', '怎么', '如何', '一个', '一些',
+    ])
+    return [...new Set(words.filter(w => !noise.has(w)))]
+  }
+
+  // Fallback：滑动窗口 bigram（无 Intl.Segmenter 时使用）
+  const keywords: string[] = []
+  const enWords = text.match(/[a-z]{2,}/g) || []
+  keywords.push(...enWords)
+
+  const cnSegments = text.match(/[\u4e00-\u9fa5]+/g) || []
+  const cnStopWords = new Set([
+    '这是', '也是', '好的', '是的', '没有', '就是',
     '这个', '那个', '什么', '怎么', '如何', '一个', '一些',
+    '不要', '使用', '可以', '需要', '应该', '已经', '我们',
   ])
+  for (const seg of cnSegments) {
+    for (let i = 0; i <= seg.length - 2; i++) {
+      const w = seg.slice(i, i + 2)
+      if (!cnStopWords.has(w)) keywords.push(w)
+    }
+  }
 
-  return [...new Set(words.filter(w => !noise.has(w)))]
+  return [...new Set(keywords)]
 }
