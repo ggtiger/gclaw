@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import type { SkillInfo } from '@/types/skills'
 import { getProjectDir } from '@/lib/store/projects'
+import { logger } from '@/lib/logger'
 
 const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
@@ -74,7 +75,7 @@ export function scanAvailableSkills(): SkillInfo[] {
 
     return results
   } catch (err) {
-    console.error('Failed to scan skills:', err)
+    logger.error('Failed to scan skills:', err)
     return []
   }
 }
@@ -163,7 +164,7 @@ export function syncProjectSkillsDir(enabledSkillNames: string[], projectId: str
         fs.symlinkSync(mdPath, path.join(projectSkillsDir, `${name}.md`))
       }
     } catch (err) {
-      console.error(`Failed to link skill ${name}:`, err)
+      logger.error(`Failed to link skill ${name}:`, err)
     }
   }
 }
@@ -200,10 +201,10 @@ export function loadSkillEnvVars(enabledSkillNames: string[]): Record<string, st
         }
       }
       if (loaded.length > 0) {
-        console.log(`[GClaw] Loaded env from skill "${name}":`, loaded)
+        logger.info(`[GClaw] Loaded env from skill "${name}":`, loaded)
       }
     } catch (err) {
-      console.error(`Failed to load .env for skill ${name}:`, err)
+      logger.error(`Failed to load .env for skill ${name}:`, err)
     }
   }
 

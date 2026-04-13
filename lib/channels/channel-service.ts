@@ -14,6 +14,7 @@ import { addMessage } from '@/lib/store/messages'
 import { channelEventBus } from './channel-events'
 import type { ChatMessage, ChatAttachment } from '@/types/chat'
 import type { ChannelConfig } from '@/types/channels'
+import { logger } from '@/lib/logger'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -90,7 +91,7 @@ async function downloadChannelAttachment(
     let buffer = await downloadFile(att.url)
 
     if (buffer.length > 10 * 1024 * 1024) {
-      console.warn(`[ChannelService] 附件太大 (${buffer.length} bytes)，跳过`)
+      logger.warn(`[ChannelService] 附件太大 (${buffer.length} bytes)，跳过`)
       return null
     }
 
@@ -119,7 +120,7 @@ async function downloadChannelAttachment(
     fs.writeFileSync(path.join(attachDir, savedName), buffer)
 
     const localUrl = `/api/chat/attachments/${projectId}/${savedName}`
-    console.log(`[ChannelService] 附件下载成功: ${att.type} ${(buffer.length / 1024).toFixed(1)}KB${att.aesKey ? ' (已解密)' : ''} → ${localUrl}`)
+    logger.info(`[ChannelService] 附件下载成功: ${att.type} ${(buffer.length / 1024).toFixed(1)}KB${att.aesKey ? ' (已解密)' : ''} → ${localUrl}`)
 
     // 图片：传给 Agent（base64）；其他文件：只保存本地供 UI 下载
     let attachmentData: AttachmentData | null = null
@@ -134,7 +135,7 @@ async function downloadChannelAttachment(
 
     return { attachmentData, localUrl, actualSize: buffer.length }
   } catch (err) {
-    console.warn(`[ChannelService] 下载附件失败: ${att.url?.substring(0, 60)}`, err instanceof Error ? err.message : err)
+    logger.warn(`[ChannelService] 下载附件失败: ${att.url?.substring(0, 60)}`, err instanceof Error ? err.message : err)
     return null
   }
 }
@@ -152,7 +153,7 @@ export async function handleChannelMessage(
   // 下载所有附件 → 保存本地 → URL 替换为本地路径
   let attachmentData: AttachmentData[] | undefined
   if (attachments && attachments.length > 0) {
-    console.log(`[ChannelService] 收到 ${attachments.length} 个附件:`, attachments.map(a => ({ type: a.type, url: a.url?.substring(0, 60) })))
+    logger.info(`[ChannelService] 收到 ${attachments.length} 个附件:`, attachments.map(a => ({ type: a.type, url: a.url?.substring(0, 60) })))
 
     const results = await Promise.all(
       attachments.map(att => att.url ? downloadChannelAttachment(att, projectId) : Promise.resolve(null))
@@ -172,7 +173,7 @@ export async function handleChannelMessage(
       .filter((r): r is DownloadResult => r !== null && r.attachmentData !== null)
       .map(r => r.attachmentData!)
     if (attachmentData.length === 0) attachmentData = undefined
-    console.log(`[ChannelService] 附件处理结果: 成功=${results.filter(r => r !== null).length}, 传Agent=${attachmentData?.length ?? 0}`)
+    logger.info(`[ChannelService] 附件处理结果: 成功=${results.filter(r => r !== null).length}, 传Agent=${attachmentData?.length ?? 0}`)
   }
 
   // 持久化用户消息（附件 URL 已替换为本地路径）
@@ -212,7 +213,7 @@ export async function handleChannelMessage(
   }
 
   try {
-    console.log(`[ChannelService] 发送给 AI: text="${agentText.substring(0, 200)}${agentText.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
+    logger.info(`[ChannelService] 发送给 AI: text="${agentText.substring(0, 200)}${agentText.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
     for await (const event of executeChat(agentText, { projectId, attachments: attachmentData })) {
       if (event.event === 'delta' && typeof event.data.content === 'string') {
         fullContent += event.data.content
@@ -280,7 +281,7 @@ export async function handleChannelMessage(
       }
     }
   } catch (err) {
-    console.error('[ChannelService] executeChat error:', err)
+    logger.error('[ChannelService] executeChat error:', err)
     if (!fullContent) fullContent = '[错误] Agent 执行异常'
     channelEventBus.emit(projectId, {
       type: 'channel_error',

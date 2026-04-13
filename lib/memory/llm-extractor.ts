@@ -7,6 +7,7 @@
  */
 
 import type { EpisodicEntry } from '@/types/memory'
+import { logger } from '@/lib/logger'
 
 /** LLM 提取模型（使用最便宜的 Haiku） */
 const EXTRACT_MODEL = 'claude-haiku-4-20250414'
@@ -103,7 +104,7 @@ export async function extractWithLLM(
     const parsed = parseResponse(textBlock.text, projectId)
     return parsed
   } catch (err) {
-    console.warn('[GClaw] LLM extraction failed, will fallback to regex:', (err as Error).message)
+    logger.warn('[GClaw] LLM extraction failed, will fallback to regex:', (err as Error).message)
     return null
   }
 }

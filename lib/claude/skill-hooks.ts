@@ -13,6 +13,7 @@ import type { GClawEventType } from './gclaw-events'
 import { createTask } from '../store/schedules'
 import { getScheduler } from '../scheduler/scheduler'
 import { getProjectDir } from '../store/projects'
+import { logger } from '@/lib/logger'
 
 // ── 类型定义 ─────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ export function loadSkillHooks(
 
       for (const [eventName, entries] of Object.entries(config.hooks)) {
         if (!VALID_HOOK_EVENTS.has(eventName)) {
-          console.warn(`[SkillHooks] Skill "${skillName}": unknown hook event "${eventName}", skipping`)
+          logger.warn(`[SkillHooks] Skill "${skillName}": unknown hook event "${eventName}", skipping`)
           continue
         }
 
@@ -112,7 +113,7 @@ export function loadSkillHooks(
 
         for (const entry of entries) {
           if (!VALID_ACTIONS.has(entry.action)) {
-            console.warn(`[SkillHooks] Skill "${skillName}": unknown action "${entry.action}", skipping`)
+            logger.warn(`[SkillHooks] Skill "${skillName}": unknown action "${entry.action}", skipping`)
             continue
           }
 
@@ -124,14 +125,14 @@ export function loadSkillHooks(
         }
       }
 
-      console.log(`[SkillHooks] Loaded hooks from skill "${skillName}":`, Array.from(grouped.keys()))
+      logger.info(`[SkillHooks] Loaded hooks from skill "${skillName}":`, Array.from(grouped.keys()))
 
       // 注册 skill schedules
       if (config.schedules && Array.isArray(config.schedules)) {
         registerSkillSchedules(skillName, config.schedules)
       }
     } catch (err) {
-      console.error(`[SkillHooks] Failed to load gclaw-hooks.json for skill "${skillName}":`, err)
+      logger.error(`[SkillHooks] Failed to load gclaw-hooks.json for skill "${skillName}":`, err)
     }
   }
 
@@ -191,16 +192,16 @@ function createHookCallback(
       const responseStr = typeof toolResponse === 'string'
         ? toolResponse
         : JSON.stringify(toolResponse ?? '')
-      console.log(`[SkillHooks] responsePattern check: pattern="${entry.filter.responsePattern}" | responseType=${typeof toolResponse} | responseStr(first200)="${responseStr.slice(0, 200)}"`)
+      logger.info(`[SkillHooks] responsePattern check: pattern="${entry.filter.responsePattern}" | responseType=${typeof toolResponse} | responseStr(first200)="${responseStr.slice(0, 200)}"`)
       try {
         const re = new RegExp(entry.filter.responsePattern, 'i')
         const matched = re.test(responseStr)
-        console.log(`[SkillHooks] responsePattern match result: ${matched}`)
+        logger.info(`[SkillHooks] responsePattern match result: ${matched}`)
         if (!matched) {
           return {}
         }
       } catch (e) {
-        console.error(`[SkillHooks] responsePattern regex error:`, e)
+        logger.error(`[SkillHooks] responsePattern regex error:`, e)
       }
     }
 
@@ -229,7 +230,7 @@ function createHookCallback(
           break
       }
     } catch (err) {
-      console.error(`[SkillHooks] Error in hook "${entry.skillName}/${eventName}":`, err)
+      logger.error(`[SkillHooks] Error in hook "${entry.skillName}/${eventName}":`, err)
       gclawEventBus.notify(projectId, 'hook:error', entry.skillName, {
         hookEvent: eventName,
         error: String(err),
@@ -282,12 +283,12 @@ function handleScript(
     const scriptPath = path.resolve(entry.skillDir, entry.script)
     // 安全校验：脚本路径必须在技能目录内
     if (!isPathWithin(scriptPath, entry.skillDir)) {
-      console.warn(`[SkillHooks] Script path escapes skill directory: ${scriptPath}`)
+      logger.warn(`[SkillHooks] Script path escapes skill directory: ${scriptPath}`)
       resolve(undefined)
       return
     }
     if (!fs.existsSync(scriptPath)) {
-      console.warn(`[SkillHooks] Script not found: ${scriptPath}`)
+      logger.warn(`[SkillHooks] Script not found: ${scriptPath}`)
       resolve(undefined)
       return
     }
@@ -323,13 +324,13 @@ function handleScript(
 
     child.on('close', (code) => {
       if (code !== 0 && stderr) {
-        console.warn(`[SkillHooks] Script "${entry.script}" exited with code ${code}: ${stderr}`)
+        logger.warn(`[SkillHooks] Script "${entry.script}" exited with code ${code}: ${stderr}`)
       }
       resolve(stdout.trim() || undefined)
     })
 
     child.on('error', (err) => {
-      console.error(`[SkillHooks] Script spawn error:`, err)
+      logger.error(`[SkillHooks] Script spawn error:`, err)
       resolve(undefined)
     })
   })
@@ -348,7 +349,7 @@ function handleLog(
 
   // 安全校验：日志文件路径必须在技能目录内
   if (!isPathWithin(logFile, entry.skillDir)) {
-    console.warn(`[SkillHooks] Log file path escapes skill directory: ${logFile}`)
+    logger.warn(`[SkillHooks] Log file path escapes skill directory: ${logFile}`)
     return
   }
 
@@ -376,7 +377,7 @@ function handleLog(
   try {
     fs.appendFileSync(logFile, logEntry, 'utf-8')
   } catch (err) {
-    console.error(`[SkillHooks] Failed to write log:`, err)
+    logger.error(`[SkillHooks] Failed to write log:`, err)
   }
 }
 
@@ -411,7 +412,7 @@ export function loadSingleSkillHooks(skillName: string): Map<string, ResolvedHoo
       }
     }
   } catch (err) {
-    console.error(`[SkillHooks] Failed to load gclaw-hooks.json for skill "${skillName}":`, err)
+    logger.error(`[SkillHooks] Failed to load gclaw-hooks.json for skill "${skillName}":`, err)
   }
 
   return grouped
@@ -431,7 +432,7 @@ export function readSkillHooksConfig(skillName: string): SkillHooksConfig | null
     const raw = fs.readFileSync(hooksFile, 'utf-8')
     return JSON.parse(raw) as SkillHooksConfig
   } catch (err) {
-    console.error(`[SkillHooks] Failed to read gclaw-hooks.json for skill "${skillName}":`, err)
+    logger.error(`[SkillHooks] Failed to read gclaw-hooks.json for skill "${skillName}":`, err)
     return null
   }
 }
@@ -461,9 +462,9 @@ function registerSkillSchedules(
       // 触发调度器初始化并刷新 nextRunAt
       getScheduler().refreshNextRun(task)
 
-      console.log(`[SkillHooks] Registered schedule "${entry.name}" from skill "${skillName}" (id: ${task.id})`)
+      logger.info(`[SkillHooks] Registered schedule "${entry.name}" from skill "${skillName}" (id: ${task.id})`)
     } catch (err) {
-      console.error(`[SkillHooks] Failed to register schedule "${entry.name}" from skill "${skillName}":`, err)
+      logger.error(`[SkillHooks] Failed to register schedule "${entry.name}" from skill "${skillName}":`, err)
     }
   }
 }

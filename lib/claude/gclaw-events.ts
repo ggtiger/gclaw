@@ -4,6 +4,8 @@
  * 全局单例，挂载到 globalThis 防止 HMR 丢失
  */
 
+import { logger } from '@/lib/logger'
+
 export type GClawEventType =
   | 'tool:success'        // PostToolUse — 工具执行成功
   | 'tool:failure'        // PostToolUseFailure — 工具执行失败
@@ -78,7 +80,7 @@ class GClawEventBus {
         try {
           listener(event)
         } catch (err) {
-          console.error('[GClawEventBus] listener error:', err)
+          logger.error('[GClawEventBus] listener error:', err)
         }
       }
     }
@@ -88,7 +90,7 @@ class GClawEventBus {
       try {
         listener(event)
       } catch (err) {
-        console.error('[GClawEventBus] global listener error:', err)
+        logger.error('[GClawEventBus] global listener error:', err)
       }
     }
   }

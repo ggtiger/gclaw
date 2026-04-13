@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import type { ProjectInfo, ProjectMember, ProjectRole, ProjectMode, ProjectType } from '@/types/skills'
 import { getAllUsers } from './users'
 import { addAuditLog } from './audit-log'
+import { logger } from '@/lib/logger'
 
 export const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -305,7 +306,7 @@ export function ensureDefaultProject(ownerId?: string): string {
         fs.copyFileSync(oldPath, path.join(dataDir, file))
         fs.unlinkSync(oldPath)
       } catch (err) {
-        console.error(`[GClaw] Failed to migrate ${file}:`, err)
+        logger.error(`[GClaw] Failed to migrate ${file}:`, err)
       }
     }
   }
@@ -344,7 +345,7 @@ export function ensureDefaultProject(ownerId?: string): string {
 
       fs.unlinkSync(oldSettingsPath)
     } catch (err) {
-      console.error('[GClaw] Failed to migrate settings:', err)
+      logger.error('[GClaw] Failed to migrate settings:', err)
     }
   }
 
@@ -356,7 +357,7 @@ export function ensureDefaultProject(ownerId?: string): string {
         fs.copyFileSync(oldPath, path.join(dataDir, file))
         fs.unlinkSync(oldPath)
       } catch (err) {
-        console.error(`[GClaw] Failed to move ${file} to .data:`, err)
+        logger.error(`[GClaw] Failed to move ${file} to .data:`, err)
       }
     }
   }
@@ -366,7 +367,7 @@ export function ensureDefaultProject(ownerId?: string): string {
       fs.copyFileSync(oldProjectSettings, path.join(dataDir, 'settings.json'))
       fs.unlinkSync(oldProjectSettings)
     } catch (err) {
-      console.error('[GClaw] Failed to move settings.json to .data:', err)
+      logger.error('[GClaw] Failed to move settings.json to .data:', err)
     }
   }
 

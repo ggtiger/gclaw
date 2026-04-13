@@ -8,6 +8,7 @@ import { getAllTasks, updateTask, createTask, deleteTask } from '../store/schedu
 import { getNextRun } from './cron-parser'
 import { executeTask } from './executors'
 import { gclawEventBus } from '../claude/gclaw-events'
+import { logger } from '@/lib/logger'
 
 const GLOBAL_KEY = '__gclaw_scheduler__'
 const CHECK_INTERVAL = 1000 // 每秒扫描
@@ -18,7 +19,7 @@ class TaskScheduler {
 
   start() {
     if (this.timer) return
-    console.log('[Scheduler] Starting task scheduler...')
+    logger.info('[Scheduler] Starting task scheduler...')
     this.timer = setInterval(() => this.checkPendingTasks(), CHECK_INTERVAL)
   }
 
@@ -26,7 +27,7 @@ class TaskScheduler {
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
-      console.log('[Scheduler] Stopped')
+      logger.info('[Scheduler] Stopped')
     }
   }
 

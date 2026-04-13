@@ -17,6 +17,7 @@ import {
 } from './wechat'
 import { handleChannelMessage } from './channel-service'
 import type { ChannelConfig } from '@/types/channels'
+import { logger } from '@/lib/logger'
 
 /** syncBuf 持久化目录 */
 const DATA_ROOT = process.env.GCLAW_DATA_DIR
@@ -95,12 +96,12 @@ class WechatPollerService {
 
     this.connections.set(key, conn)
 
-    console.log(`[WechatPoller] 启动长轮询: ${key}, hasSyncBuf=${!!syncBuf}`)
+    logger.info(`[WechatPoller] 启动长轮询: ${key}, hasSyncBuf=${!!syncBuf}`)
 
     // 启动轮询循环（不阻塞返回）
     this.pollLoop(key, conn, botToken).catch((err) => {
       if (!conn.abortController?.signal.aborted) {
-        console.error(`[WechatPoller] ${key} 轮询异常退出:`, err)
+        logger.error(`[WechatPoller] ${key} 轮询异常退出:`, err)
       }
       conn.status = 'error'
       conn.error = err instanceof Error ? err.message : String(err)
@@ -117,7 +118,7 @@ class WechatPollerService {
       conn.abortController?.abort()
       conn.abortController = null
       conn.status = 'disconnected'
-      console.log(`[WechatPoller] 已断开: ${key}`)
+      logger.info(`[WechatPoller] 已断开: ${key}`)
     }
   }
 
@@ -166,14 +167,14 @@ class WechatPollerService {
 
         // 检查会话过期
         if (resp.errcode === -14) {
-          console.error(`[WechatPoller] ${key} 会话过期 (errcode=-14)，需重新扫码`)
+          logger.error(`[WechatPoller] ${key} 会话过期 (errcode=-14)，需重新扫码`)
           conn.status = 'error'
           conn.error = '会话已过期，请重新扫码登录'
           return
         }
 
         if ((resp.ret && resp.ret !== 0) || (resp.errcode && resp.errcode !== 0)) {
-          console.warn(`[WechatPoller] ${key} 轮询 #${pollCount} 异常: ret=${resp.ret}, errcode=${resp.errcode}`)
+          logger.warn(`[WechatPoller] ${key} 轮询 #${pollCount} 异常: ret=${resp.ret}, errcode=${resp.errcode}`)
         }
 
         // 更新 syncBuf
@@ -212,11 +213,11 @@ class WechatPollerService {
             const parsed = parseWeixinMessage(msg)
             if (!parsed) continue
 
-            console.log(`[WechatPoller] ${key} 收到消息: from=${parsed.senderId}, type=${parsed.messageType}, text=${parsed.text.substring(0, 50)}`)
+            logger.info(`[WechatPoller] ${key} 收到消息: from=${parsed.senderId}, type=${parsed.messageType}, text=${parsed.text.substring(0, 50)}`)
 
             // 异步处理（不阻塞轮询循环）
             this.handleMessage(key, conn, token, parsed).catch(err => {
-              console.error(`[WechatPoller] ${key} 消息处理失败:`, err)
+              logger.error(`[WechatPoller] ${key} 消息处理失败:`, err)
             })
           }
         }
@@ -225,10 +226,10 @@ class WechatPollerService {
 
         consecutiveFailures++
         const errMsg = err instanceof Error ? err.message : String(err)
-        console.error(`[WechatPoller] ${key} 轮询 #${pollCount} 失败 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, errMsg)
+        logger.error(`[WechatPoller] ${key} 轮询 #${pollCount} 失败 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, errMsg)
 
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          console.warn(`[WechatPoller] ${key} 连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，等待 ${BACKOFF_DELAY_MS / 1000}s`)
+          logger.warn(`[WechatPoller] ${key} 连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，等待 ${BACKOFF_DELAY_MS / 1000}s`)
           await this.sleep(BACKOFF_DELAY_MS, conn)
           consecutiveFailures = 0
         } else {
@@ -237,7 +238,7 @@ class WechatPollerService {
       }
     }
 
-    console.log(`[WechatPoller] ${key} 轮询结束, 共 ${pollCount} 次`)
+    logger.info(`[WechatPoller] ${key} 轮询结束, 共 ${pollCount} 次`)
     if (conn.status === 'connected') conn.status = 'disconnected'
   }
 
@@ -293,12 +294,12 @@ class WechatPollerService {
       const text = pending!.textParts.length > 0
         ? pending!.textParts.join('\n')
         : '[图片消息]'
-      console.log(`[WechatPoller] ${senderKey} 缓冲超时发送: text=${pending!.textParts.length}, attachments=${pending!.attachments.length}`)
+      logger.info(`[WechatPoller] ${senderKey} 缓冲超时发送: text=${pending!.textParts.length}, attachments=${pending!.attachments.length}`)
       this.dispatchToAgent(key, conn, token, parsed.senderId, text, pending!.attachments)
-        .catch(err => console.error(`[WechatPoller] ${senderKey} 发送失败:`, err))
+        .catch(err => logger.error(`[WechatPoller] ${senderKey} 发送失败:`, err))
     }, timeout)
 
-    console.log(`[WechatPoller] ${senderKey} 缓冲: +${parsed.messageType}, 当前 text=${pending.textParts.length}, att=${pending.attachments.length}, timeout=${timeout / 1000}s`)
+    logger.info(`[WechatPoller] ${senderKey} 缓冲: +${parsed.messageType}, 当前 text=${pending.textParts.length}, att=${pending.attachments.length}, timeout=${timeout / 1000}s`)
   }
 
   /**
@@ -326,9 +327,9 @@ class WechatPollerService {
     })
 
     if (success) {
-      console.log(`[WechatPoller] ${key} 回复成功: to=${senderId}`)
+      logger.info(`[WechatPoller] ${key} 回复成功: to=${senderId}`)
     } else {
-      console.error(`[WechatPoller] ${key} 回复失败: to=${senderId}`)
+      logger.error(`[WechatPoller] ${key} 回复失败: to=${senderId}`)
     }
   }
 
@@ -380,7 +381,7 @@ class WechatPollerService {
       const file = path.join(DATA_DIR, `syncbuf_${key.replace(':', '_')}.json`)
       await fs.writeFile(file, JSON.stringify({ syncBuf: buf, updatedAt: new Date().toISOString() }), 'utf8')
     } catch (err) {
-      console.warn(`[WechatPoller] 保存 syncBuf 失败:`, err)
+      logger.warn(`[WechatPoller] 保存 syncBuf 失败:`, err)
     }
   }
 

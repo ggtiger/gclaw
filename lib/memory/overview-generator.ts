@@ -10,6 +10,7 @@
 import { store } from './store'
 import type { SemanticEntry, ProceduralEntry } from '@/types/memory'
 import { callAnthropicAPI, timeout } from './llm-extractor'
+import { logger } from '@/lib/logger'
 
 /** LLM 提练模型 */
 const OVERVIEW_MODEL = 'claude-haiku-4-20250414'
@@ -153,7 +154,7 @@ export async function generateAndSaveOverviewAsync(userId: string): Promise<stri
   }
 
   // 降级到模板拼接
-  console.log('[GClaw] LLM overview generation failed, falling back to template')
+  logger.info('[GClaw] LLM overview generation failed, falling back to template')
   return generateAndSaveOverview(userId)
 }
 
@@ -220,10 +221,10 @@ async function generateOverviewWithLLM(userId: string): Promise<string | null> {
 
     // 组装最终总纲
     const overview = `## 用户记忆总纲\n\n${textBlock.text.trim()}\n\n> 详细记忆可通过 API 检索：POST $GCLAW_API_BASE/api/memory/recall`
-    console.log(`[GClaw] LLM overview generated (${overview.length} chars)`)
+    logger.info(`[GClaw] LLM overview generated (${overview.length} chars)`)
     return overview
   } catch (err) {
-    console.warn('[GClaw] LLM overview generation failed:', (err as Error).message)
+    logger.warn('[GClaw] LLM overview generation failed:', (err as Error).message)
     return null
   }
 }

@@ -6,6 +6,7 @@
 
 import crypto from 'crypto'
 import type { WechatConfig } from '@/types/channels'
+import { logger } from '@/lib/logger'
 
 /** ilink API 基础 URL */
 export const ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com'
@@ -193,7 +194,7 @@ export async function getLoginQRCode(): Promise<{ qrcode: string; qrcodeUrl: str
     const qrcode = data.qrcode || ''
     const qrcodeUrl = data.qrcode_img_content || ''
     if (!qrcode || !qrcodeUrl) throw new Error('QR 码返回不完整')
-    console.log(`[WeChat] QR 码获取成功, qrcode=${qrcode.substring(0, 20)}...`)
+    logger.info(`[WeChat] QR 码获取成功, qrcode=${qrcode.substring(0, 20)}...`)
     return { qrcode, qrcodeUrl }
   } finally {
     clearTimeout(timeout)
@@ -307,13 +308,13 @@ export async function sendWechatMessage(params: {
       })
       if (!res.ok) {
         const errText = await res.text()
-        console.error(`[WeChat] sendMessage 失败: ${res.status} ${errText}`)
+        logger.error(`[WeChat] sendMessage 失败: ${res.status} ${errText}`)
         allSuccess = false
       } else {
-        console.log(`[WeChat] 消息发送成功: to=${params.toUserId}, clientId=${clientId}, len=${chunk.length}`)
+        logger.info(`[WeChat] 消息发送成功: to=${params.toUserId}, clientId=${clientId}, len=${chunk.length}`)
       }
     } catch (err) {
-      console.error('[WeChat] sendMessage 异常:', err)
+      logger.error('[WeChat] sendMessage 异常:', err)
       allSuccess = false
     }
 
@@ -365,7 +366,7 @@ export function parseWeixinMessage(msg: WeixinMessage): ParsedWeixinMessage | nu
       sampleRate: vi.sample_rate,
     }
     text = vi.text || '[语音消息]'
-    console.log(`[WeChat] 语音(顶层): transcription="${vi.text || ''}", duration=${voicePayload.duration}s`)
+    logger.info(`[WeChat] 语音(顶层): transcription="${vi.text || ''}", duration=${voicePayload.duration}s`)
   }
   // ===== 2. 顶层 type + image_item（新格式图片） =====
   else if (msg.type === MessageItemType.IMAGE && msg.image_item) {
@@ -380,7 +381,7 @@ export function parseWeixinMessage(msg: WeixinMessage): ParsedWeixinMessage | nu
       aesKey: ii.media?.aes_key,
     }
     text = '[图片消息]'
-    console.log(`[WeChat] 图片(顶层): ${ii.width}x${ii.height}, hasUrl=${!!imageUrl}`)
+    logger.info(`[WeChat] 图片(顶层): ${ii.width}x${ii.height}, hasUrl=${!!imageUrl}`)
   }
   // ===== 3. 顶层 type + file_item（新格式文件） =====
   else if (msg.type === MessageItemType.FILE && msg.file_item) {
@@ -397,7 +398,7 @@ export function parseWeixinMessage(msg: WeixinMessage): ParsedWeixinMessage | nu
       aesKey: fi.media?.aes_key,
     }
     text = `[文件] ${fileName}`
-    console.log(`[WeChat] 文件(顶层): name=${fileName}, size=${fi.file_size}`)
+    logger.info(`[WeChat] 文件(顶层): name=${fileName}, size=${fi.file_size}`)
   }
   // ===== 4. item_list 格式（旧格式/多内容项） =====
   else if (msg.item_list && msg.item_list.length > 0) {
@@ -418,7 +419,7 @@ export function parseWeixinMessage(msg: WeixinMessage): ParsedWeixinMessage | nu
           sampleRate: vi.sample_rate,
         }
         text = vi.text || '[语音消息]'
-        console.log(`[WeChat] 语音(item_list): transcription="${vi.text || ''}", duration=${voicePayload.duration}s`)
+        logger.info(`[WeChat] 语音(item_list): transcription="${vi.text || ''}", duration=${voicePayload.duration}s`)
       } else if (item.type === MessageItemType.IMAGE && item.image_item) {
         messageType = 'image'
         const ii = item.image_item
@@ -431,7 +432,7 @@ export function parseWeixinMessage(msg: WeixinMessage): ParsedWeixinMessage | nu
           aesKey: ii.media?.aes_key,
         }
         text = '[图片消息]'
-        console.log(`[WeChat] 图片(item_list): ${ii.width}x${ii.height}`)
+        logger.info(`[WeChat] 图片(item_list): ${ii.width}x${ii.height}`)
       } else if (item.type === MessageItemType.FILE && item.file_item) {
         messageType = 'file'
         const fi = item.file_item
@@ -446,7 +447,7 @@ export function parseWeixinMessage(msg: WeixinMessage): ParsedWeixinMessage | nu
           aesKey: fi.media?.aes_key,
         }
         text = `[文件] ${fileName}`
-        console.log(`[WeChat] 文件(item_list): name=${fileName}`)
+        logger.info(`[WeChat] 文件(item_list): name=${fileName}`)
       }
     }
   }

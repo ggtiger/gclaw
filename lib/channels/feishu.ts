@@ -5,6 +5,7 @@
 
 import crypto from 'crypto'
 import type { FeishuConfig } from '@/types/channels'
+import { logger } from '@/lib/logger'
 
 /**
  * 验证飞书事件回调签名
@@ -113,7 +114,7 @@ export async function replyFeishu(
   try {
     const token = await getTenantAccessToken(config)
     if (!token) {
-      console.error('[Feishu] Failed to get access token')
+      logger.error('[Feishu] Failed to get access token')
       return false
     }
 
@@ -131,7 +132,7 @@ export async function replyFeishu(
     })
     return res.ok
   } catch (err) {
-    console.error('[Feishu] Reply failed:', err)
+    logger.error('[Feishu] Reply failed:', err)
     return false
   }
 }

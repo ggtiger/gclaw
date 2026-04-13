@@ -604,4 +604,40 @@
 ---[2026-04-12T10:46:44.027Z] PostToolUse
   tool: Bash
   response(500): {"stdout":"","stderr":"","interrupted":false,"isImage":false}
+---[2026-04-12T15:41:53.896Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '深圳明天天气预报 2026年4月13日', 'search_recency_filter': 'week'}\n[\n  {\n    \"id\": 1,\n    \"url\": \"http://www.snj.gov.cn/ztzl/2021ztzl/srgc_48178/202604/t20260411_5912175.html\",\n    \"title\": \"2026年4月11日发布未来三天天气预报 \",\n    \"date\": \"2026-04-11 15:52:00\",\n    \"content\": \" 4月12日:阴有间断小雨,松柏气温11～20℃; 4月13日:阴有小雨,松柏气温12～18℃; 4月14日:阴有间断小雨,松柏气温12～16℃。\",\n    \"icon\": \"\",\n    \"web_anchor\": \"\",\n    \"type\": \"web\",\n    \"website\": \"神农架
+---[2026-04-12T15:42:00.648Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '深圳天气 4月13日 周一', 'search_recency_filter': 'week'}\n[\n  {\n    \"id\": 1,\n    \"url\": \"http://weather.zuzuche.com/c281_d2026-04-13.html\",\n    \"title\": \"» 深圳4月13日天气-租租车\",\n    \"date\": \"2026-04-13 00:00:00\",\n    \"content\": \"4月13日 周一 晴 31℃ ~ 26℃  日间稍炎热 适合穿棉麻面料的衬衫、薄长裙、薄T恤等清凉透气的衣服  晚间稍炎热 建议穿棉麻面料的衬衫、薄长裙、薄T恤等清凉透气的衣服 \",\n    \"icon\": \"https://b.bdstatic.com/searchbox/mappconsole/image/20190612/0abf1df7-3b85-401e-9898-7df05fab7c15.png\"
+---[2026-04-12T15:43:15.412Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"","stderr":"","interrupted":false,"isImage":false}
+---[2026-04-13T12:06:04.838Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '2026年高分短剧推荐 热门短剧', 'search_recency_filter': 'month'}\n[\n  {\n    \"id\": 1,\n    \"url\": \"https://baijiahao.baidu.com/s?id=1861065684643593109&wfr=spider&for=pc\",\n    \"title\": \"盘点2026红果短剧播放破 10 亿、20 亿的短剧有哪些?\",\n    \"date\": \"2026-03-30 14:02:24\",\n    \"content\": \" 《朝阳似我》 | 主演:梁文晶、赵廷义 | 上线时间:25.12.11 | 最高热度:9590 《夫人 3 将门捉婿》 | 主演:李柯以、王培延 | 上线时间:25.12.27 | 最高热度:12567 《青梅香如故》 | 主演:韩雨彤、曾辉 | 上线时间:25.12.20 | 最高热度:8731 《修仙回来后我儿孙满堂了》 | 主演:黄
+---[2026-04-13T12:07:41.583Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '逃出大英博物馆 在线观看 完整版', 'search_recency_filter': 'month'}\n[\n  {\n    \"id\": 1,\n    \"url\": \"http://www.szgwxx.com/vodplay/65737-1-1.html\",\n    \"title\": \"《逃出大英博物馆》高清完整版高清云播完整版在线免费全集高清观看_2023短剧_淘剧影院\",\n    \"date\": \"2026-04-08 21:48:22\",\n    \"content\": \"《逃出大英博物馆》高清完整版高清云播完整版在线免费全集高清观看_2023短剧_淘剧影院\",\n    \"icon\": \"\",\n    \"web_anchor\": \"\",\n    \"type\": \"web\",\n    \"website\": \"深圳市国伟信息技术有限公司\",\n    \"video\": null,\n    \
+---[2026-04-13T12:45:59.507Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '2026年游戏行业最新趋势 市场分析 热门游戏', 'search_recency_filter': 'week'}\n[\n  {\n    \"id\": 1,\n    \"url\": \"https://baijiahao.baidu.com/s?id=1862266093564250379&wfr=spider&for=pc\",\n    \"title\": \"中国游戏在海外“杀疯了”:一场国家级的黄金赛道,投资机会全解析\",\n    \"date\": \"2026-04-12 20:04:47\",\n    \"content\": \" 一、为什么中国游戏出海,是\\\"不可逆的超级风口\\\"? 1. 政策端:从\\\"鼓励\\\"到\\\"国家战略\\\",史上最强红利 游戏出海已被国务院、十五五规划、商务部多次点名支持: - 明确\\\"发展游戏出海业务,布局全产业链\\\"(IP研发发行运营) - 纳入\\\"文化出口重点项目\\\",多地补贴、园区
+---[2026-04-13T13:07:28.816Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"","stderr":"","interrupted":false,"isImage":false}
+---[2026-04-13T13:39:51.464Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '2026年4月 AI人工智能最新资讯 GPT Claude', 'search_recency_filter': 'week'}\n[\n  {\n    \"id\": 1,\n    \"url\": \"https://baijiahao.baidu.com/s?id=1862133346342974151&wfr=spider&for=pc\",\n    \"title\": \"Edge AI Daily 早报(4月11日)\",\n    \"date\": \"2026-04-11 08:49:00\",\n    \"content\": \" 一、特斯拉FSD首次登陆欧盟:荷兰监管批准商用 分阶段部署开启 1.市场准入突破:特斯拉FSD系统于2026年4月11日获得荷兰交通主管部门商用批准,成为该系统在欧盟主要成员国的首次落地,为特斯拉自动驾驶全球化布局打通关键市场通道。 2.技术合规验证:FSD系统通过荷兰官方严格评估,累计超10亿英里道路测试数据显示事故率比人类驾
+---[2026-04-13T13:45:40.952Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '2026年4月最新AI资讯 GPT Claude Gemini 人工智能动态', 'search_recency_filter': 'month', 'resource_type_filter': [{'type': 'web', 'top_k': 30}]}\n[\n  {\n    \"id\": 1,\n    \"url\": \"http://se-office.ruc.edu.cn/xwdt/d9a8f391befd4335a2cfa31774ca4157.htm\",\n    \"title\": \"Gemma4开源 、Claude被发现“ 情绪向量”, 一起来看过去一周热点\",\n    \"date\": \"2026-04-08 00:00:00\",\n    \"content\": \" 01 Gemma 4 开源落地 从手机到服务器全覆盖,小模型实现“越级性能” Google DeepMind这次推出的 Gemma 4,可以说是在“开源模型实用性”上往前
+---[2026-04-13T13:48:44.276Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '2026年4月最新新闻 科技 经济 社会 热点事件', 'search_recency_filter': 'week', 'resource_type_filter': [{'type': 'web', 'top_k': 30}]}\n[\n  {\n    \"id\": 1,\n    \"url\": \"https://www.163.com/dy/media/T1512041937142.html\",\n    \"title\": \"人民网\",\n    \"date\": \"2026-04-11 19:47:00\",\n    \"content\": \" 零时差|美国会与北约“分手”吗? 2026-04-13 12:47 业界:家电行业要锚定“四化”发展方向 从规模扩张转向质量效益 2026-04-13 12:07 “汉堡馒头减肥法”,靠谱吗?(服务窗) 2026-04-13 11:33 Momenta联手现代汽车 电动品牌IONIQ进入中国市场 2026-0
+---[2026-04-13T14:38:29.920Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"success parse request body: {'query': '2026年高分短剧推荐 热门短剧 口碑佳作', 'search_recency_filter': 'month', 'resource_type_filter': [{'type': 'web', 'top_k': 25}]}\n[\n  {\n    \"id\": 1,\n    \"url\": \"https://baijiahao.baidu.com/s?id=1860260165049860733&wfr=spider&for=pc\",\n    \"title\": \"2026红果双破亿短剧盘点:太奶奶4、闺蜜穿书、少夫人来自东北、红糖姜汁、穿书富家妯娌2,部部封神!\",\n    \"date\": \"2026-03-22 17:38:00\",\n    \"content\": \" 1. 《十八岁太奶奶驾到,重整家族荣耀4》 • 观看量:破10亿 • 热度值:破1.7亿 • 标签:古装反差、家族逆袭、爽文天花板 红果最长寿头部IP续作,“十八岁太奶奶”人设深
+---[2026-04-13T16:05:30.925Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"2026-04-14","stderr":"","interrupted":false,"isImage":false}
 ---

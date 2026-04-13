@@ -16,6 +16,7 @@ import { writeEpisodic } from '@/lib/memory/episodic-writer'
 import { extractWithLLM } from '@/lib/memory/llm-extractor'
 import { runConsolidation } from '@/lib/memory/consolidation'
 import type { SSEEvent, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import { logger } from '@/lib/logger'
 
 // 全局单例状态：挂载到 globalThis 防止 Next.js HMR / 模块实例隔离导致 Map 丢失
 // 参考 gclaw-events.ts 同一模式
@@ -49,7 +50,7 @@ export function resolvePermission(requestId: string, decision: 'allow' | 'deny')
  */
 export function resolveAskQuestion(requestId: string, answers: Record<string, string>) {
   const resolve = pendingAskQuestions.get(requestId)
-  console.log(`[GClaw] resolveAskQuestion | requestId=${requestId} | found=${!!resolve} | mapKeys=[${Array.from(pendingAskQuestions.keys()).join(',')}]`)
+  logger.info(`[GClaw] resolveAskQuestion | requestId=${requestId} | found=${!!resolve} | mapKeys=[${Array.from(pendingAskQuestions.keys()).join(',')}]`)
   if (resolve) {
     resolve(answers)
     pendingAskQuestions.delete(requestId)
@@ -144,7 +145,7 @@ export async function* executeChat(
     if (resolvedCwd.startsWith(resolvedProjectDir)) {
       sdkCwd = resolvedCwd
     } else {
-      console.warn(`[GClaw] Rejected unsafe cwd "${cwd}" for project ${projectId}, falling back to project dir`)
+      logger.warn(`[GClaw] Rejected unsafe cwd "${cwd}" for project ${projectId}, falling back to project dir`)
     }
   }
 
@@ -263,7 +264,7 @@ export async function* executeChat(
     // 路径边界检查：所有写/删除操作必须在项目 cwd 内（始终启用）
     const pathError = validateToolPath(tool_name, toolInput)
     if (pathError) {
-      console.warn(`[GClaw] Blocked operation outside project dir: ${pathError}`)
+      logger.warn(`[GClaw] Blocked operation outside project dir: ${pathError}`)
       return {
         hookSpecificOutput: {
           hookEventName: 'PreToolUse' as const,
@@ -280,7 +281,7 @@ export async function* executeChat(
 
     const reqId = randomUUID()
 
-    console.log(`[GClaw] PreToolUse permission request: ${tool_name} | reqId=${reqId}`)
+    logger.info(`[GClaw] PreToolUse permission request: ${tool_name} | reqId=${reqId}`)
 
     // 通过回调通知前端
     if (onPermissionRequest) {
@@ -299,12 +300,12 @@ export async function* executeChat(
         if (pendingPermissions.has(reqId)) {
           resolve('deny')
           pendingPermissions.delete(reqId)
-          console.log(`[GClaw] Permission timeout, auto-denied: ${reqId}`)
+          logger.info(`[GClaw] Permission timeout, auto-denied: ${reqId}`)
         }
       }, 60000)
     })
 
-    console.log(`[GClaw] PreToolUse decision: ${decision} | reqId=${reqId}`)
+    logger.info(`[GClaw] PreToolUse decision: ${decision} | reqId=${reqId}`)
 
     return {
       hookSpecificOutput: {
@@ -322,7 +323,7 @@ export async function* executeChat(
     const toolInput = (tool_input ?? {}) as Record<string, unknown>
     const reqId = randomUUID()
 
-    console.log(`[GClaw] PermissionRequest hook: ${tool_name} | reqId=${reqId}`)
+    logger.info(`[GClaw] PermissionRequest hook: ${tool_name} | reqId=${reqId}`)
 
     if (onPermissionRequest) {
       onPermissionRequest({
@@ -398,7 +399,7 @@ export async function* executeChat(
       if (toolName === 'AskUserQuestion') {
         const questions = Array.isArray(input.questions) ? input.questions : []
         const reqId = randomUUID()
-        console.log(`[GClaw] canUseTool: AskUserQuestion | reqId=${reqId} | questions=${questions.length}`)
+        logger.info(`[GClaw] canUseTool: AskUserQuestion | reqId=${reqId} | questions=${questions.length}`)
 
         // 通知前端展示问题对话框
         if (onAskUserQuestion) {
@@ -417,12 +418,12 @@ export async function* executeChat(
               }
               resolve(defaultAnswers)
               pendingAskQuestions.delete(reqId)
-              console.log(`[GClaw] AskUserQuestion timeout, auto-responded: ${reqId}`)
+              logger.info(`[GClaw] AskUserQuestion timeout, auto-responded: ${reqId}`)
             }
           }, 300000)
         })
 
-        console.log(`[GClaw] AskUserQuestion answered | reqId=${reqId}`)
+        logger.info(`[GClaw] AskUserQuestion answered | reqId=${reqId}`)
 
         // SDK 要求：返回 allow + updatedInput（带 questions 和 answers）
         return {
@@ -578,13 +579,13 @@ export async function* executeChat(
 
           case 'compact_boundary':
             // 压缩边界信息仅日志记录
-            console.log(`[GClaw] Compact boundary: trigger=${parsed.trigger}, preTokens=${parsed.preTokens}`)
+            logger.info(`[GClaw] Compact boundary: trigger=${parsed.trigger}, preTokens=${parsed.preTokens}`)
             break
 
           case 'hook_response':
             // hook 脚本执行结果仅日志记录（stderr 有内容时警告）
             if (parsed.stderr) {
-              console.warn(`[GClaw] Hook "${parsed.hookName}" stderr:`, parsed.stderr)
+              logger.warn(`[GClaw] Hook "${parsed.hookName}" stderr:`, parsed.stderr)
             }
             break
 
@@ -627,7 +628,7 @@ export async function* executeChat(
 
       if (isSessionNotFound && sessionId && !retried) {
         // sessionId 失效，清除后重试
-        console.warn(`[GClaw] Session ${sessionId} not found, retrying without resume...`)
+        logger.warn(`[GClaw] Session ${sessionId} not found, retrying without resume...`)
         updateProjectSettings(projectId, { sessionId: '' })
         stderrBuffer = ''
         retried = true
@@ -635,14 +636,14 @@ export async function* executeChat(
           yield* runQuery(undefined)
         } catch (retryErr) {
           const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
-          console.error('[GClaw SDK retry]', sanitizeForLog(retryMsg))
+          logger.error('[GClaw SDK retry]', sanitizeForLog(retryMsg))
           yield { event: 'error', data: { message: `SDK error: ${retryMsg}` } }
         }
       } else {
         const fullError = detail
           ? sanitizeForLog(`SDK error: ${errMsg}\nstderr: ${detail}`)
           : sanitizeForLog(`SDK error: ${errMsg}`)
-        console.error('[GClaw SDK]', fullError)
+        logger.error('[GClaw SDK]', fullError)
         yield { event: 'error', data: { message: fullError } }
       }
     }
@@ -661,7 +662,7 @@ export async function* executeChat(
   // 对话结束后自动从用户消息中提取记忆（不含 AI 回复内容）
   if (gotDone && userId) {
     autoRecordFromUserMessage(userId, projectId, message)
-      .catch(err => console.warn('[GClaw] Auto memory record failed:', err))
+      .catch(err => logger.warn('[GClaw] Auto memory record failed:', err))
   }
 
   // 清理
@@ -726,7 +727,7 @@ async function autoRecordFromUserMessage(
   if (entries && entries.length > 0) {
     for (const entry of entries) {
       writeEpisodic(userId, entry)
-      console.log(`[GClaw] Auto-recorded from user message: type=${entry.type} summary="${entry.summary.slice(0, 60)}"`)
+      logger.info(`[GClaw] Auto-recorded from user message: type=${entry.type} summary="${entry.summary.slice(0, 60)}"`)
     }
   }
   // LLM 未提取到 → 说明 LLM 判断无记忆价值，不降级到正则
@@ -822,8 +823,8 @@ function logAiPrompt(params: {
     const logFile = path.join(logDir, 'ai-prompt-log.jsonl')
     fs.appendFileSync(logFile, JSON.stringify(entry) + '\n', 'utf-8')
 
-    console.log(`[GClaw] 提示词已记录: ${(systemPrompt.length / 1024).toFixed(1)}KB 系统提示 + ${params.message.length}字用户消息 + ${entry.attachments.length}附件 → ai-prompt-log.jsonl`)
+    logger.info(`[GClaw] 提示词已记录: ${(systemPrompt.length / 1024).toFixed(1)}KB 系统提示 + ${params.message.length}字用户消息 + ${entry.attachments.length}附件 → ai-prompt-log.jsonl`)
   } catch (err) {
-    console.warn('[GClaw] 记录提示词日志失败:', err instanceof Error ? err.message : err)
+    logger.warn('[GClaw] 记录提示词日志失败:', err instanceof Error ? err.message : err)
   }
 }

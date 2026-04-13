@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal } from 'lucide-react'
 import type { GlobalSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
+import { LogsPanel } from './LogsPanel'
 import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
 import { PreferencesPanel } from './PreferencesPanel'
@@ -11,7 +12,7 @@ import { DefaultSkillsPanel } from './DefaultSkillsPanel'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 
-type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'audit' | 'users' | 'security'
+type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'audit' | 'logs' | 'users' | 'security'
 
 interface SettingsPanelProps {
   projectId: string
@@ -104,6 +105,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     { key: 'defaultSkills', icon: <Zap size={14} />, label: '默认技能', adminOnly: true },
     { key: 'settings', icon: <SettingsIcon size={14} />, label: '设置', adminOnly: true },
     { key: 'audit', icon: <Shield size={14} />, label: '审计日志', adminOnly: true },
+    { key: 'logs', icon: <Terminal size={14} />, label: '运行日志', adminOnly: true },
     { key: 'users', icon: <Users size={14} />, label: '用户管理', adminOnly: true },
     { key: 'security', icon: <ShieldAlert size={14} />, label: '安全过滤', adminOnly: true },
   ]
@@ -137,6 +139,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         <DefaultSkillsPanel />
       ) : activeTab === 'audit' ? (
         <AuditLogPanel />
+      ) : activeTab === 'logs' ? (
+        <LogsPanel />
       ) : activeTab === 'users' ? (
         <UsersPanel />
       ) : activeTab === 'security' ? (

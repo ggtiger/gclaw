@@ -16,6 +16,7 @@ import { addProcedural, searchProcedural } from '@/lib/memory/procedural-manager
 import { retrieve } from '@/lib/memory/retrieval'
 import { getProjects, getProjectById } from '@/lib/store/projects'
 import { getAgents } from '@/lib/store/agents'
+import { logger } from '@/lib/logger'
 
 const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
@@ -94,7 +95,7 @@ export function syncProjectClaudeMd(
         fs.writeFileSync(claudeMdPath, content, 'utf-8')
       }
     } catch (err) {
-      console.error('[GClaw] Failed to write CLAUDE.md:', err)
+      logger.error('[GClaw] Failed to write CLAUDE.md:', err)
     }
   } else {
     // 无内容时删除 CLAUDE.md（避免残留旧指令）
@@ -294,7 +295,7 @@ function autoAgeLearnings(projectCwd: string): void {
 
       if (modified) {
         fs.writeFileSync(filePath, content, 'utf-8')
-        console.log(`[GClaw] autoAgeLearnings: aged pending entries in ${file}`)
+        logger.info(`[GClaw] autoAgeLearnings: aged pending entries in ${file}`)
       }
     }
   } catch {
@@ -383,7 +384,7 @@ function promoteLearningsToMemory(projectCwd: string, userId: string): void {
           entry.fullMatch.replace(oldStatusLine, newStatusLine)
         )
         modified = true
-        console.log(`[GClaw] promoteLearnings: ${entry.id} (${entry.category}) → procedural memory`)
+        logger.info(`[GClaw] promoteLearnings: ${entry.id} (${entry.category}) → procedural memory`)
       } catch {
         // 忽略单条回流失败
       }
@@ -455,7 +456,7 @@ function retrieveRelevantMemory(userId: string, userMessage: string, projectId?:
     // retrieve() 已按评分排序，直接取 top 5
     const topItems = items.slice(0, 5)
 
-    console.log(`[GClaw] Relevant memory: query="${userMessage.slice(0, 40)}" semantic=${result.semantic.length} procedural=${result.procedural.length} items=${topItems.length}`)
+    logger.info(`[GClaw] Relevant memory: query="${userMessage.slice(0, 40)}" semantic=${result.semantic.length} procedural=${result.procedural.length} items=${topItems.length}`)
 
     if (topItems.length === 0) return ''
 
