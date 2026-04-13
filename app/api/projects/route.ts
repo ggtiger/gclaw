@@ -11,6 +11,7 @@ import {
 import { addAuditLog } from '@/lib/store/audit-log'
 import { getAuthUser } from '@/lib/auth/helpers'
 import { getDefaultSkills, setEnabledSkills } from '@/lib/store/skills'
+import { scanAvailableSkills } from '@/lib/claude/skills-dir'
 import type { ProjectMode, ProjectType } from '@/types/skills'
 import { initializeProjectAgents } from '@/lib/modes/template-initializer'
 
@@ -73,6 +74,12 @@ export async function POST(request: NextRequest) {
   const defaultSkills = getDefaultSkills()
   if (defaultSkills.length > 0) {
     setEnabledSkills(project.id, defaultSkills)
+  } else {
+    // 无全局默认配置时，默认启用平台自带技能
+    const builtInSkills = scanAvailableSkills().filter(s => s.builtIn).map(s => s.name)
+    if (builtInSkills.length > 0) {
+      setEnabledSkills(project.id, builtInSkills)
+    }
   }
 
   // 按模式初始化 Agent

@@ -3,5 +3,6 @@
   "displayName": "GClaw API",
   "description": "GClaw 平台全量 REST API 操作技能，每次调用需用户确认",
   "version": "1.0.0",
-  "author": "GClaw"
+  "author": "GClaw",
+  "builtIn": true
 }

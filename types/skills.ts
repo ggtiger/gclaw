@@ -5,6 +5,7 @@ export interface SkillInfo {
   path: string
   enabled: boolean
   version?: string
+  builtIn?: boolean  // 平台自带技能（非市场安装）
 }
 
 // ── 全局设置（跨项目共享）──

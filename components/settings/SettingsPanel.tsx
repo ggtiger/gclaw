@@ -1,16 +1,17 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap } from 'lucide-react'
 import type { GlobalSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
 import { PreferencesPanel } from './PreferencesPanel'
+import { DefaultSkillsPanel } from './DefaultSkillsPanel'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 
-type SettingsTab = 'preferences' | 'settings' | 'audit' | 'users' | 'security'
+type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'audit' | 'users' | 'security'
 
 interface SettingsPanelProps {
   projectId: string
@@ -100,6 +101,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
 
   const tabs: { key: SettingsTab; icon: React.ReactNode; label: string; adminOnly: boolean }[] = [
     { key: 'preferences', icon: <Palette size={14} />, label: '偏好', adminOnly: false },
+    { key: 'defaultSkills', icon: <Zap size={14} />, label: '默认技能', adminOnly: true },
     { key: 'settings', icon: <SettingsIcon size={14} />, label: '设置', adminOnly: true },
     { key: 'audit', icon: <Shield size={14} />, label: '审计日志', adminOnly: true },
     { key: 'users', icon: <Users size={14} />, label: '用户管理', adminOnly: true },
@@ -131,6 +133,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
       {/* Tab 内容 */}
       {activeTab === 'preferences' ? (
         <PreferencesPanel backgroundImage={backgroundImage} onBackgroundChange={onBackgroundChange} />
+      ) : activeTab === 'defaultSkills' ? (
+        <DefaultSkillsPanel />
       ) : activeTab === 'audit' ? (
         <AuditLogPanel />
       ) : activeTab === 'users' ? (

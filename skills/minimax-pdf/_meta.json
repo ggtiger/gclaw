@@ -2,5 +2,6 @@
   "ownerId": "kn796gme8ra5magcj2xm9pk4gs82a06m",
   "slug": "minimax-pdf",
   "version": "1.0.0",
-  "publishedAt": 1772859366607
+  "publishedAt": 1772859366607,
+  "builtIn": true
 }

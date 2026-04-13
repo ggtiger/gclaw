@@ -3,5 +3,6 @@
   "displayName": "记忆系统",
   "description": "GClaw 记忆系统操作技能，支持记忆的读取、写入、检索和巩固",
   "version": "1.0.0",
-  "author": "GClaw"
+  "author": "GClaw",
+  "builtIn": true
 }

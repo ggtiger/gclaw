@@ -12,15 +12,28 @@ function getProjectId(request: NextRequest): string {
 export async function GET(request: NextRequest) {
   const projectId = getProjectId(request)
   const available = scanAvailableSkills()
-  const enabled = isValidProjectId(projectId) ? getEnabledSkills(projectId) : []
+  const hasProject = isValidProjectId(projectId)
+  const enabled = hasProject ? getEnabledSkills(projectId) : []
+
+  // 判断是否为首次使用（项目有效但没有配置过启用列表）
+  const isFirstUse = hasProject && enabled.length === 0
+
+  let finalEnabled: string[]
+  if (isFirstUse) {
+    // 首次使用：默认启用所有平台自带技能，并持久化
+    finalEnabled = available.filter(s => s.builtIn).map(s => s.name)
+    setEnabledSkills(projectId, finalEnabled)
+  } else {
+    finalEnabled = enabled
+  }
 
   // 合并 enabled 状态
   const merged = available.map(skill => ({
     ...skill,
-    enabled: enabled.includes(skill.name),
+    enabled: finalEnabled.includes(skill.name),
   }))
 
-  return Response.json({ skills: merged, enabled })
+  return Response.json({ skills: merged, enabled: finalEnabled })
 }
 
 export async function PUT(request: NextRequest) {

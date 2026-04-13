@@ -48,7 +48,7 @@ export function scanAvailableSkills(): SkillInfo[] {
         const name = path.basename(entry.name, '.md')
         const content = fs.readFileSync(filePath, 'utf-8')
         const { displayName, description } = parseSkillMeta(content, name)
-        results.push({ name, displayName, description, path: filePath, enabled: false })
+        results.push({ name, displayName, description, path: filePath, enabled: false, builtIn: true })
       } else if (entry.isDirectory()) {
         // 目录型技能：skills/xxx/SKILL.md
         const skillMdPath = path.join(SKILLS_DIR, entry.name, 'SKILL.md')
@@ -56,16 +56,18 @@ export function scanAvailableSkills(): SkillInfo[] {
           const name = entry.name
           const content = fs.readFileSync(skillMdPath, 'utf-8')
           const { displayName, description } = parseSkillMeta(content, name)
-          // 读取 _meta.json 的 version
+          // 读取 _meta.json
           let version: string | undefined
+          let builtIn = false
           const metaPath = path.join(SKILLS_DIR, entry.name, '_meta.json')
           if (fs.existsSync(metaPath)) {
             try {
               const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
               if (meta.version) version = String(meta.version)
+              if (meta.builtIn) builtIn = true
             } catch { /* ignore */ }
           }
-          results.push({ name, displayName, description, path: path.join(SKILLS_DIR, entry.name), enabled: false, version })
+          results.push({ name, displayName, description, path: path.join(SKILLS_DIR, entry.name), enabled: false, version, builtIn })
         }
       }
     }
