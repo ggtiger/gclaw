@@ -4,19 +4,36 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { EpisodicEntry, SemanticEntry, ProceduralEntry } from '@/types/memory'
 
-interface MemoryStats {
-  semanticCount: number
-  proceduralCount: number
-  episodicCount: number
+const DEFAULT_PAGE_SIZE = 20
+
+interface PageState {
+  page: number
+  pageSize: number
+}
+
+interface PaginatedData<T> {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
 export function useMemoryData(userId: string | undefined, projectId?: string) {
   const [semantic, setSemantic] = useState<SemanticEntry[]>([])
   const [procedural, setProcedural] = useState<ProceduralEntry[]>([])
   const [episodic, setEpisodic] = useState<EpisodicEntry[]>([])
-  const [stats, setStats] = useState<MemoryStats>({ semanticCount: 0, proceduralCount: 0, episodicCount: 0 })
+  const [stats, setStats] = useState({
+    semanticCount: 0, proceduralCount: 0, episodicCount: 0,
+    semanticTotalPages: 1, proceduralTotalPages: 1, episodicTotalPages: 1,
+  })
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [pages, setPages] = useState<Record<string, PageState>>({
+    semantic: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
+    procedural: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
+    episodic: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
+  })
 
   const fetchEntries = useCallback(async () => {
     if (!userId) return
@@ -24,16 +41,26 @@ export function useMemoryData(userId: string | undefined, projectId?: string) {
     try {
       const params = new URLSearchParams({ userId, level: 'all' })
       if (projectId) params.set('projectId', projectId)
+      // 发送当前分页参数
+      params.set('page', String(pages.semantic.page))
+      params.set('pageSize', String(pages.semantic.pageSize))
       const res = await fetch(`/api/memory/entries?${params}`)
       const data = await res.json()
       if (data.success) {
-        setSemantic(data.semantic || [])
-        setProcedural(data.procedural || [])
-        setEpisodic(data.episodic || [])
+        const sem = data.semantic as PaginatedData<SemanticEntry> | undefined
+        const proc = data.procedural as PaginatedData<ProceduralEntry> | undefined
+        const epi = data.episodic as PaginatedData<EpisodicEntry> | undefined
+
+        setSemantic(sem?.items || [])
+        setProcedural(proc?.items || [])
+        setEpisodic(epi?.items || [])
         setStats({
-          semanticCount: (data.semantic || []).length,
-          proceduralCount: (data.procedural || []).length,
-          episodicCount: (data.episodic || []).length,
+          semanticCount: sem?.total ?? 0,
+          proceduralCount: proc?.total ?? 0,
+          episodicCount: epi?.total ?? 0,
+          semanticTotalPages: sem?.totalPages ?? 1,
+          proceduralTotalPages: proc?.totalPages ?? 1,
+          episodicTotalPages: epi?.totalPages ?? 1,
         })
       }
     } catch (err) {
@@ -41,9 +68,13 @@ export function useMemoryData(userId: string | undefined, projectId?: string) {
     } finally {
       setLoading(false)
     }
-  }, [userId, projectId])
+  }, [userId, projectId, pages.semantic.page, pages.semantic.pageSize])
 
   useEffect(() => { fetchEntries() }, [fetchEntries])
+
+  const setPage = useCallback((level: 'semantic' | 'procedural' | 'episodic', page: number) => {
+    setPages(prev => ({ ...prev, [level]: { ...prev[level], page } }))
+  }, [])
 
   const recall = useCallback(async (query: string) => {
     if (!userId) return null
@@ -152,7 +183,7 @@ export function useMemoryData(userId: string | undefined, projectId?: string) {
     return null
   }, [userId, projectId, fetchEntries])
 
-  // 搜索过滤
+  // 搜索过滤（客户端过滤当前页数据）
   const filteredSemantic = searchQuery
     ? semantic.filter(e =>
         e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -177,6 +208,8 @@ export function useMemoryData(userId: string | undefined, projectId?: string) {
     stats,
     searchQuery,
     setSearchQuery,
+    page: pages,
+    setPage,
     recall,
     remember,
     archiveEntry,

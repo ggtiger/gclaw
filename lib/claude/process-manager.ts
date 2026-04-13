@@ -12,9 +12,9 @@ import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
 import { getProjectById } from '@/lib/store/projects'
-import { runConsolidation } from '@/lib/memory/consolidation'
 import { writeEpisodic } from '@/lib/memory/episodic-writer'
 import { extractWithLLM } from '@/lib/memory/llm-extractor'
+import { runConsolidation } from '@/lib/memory/consolidation'
 import type { SSEEvent, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 // 全局单例状态：挂载到 globalThis 防止 Next.js HMR / 模块实例隔离导致 Map 丢失
@@ -658,9 +658,9 @@ export async function* executeChat(
 
   yield { event: 'end', data: {} }
 
-  // 对话结束后自动记忆 + 巩固（async 不阻塞响应返回）
+  // 对话结束后自动从用户消息中提取记忆（不含 AI 回复内容）
   if (gotDone && userId) {
-    autoRecordAndConsolidate(userId, projectId, message, fullContent)
+    autoRecordFromUserMessage(userId, projectId, message)
       .catch(err => console.warn('[GClaw] Auto memory record failed:', err))
   }
 
@@ -708,41 +708,49 @@ export function getRunningProjects(): string[] {
 }
 
 /**
- * 对话结束后自动记忆 + 巩固
- * 1. 从用户消息中提取关键信息，写入情节记忆
- * 2. 触发巩固引擎，将情节记忆提炼为语义/程序记忆
- * 3. 刷新总纲
+ * 对话结束后仅从用户消息中提取记忆（不含 AI 回复）
+ * 提取偏好、决策、身份声明等有长期价值的信息
  */
-async function autoRecordAndConsolidate(
+async function autoRecordFromUserMessage(
   userId: string,
   projectId: string,
-  userMessage: string,
-  assistantReply: string
+  userMessage: string
 ): Promise<void> {
-  // ── 1. 自动提取情节记忆：LLM 提取 → 正则降级 ──
-  let episodicEntries = await extractWithLLM(userMessage, assistantReply, projectId)
+  // 短消息跳过（日常闲聊无提取价值）
+  if (userMessage.trim().length <= 5) return
 
-  if (episodicEntries) {
-    console.log(`[GClaw] LLM extracted ${episodicEntries.length} episodic entries`)
+  // 关键词快速过滤：只有包含偏好/决策/身份/错误等信号的消息才提取
+  const msg = userMessage.toLowerCase()
+  const hasSignal = [
+    /(?:不要|别|禁止|avoid)\s*(?:使用|用)/i,
+    /(?:使用|prefer|喜欢|偏好|讨厌|不喜欢)\s*/i,
+    /(?:我是|我用|我是做)\s*/i,
+    /(?:决定|采用|切换到|迁移到|升级到)\s*/i,
+    /(?:报错|出错了|失败了|崩溃|crash)/i,
+    /(?:遇到|出现|碰到|发现)\s*(?:了)?\s*(?:错误|bug|问题|异常)/i,
+  ].some(p => p.test(msg))
+
+  if (!hasSignal) return
+
+  // LLM 提取（只传用户消息，AI 回复传空）
+  const entries = await extractWithLLM(userMessage, '', projectId)
+
+  if (entries && entries.length > 0) {
+    for (const entry of entries) {
+      writeEpisodic(userId, entry)
+      console.log(`[GClaw] Auto-recorded from user message: type=${entry.type} summary="${entry.summary.slice(0, 60)}"`)
+    }
   } else {
-    // LLM 失败或无 API Key，降级到正则匹配
-    episodicEntries = extractEpisodicFromConversation(userMessage, assistantReply, projectId)
-    console.log(`[GClaw] Regex extracted ${episodicEntries.length} episodic entries (fallback)`)
+    // LLM 未提取到，用正则降级
+    const fallback = extractFromUserMessage(userMessage, projectId)
+    if (fallback) {
+      writeEpisodic(userId, fallback)
+      console.log(`[GClaw] Auto-recorded (regex fallback): type=${fallback.type} summary="${fallback.summary.slice(0, 60)}"`)
+    }
   }
 
-  for (const entry of episodicEntries) {
-    // 只写用户级，不写项目级（避免重复巩固）
-    writeEpisodic(userId, entry)
-    console.log(`[GClaw] Auto-recorded episodic: type=${entry.type} summary="${entry.summary.slice(0, 60)}"`)
-  }
-
-  // ── 2. 巩固（情节 → 语义/程序）──
+  // 巩固 + 刷新总纲
   const result = runConsolidation(userId, projectId)
-  if (result.semanticCreated > 0 || result.proceduralCreated > 0) {
-    console.log(`[GClaw] Memory consolidated: ${result.semanticCreated} semantic, ${result.proceduralCreated} procedural, ${result.episodicPromoted} episodic entries`)
-  }
-
-  // ── 3. 刷新总纲（LLM 提练 → 降级模板）──
   if (result.semanticCreated > 0 || result.proceduralCreated > 0) {
     const { refreshOverviewAsync } = await import('@/lib/memory/injection')
     await refreshOverviewAsync(userId)
@@ -750,134 +758,49 @@ async function autoRecordAndConsolidate(
 }
 
 /**
- * 从对话内容中提取情节记忆条目
- * 使用关键词匹配 + 模式识别，不依赖 LLM
+ * 正则降级：从用户消息中提取情节记忆
  */
-function extractEpisodicFromConversation(
+function extractFromUserMessage(
   userMessage: string,
-  assistantReply: string,
-  _projectId: string
-): Array<Omit<import('@/types/memory').EpisodicEntry, 'id' | 'timestamp'>> {
-  const msg = userMessage.toLowerCase()
-  const reply = assistantReply.slice(0, 500)
-
-  // 提取消息中有意义的关键词（用于标签）
-  const contextTags = extractContextTags(userMessage)
-
-  // ── 优先级互斥：preference > decision > error > action ──
-  // 每条消息最多提取一个类型
-
-  // ── 1. 偏好检测：用户表达喜欢/不喜欢/要求用/不要用 ──
-  const preferencePatterns: Array<{ pattern: RegExp; extractTitle: (m: RegExpMatchArray) => string }> = [
-    {
-      // "不要使用websearch" / "别用xxx"
-      pattern: /(?:不要|别|禁止|avoid)\s*(?:使用|用)?\s*(.+?)(?:，|,|$)/i,
-      extractTitle: (m) => `不使用${m[1].trim()}`,
-    },
-    {
-      // "使用百度skill" / "喜欢Java" / "用React"
-      pattern: /(?:使用|prefer|喜欢|偏好)\s*(.+?)(?:来|进行|做|查询|搜索|$)/i,
-      extractTitle: (m) => `偏好${m[1].trim()}`,
-    },
-    {
-      // "我是Java开发者" / "我用Java" / "我是老师"
-      pattern: /(?:我是|我用|我是做)\s*(.+?)(?:的|$)/i,
-      extractTitle: (m) => {
-        const raw = m[1].trim()
-        const hasRoleSuffix = /(?:开发|工程师|者|师|员|家|生)$/.test(raw)
-        return hasRoleSuffix ? `用户是${raw}` : `用户使用${raw}`
-      },
-    },
-  ]
-
-  for (const { pattern, extractTitle } of preferencePatterns) {
-    const match = userMessage.match(pattern)
-    if (match) {
-      return [{
-        projectId: _projectId,
-        type: 'preference',
-        summary: extractTitle(match),
-        detail: userMessage.slice(0, 200),
-        tags: ['auto-extracted', 'preference', ...contextTags],
-        source: 'hook',
-      }]
-    }
-  }
-
-  // ── 2. 决策检测：决定/选择/采用（需要更强上下文） ──
-  const decisionPatterns = [
-    /(?:决定|采用|切换到|迁移到|升级到)\s*(.{2,30})/i,
-    /(?:选择)\s*(?:使用|了|用)\s*(.{2,30})/i,  // "选择使用X" 而非单纯 "选择"
-  ]
-  for (const pattern of decisionPatterns) {
-    const match = userMessage.match(pattern)
-    if (match) {
-      return [{
-        projectId: _projectId,
-        type: 'decision',
-        summary: userMessage.slice(0, 200),
-        detail: reply.slice(0, 200),
-        tags: ['auto-extracted', 'decision', ...contextTags],
-        source: 'hook',
-      }]
-    }
-  }
-
-  // ── 3. 错误检测：需要自然语言上下文，排除代码片段中的 error ──
-  const errorPatterns = [
-    /(?:报错|出错了|失败了|崩溃|crash)/i,                          // 明确的错误报告
-    /(?:遇到|出现|碰到|发现)\s*(?:了)?\s*(?:错误|bug|问题|异常)/i, // "遇到了错误"
-    /(?:error|exception|bug).*(?:怎么|如何|为什么|帮|解决|修)/i,    // "error怎么解决"
-  ]
-  for (const pattern of errorPatterns) {
-    if (pattern.test(msg)) {
-      return [{
-        projectId: _projectId,
-        type: 'error',
-        summary: userMessage.slice(0, 200),
-        detail: reply.slice(0, 300),
-        tags: ['auto-extracted', 'error', ...contextTags],
-        source: 'hook',
-      }]
-    }
-  }
-
-  // ── 4. 兜底：通用 action ──
-  if (userMessage.trim().length > 5) {
-    return [{
-      projectId: _projectId,
-      type: 'action',
-      summary: userMessage.slice(0, 200),
-      detail: reply.slice(0, 300),
-      tags: ['auto-extracted', 'conversation', ...contextTags],
+  projectId: string
+): Omit<import('@/types/memory').EpisodicEntry, 'id' | 'timestamp'> | null {
+  // 偏好检测
+  const prefMatch = userMessage.match(/(?:不要|别|禁止|avoid)\s*(?:使用|用)?\s*(.+?)(?:，|,|$)/i)
+    || userMessage.match(/(?:使用|prefer|喜欢|偏好)\s*(.+?)(?:来|进行|做|查询|搜索|$)/i)
+    || userMessage.match(/(?:我是|我用|我是做)\s*(.+?)(?:的|$)/i)
+  if (prefMatch) {
+    return {
+      projectId,
+      type: 'preference',
+      summary: userMessage.slice(0, 150),
+      tags: ['auto-extracted', 'preference'],
       source: 'hook',
-    }]
+    }
   }
 
-  return []
-}
+  // 决策检测
+  if (/(?:决定|采用|切换到|迁移到|升级到|选择)\s*(?:使用|了|用)?\s*/i.test(userMessage)) {
+    return {
+      projectId,
+      type: 'decision',
+      summary: userMessage.slice(0, 150),
+      tags: ['auto-extracted', 'decision'],
+      source: 'hook',
+    }
+  }
 
-/**
- * 从用户消息中提取有意义的上下文标签
- * 用于巩固时的 groupByTags 分组，避免所有条目标签相同
- */
-function extractContextTags(text: string): string[] {
-  const tags: string[] = []
-  // 提取技术词汇（常见技术栈关键词）
-  const techPatterns = /\b(?:React|Vue|Next\.?js|Node|Java|Python|Go|Rust|TypeScript|TS|Docker|K8s|Redis|MySQL|PostgreSQL|MongoDB|Tailwind|CSS|HTML|API|SDK|Git|CI|CD|Webpack|Vite|Tauri|Electron)\b/gi
-  const matches = text.match(techPatterns)
-  if (matches) {
-    const unique = [...new Set(matches.map(m => m.toLowerCase()))]
-    tags.push(...unique.slice(0, 3))
+  // 错误检测
+  if (/(?:报错|出错了|失败了|崩溃|crash|遇到.*错误|发现.*bug)/i.test(userMessage)) {
+    return {
+      projectId,
+      type: 'error',
+      summary: userMessage.slice(0, 150),
+      tags: ['auto-extracted', 'error'],
+      source: 'hook',
+    }
   }
-  // 提取中文关键名词（2-4字，去掉常见停用词）
-  const cnWords = text.match(/[\u4e00-\u9fa5]{2,4}/g) || []
-  const stopWords = new Set(['不要', '使用', '可以', '需要', '应该', '已经', '这个', '那个', '什么', '怎么', '如何', '为什么', '帮我', '请问', '一下', '一些', '我们', '你们', '他们', '现在', '之前', '之后', '时候'])
-  const meaningful = cnWords.filter(w => !stopWords.has(w))
-  if (meaningful.length > 0) {
-    tags.push(...meaningful.slice(0, 2))
-  }
-  return tags
+
+  return null
 }
 
 export function isProcessRunning(): boolean {

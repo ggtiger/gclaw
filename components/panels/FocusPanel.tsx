@@ -40,6 +40,7 @@ export default function FocusPanel({ projectId, onHide }: Props) {
     semantic, procedural,
     searchQuery, setSearchQuery,
     archiveEntry, verifyEntry, consolidate,
+    stats, page, setPage,
   } = useMemoryData(userId, projectId)
 
   const [showSettings, setShowSettings] = useState(false)
@@ -57,7 +58,7 @@ export default function FocusPanel({ projectId, onHide }: Props) {
   }, [loading])
 
   // 记忆条目总数
-  const memoryCount = semantic.length + procedural.length
+  const memoryCount = stats.semanticCount + stats.proceduralCount
 
   return (
     <div className="flex flex-col overflow-hidden h-full bg-transparent">
@@ -147,6 +148,10 @@ export default function FocusPanel({ projectId, onHide }: Props) {
             onArchive={archiveEntry}
             onVerify={verifyEntry}
             onConsolidate={consolidate}
+            totalCounts={{ semantic: stats.semanticCount, procedural: stats.proceduralCount }}
+            pageState={{ semantic: page.semantic.page, procedural: page.procedural.page }}
+            totalPages={{ semantic: stats.semanticTotalPages, procedural: stats.proceduralTotalPages }}
+            onPageChange={setPage}
           />
         </div>
       )}

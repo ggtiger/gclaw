@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Tag, Archive, CheckCircle, Clock, Sparkles } from 'lucide-react'
+import { Search, Tag, Archive, CheckCircle, Clock, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { SemanticEntry, ProceduralEntry } from '@/types/memory'
 
 interface Props {
@@ -14,6 +14,11 @@ interface Props {
   onArchive: (id: string, level: 'semantic' | 'procedural') => void
   onVerify: (id: string, level: 'semantic' | 'procedural') => void
   onConsolidate: () => void
+  // 分页
+  totalCounts: { semantic: number; procedural: number }
+  pageState: { semantic: number; procedural: number }
+  totalPages: { semantic: number; procedural: number }
+  onPageChange: (level: 'semantic' | 'procedural', page: number) => void
 }
 
 type TabType = 'semantic' | 'procedural'
@@ -43,6 +48,7 @@ export default function MemoryList({
   semantic, procedural, loading,
   searchQuery, onSearchChange,
   onArchive, onVerify, onConsolidate,
+  totalCounts, pageState, totalPages, onPageChange,
 }: Props) {
   const [tab, setTab] = useState<TabType>('semantic')
   const [consolidating, setConsolidating] = useState(false)
@@ -87,7 +93,7 @@ export default function MemoryList({
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
           }`}
         >
-          语义 ({semantic.length})
+          语义 ({totalCounts.semantic})
         </button>
         <button
           onClick={() => setTab('procedural')}
@@ -97,7 +103,7 @@ export default function MemoryList({
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
           }`}
         >
-          程序 ({procedural.length})
+          程序 ({totalCounts.procedural})
         </button>
       </div>
 
@@ -125,6 +131,29 @@ export default function MemoryList({
           ))
         )}
       </div>
+
+      {/* 分页控件 */}
+      {(totalPages[tab] > 1) && (
+        <div className="flex items-center justify-center gap-2 pt-2 pb-1 shrink-0">
+          <button
+            onClick={() => onPageChange(tab, pageState[tab] - 1)}
+            disabled={pageState[tab] <= 1}
+            className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
+            {pageState[tab]} / {totalPages[tab]}
+          </span>
+          <button
+            onClick={() => onPageChange(tab, pageState[tab] + 1)}
+            disabled={pageState[tab] >= totalPages[tab]}
+            className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

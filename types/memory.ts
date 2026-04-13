@@ -9,7 +9,7 @@ export interface EpisodicEntry {
   id: string                    // "EP-20260407-001"
   timestamp: string             // ISO-8601
   projectId: string             // 来源项目
-  type: 'decision' | 'action' | 'error' | 'discovery' | 'preference' | 'milestone'
+  type: 'decision' | 'action' | 'error' | 'discovery' | 'preference' | 'correction' | 'milestone'
   summary: string               // <=200字
   detail?: string
   tags: string[]

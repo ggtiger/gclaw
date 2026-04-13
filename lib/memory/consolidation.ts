@@ -186,6 +186,29 @@ function consolidateDir(
     result.episodicPromoted++
   }
 
+  // ── 纠偏（踩反馈）→ 语义记忆（preference，低置信度）──
+  const corrections = byType.get('correction') || []
+  for (const ep of corrections) {
+    if (ep.promotedTo) continue
+    if (hasSimilarEntry(existingSemantic, ep.summary, ep.detail)) {
+      markPromoted(baseDir, [ep], 'skipped-duplicate')
+      continue
+    }
+    const entry = addSemantic(userId, {
+      type: 'preference',
+      title: `❌ ${extractTitle(ep)}`,
+      content: `用户不认可的回复方向: ${ep.detail || ep.summary}`,
+      scope: 'user',
+      tags: ['feedback', 'dislike', ...ep.tags],
+      confidence: 0.6,
+      sources: [{ episodicId: ep.id, date: ep.timestamp.slice(0, 10) }],
+    })
+    existingSemantic.push(entry)
+    markPromoted(baseDir, [ep], entry.id)
+    result.semanticCreated++
+    result.episodicPromoted++
+  }
+
   // 更新 lastConsolidatedAt
   const now = new Date().toISOString()
   const semantic = store.readSemantic(baseDir)
