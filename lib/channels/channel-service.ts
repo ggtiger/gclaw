@@ -78,7 +78,7 @@ function downloadFile(url: string, timeoutMs = 15_000): Promise<Buffer> {
 }
 
 interface DownloadResult {
-  attachmentData: AttachmentData | null   // null 表示非图片文件（不传给 Agent）
+  attachmentData: AttachmentData | null   // null 表示下载失败
   localUrl: string
   actualSize: number
 }
@@ -120,9 +120,10 @@ async function downloadChannelAttachment(
     fs.writeFileSync(path.join(attachDir, savedName), buffer)
 
     const localUrl = `/api/chat/attachments/${projectId}/${savedName}`
+    const absPath = path.resolve(path.join(attachDir, savedName))
     logger.info(`[ChannelService] 附件下载成功: ${att.type} ${(buffer.length / 1024).toFixed(1)}KB${att.aesKey ? ' (已解密)' : ''} → ${localUrl}`)
 
-    // 图片：传给 Agent（base64）；其他文件：只保存本地供 UI 下载
+    // 所有附件都生成 AttachmentData 传给 Agent
     let attachmentData: AttachmentData | null = null
     if (att.type === 'image') {
       attachmentData = {
@@ -130,6 +131,38 @@ async function downloadChannelAttachment(
         mimeType,
         content: buffer.toString('base64'),
         isImage: true,
+        localPath: absPath,
+      }
+    } else {
+      // 尝试将文件内容读取为文本
+      const textExt = new Set([
+        '.txt', '.md', '.csv', '.log', '.json', '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg',
+        '.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.go', '.rs', '.java', '.kt', '.c', '.cpp',
+        '.h', '.hpp', '.cs', '.php', '.swift', '.sh', '.bash', '.zsh', '.sql', '.html', '.css',
+        '.scss', '.less', '.vue', '.svelte',
+      ])
+      const ext2 = att.filename.split('.').pop()?.toLowerCase() || ''
+      const isText = textExt.has(`.${ext2}`)
+        || att.mimeType.startsWith('text/')
+        || ['application/json', 'application/xml', 'application/javascript', 'application/x-yaml'].includes(att.mimeType)
+
+      if (isText) {
+        const textContent = buffer.toString('utf-8')
+        attachmentData = {
+          filename: att.filename || `file.${ext}`,
+          mimeType: att.mimeType,
+          content: textContent,
+          isImage: false,
+          localPath: absPath,
+        }
+      } else {
+        attachmentData = {
+          filename: att.filename || `file.${ext}`,
+          mimeType: att.mimeType,
+          content: `[Binary file: ${att.filename || `file.${ext}`}, size: ${buffer.length} bytes, type: ${att.mimeType}]`,
+          isImage: false,
+          localPath: absPath,
+        }
       }
     }
 
@@ -168,7 +201,7 @@ export async function handleChannelMessage(
       }
     }
 
-    // 收集图片 AttachmentData 传给 Agent
+    // 收集所有附件 AttachmentData 传给 Agent（图片 + 文本文件 + 二进制文件描述）
     attachmentData = results
       .filter((r): r is DownloadResult => r !== null && r.attachmentData !== null)
       .map(r => r.attachmentData!)
@@ -202,19 +235,10 @@ export async function handleChannelMessage(
     data: {},
   })
 
-  // 构建传给 Agent 的文本：非图片附件附加本地文件信息
-  let agentText = incomingText
-  if (attachments) {
-    for (const att of attachments) {
-      if (att.type !== 'image' && att.url) {
-        agentText += `\n文件已保存: ${att.filename} (${(att.size / 1024).toFixed(1)}KB)`
-      }
-    }
-  }
-
+  // 所有附件都通过 AttachmentData 传给 Agent，无需额外拼接文本
   try {
-    logger.info(`[ChannelService] 发送给 AI: text="${agentText.substring(0, 200)}${agentText.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
-    for await (const event of executeChat(agentText, { projectId, attachments: attachmentData })) {
+    logger.info(`[ChannelService] 发送给 AI: text="${incomingText.substring(0, 200)}${incomingText.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
+    for await (const event of executeChat(incomingText, { projectId, attachments: attachmentData })) {
       if (event.event === 'delta' && typeof event.data.content === 'string') {
         fullContent += event.data.content
         // 流式推送 delta 到前端

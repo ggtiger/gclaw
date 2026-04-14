@@ -32,6 +32,8 @@
     "@tanstack/react-virtual": "^3.13.23",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@uiw/react-codemirror": "^4.25.9",
     "bcryptjs": "^3.0.3",
     "bufferutil": "^4.1.0",

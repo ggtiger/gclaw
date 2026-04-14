@@ -19,6 +19,7 @@
     "core:window:allow-unmaximize",
     "core:window:allow-set-title",
     "dialog:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "updater:default"
   ]
 }

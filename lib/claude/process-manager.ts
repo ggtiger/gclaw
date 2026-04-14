@@ -79,6 +79,7 @@ export interface AttachmentData {
   mimeType: string
   content: string           // base64（图片）或 纯文本（文档/代码）
   isImage: boolean
+  localPath?: string        // 本地绝对路径，供 Agent 工具访问
 }
 
 export interface ExecuteOptions {
@@ -459,7 +460,14 @@ export async function* executeChat(
 
     // 附件内容
     for (const att of options.attachments) {
+      const pathInfo = att.localPath ? `\n本地路径: ${att.localPath}` : ''
       if (att.isImage) {
+        // 图片：先附带文本描述（兜底不支持图片的模型），再发送 base64 图片数据
+        const approxSizeKB = Math.round(att.content.length * 0.75 / 1024)
+        contentBlocks.push({
+          type: 'text',
+          text: `[图片附件: ${att.filename}, 格式: ${att.mimeType}, 大小: ~${approxSizeKB}KB]${pathInfo}`,
+        })
         contentBlocks.push({
           type: 'image',
           source: {
@@ -471,7 +479,7 @@ export async function* executeChat(
       } else {
         contentBlocks.push({
           type: 'text',
-          text: `--- File: ${att.filename} ---\n${att.content}\n--- End of ${att.filename} ---`,
+          text: `--- File: ${att.filename} ---${pathInfo}\n${att.content}\n--- End of ${att.filename} ---`,
         })
       }
     }

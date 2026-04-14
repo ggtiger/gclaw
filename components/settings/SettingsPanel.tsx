@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info } from 'lucide-react'
 import type { GlobalSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { LogsPanel } from './LogsPanel'
@@ -9,10 +9,11 @@ import { UsersPanel } from './UsersPanel'
 import { SecurityPanel } from './SecurityPanel'
 import { PreferencesPanel } from './PreferencesPanel'
 import { DefaultSkillsPanel } from './DefaultSkillsPanel'
+import { AboutPanel } from './AboutPanel'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 
-type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'audit' | 'logs' | 'users' | 'security'
+type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'audit' | 'logs' | 'users' | 'security' | 'about'
 
 interface SettingsPanelProps {
   projectId: string
@@ -108,6 +109,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     { key: 'logs', icon: <Terminal size={14} />, label: '运行日志', adminOnly: true },
     { key: 'users', icon: <Users size={14} />, label: '用户管理', adminOnly: true },
     { key: 'security', icon: <ShieldAlert size={14} />, label: '安全过滤', adminOnly: true },
+    { key: 'about', icon: <Info size={14} />, label: '关于', adminOnly: false },
   ]
 
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin)
@@ -145,6 +147,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         <UsersPanel />
       ) : activeTab === 'security' ? (
         <SecurityPanel />
+      ) : activeTab === 'about' ? (
+        <AboutPanel />
       ) : activeTab === 'settings' ? (
         <div className="p-4 flex flex-col gap-3">
           {/* API Key */}

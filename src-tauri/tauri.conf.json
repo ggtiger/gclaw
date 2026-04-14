@@ -28,6 +28,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "resources": [
       "splash.html",
@@ -45,5 +46,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRGNTk2NTc4MDYxOUJFQUYKUldTdnZoa0dlR1ZaVDcwWVVuQ29Fd2szSVhyRmFUeG1sUUVudWU4ek10eWE1dk95d0VHRDBIblAK",
+      "endpoints": [
+        "https://github.com/ggtiger/gclaw/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -971,6 +971,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         // 注册自定义协议 splashpage:// 用于提供嵌入的 splash HTML
         .register_uri_scheme_protocol("splashpage", |_ctx, request| {
             let path = request.uri().path();

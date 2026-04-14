@@ -57,6 +57,7 @@ function loadAttachmentData(att: ChatAttachment, projectId: string): AttachmentD
       mimeType: att.mimeType,
       content: buffer.toString('base64'),
       isImage: true,
+      localPath: resolvedPath,
     }
   }
 
@@ -70,6 +71,7 @@ function loadAttachmentData(att: ChatAttachment, projectId: string): AttachmentD
       mimeType: att.mimeType,
       content,
       isImage: false,
+      localPath: resolvedPath,
     }
   }
 
@@ -79,6 +81,7 @@ function loadAttachmentData(att: ChatAttachment, projectId: string): AttachmentD
     mimeType: att.mimeType,
     content: `[Binary file: ${att.filename}, size: ${att.size} bytes, type: ${att.mimeType}]`,
     isImage: false,
+    localPath: resolvedPath,
   }
 }
 
