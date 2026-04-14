@@ -105,8 +105,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
         const enabled = (data.channels || []).filter((c: { enabled: boolean }) => c.enabled)
         if (enabled.length === 0) { setActiveChannels([]); return }
 
-        // 查询微信连接状态
-        const results = await Promise.all(enabled.map(async (ch: { id: string; type: string; name: string; wechat?: { botToken: string } }) => {
+        // 查询各渠道实际连接状态
+        const results = await Promise.all(enabled.map(async (ch: { id: string; type: string; name: string; wechat?: { botToken: string }; dingtalk?: { appKey: string } }) => {
           let connected = false
           if (ch.type === 'wechat' && ch.wechat?.botToken) {
             try {
@@ -123,7 +123,22 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
                 }).catch(() => {})
               }
             } catch {}
-          } else if (ch.type === 'dingtalk' || ch.type === 'feishu') {
+          } else if (ch.type === 'dingtalk' && ch.dingtalk?.appKey) {
+            try {
+              const sr = await fetch(`/api/channels/webhook/dingtalk/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
+              const sd = await sr.json()
+              connected = sd.status === 'connected'
+
+              // 首次加载时，钉钉未连接则自动连接
+              if (firstLoad && !connected) {
+                fetch('/api/channels/webhook/dingtalk/connect', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ projectId, channelId: ch.id }),
+                }).catch(() => {})
+              }
+            } catch {}
+          } else if (ch.type === 'feishu') {
             connected = true // webhook 渠道配置即视为已链接
           }
           return { type: ch.type, name: ch.name, connected }

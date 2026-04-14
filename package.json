@@ -34,6 +34,8 @@
     "@tauri-apps/plugin-opener": "^2.5.3",
     "@uiw/react-codemirror": "^4.25.9",
     "bcryptjs": "^3.0.3",
+    "bufferutil": "^4.1.0",
+    "dingtalk-stream-sdk-nodejs": "^2.0.4",
     "highlight.js": "^11.11.1",
     "jose": "^6.2.2",
     "lucide-react": "^0.460.0",

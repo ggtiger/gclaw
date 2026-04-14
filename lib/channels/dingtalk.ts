@@ -103,22 +103,19 @@ export async function replyDingtalk(
 }
 
 /**
- * 通过钉钉 OpenAPI 发送消息（需要 access_token）
+ * 获取钉钉 access_token（新版 API）
  */
 export async function getAccessToken(config: DingtalkConfig): Promise<string | null> {
   try {
-    const res = await fetch('https://oapi.dingtalk.com/gettoken', {
-      method: 'GET',
+    const res = await fetch('https://api.dingtalk.com/v1.0/oauth2/accessToken', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appKey: config.appKey, appSecret: config.appSecret }),
       signal: AbortSignal.timeout(10000),
     })
-    const url = new URL('https://oapi.dingtalk.com/gettoken')
-    url.searchParams.set('appkey', config.appKey)
-    url.searchParams.set('appsecret', config.appSecret)
-
-    const tokenRes = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) })
-    const data = await tokenRes.json()
-    return data.access_token || null
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.accessToken || null
   } catch {
     return null
   }

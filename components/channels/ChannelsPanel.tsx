@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Copy, Check, Link2, RefreshCw, QrCode, Smartphone, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Link2, RefreshCw, QrCode, Smartphone, Loader2, AlertCircle, Pencil, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import type { ChannelConfig, ChannelType } from '@/types/channels'
 import { useToast } from '@/components/ui/Toast'
@@ -19,6 +19,12 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
   const [adding, setAdding] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
+  // 编辑状态
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editFields, setEditFields] = useState<Record<string, string>>({})
+  const [editSaving, setEditSaving] = useState(false)
+
   // 微信 QR 码扫码登录状态
   const [qrLogin, setQrLogin] = useState<{
     channelId: string | null
@@ -31,6 +37,9 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
 
   // 微信连接状态 { channelId -> status }
   const [wechatStatus, setWechatStatus] = useState<Record<string, { status: string; error?: string }>>({})
+
+  // 钉钉 Stream 连接状态 { channelId -> status }
+  const [dingtalkStatus, setDingtalkStatus] = useState<Record<string, { status: string; error?: string }>>({})
 
   // 新建表单
   const [newType, setNewType] = useState<ChannelType>('dingtalk')
@@ -85,6 +94,42 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
       setTimeout(fetchWechatStatuses, 1000)
     } catch (err) {
       console.error('Reconnect failed:', err)
+    }
+  }
+
+  // 轮询钉钉 Stream 连接状态
+  const fetchDingtalkStatuses = useCallback(async () => {
+    const dingtalkChannels = channels.filter(c => c.type === 'dingtalk' && c.dingtalk?.appKey)
+    if (dingtalkChannels.length === 0) return
+
+    const statuses: Record<string, { status: string; error?: string }> = {}
+    for (const ch of dingtalkChannels) {
+      try {
+        const res = await fetch(`/api/channels/webhook/dingtalk/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
+        if (res.ok) {
+          statuses[ch.id] = await res.json()
+        }
+      } catch { /* ignore */ }
+    }
+    setDingtalkStatus(statuses)
+  }, [channels, projectId])
+
+  useEffect(() => {
+    fetchDingtalkStatuses()
+    const interval = setInterval(fetchDingtalkStatuses, 5000)
+    return () => clearInterval(interval)
+  }, [fetchDingtalkStatuses])
+
+  const handleDingtalkReconnect = async (channelId: string) => {
+    try {
+      await fetch('/api/channels/webhook/dingtalk/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, channelId }),
+      })
+      setTimeout(fetchDingtalkStatuses, 1000)
+    } catch (err) {
+      console.error('Dingtalk reconnect failed:', err)
     }
   }
 
@@ -155,6 +200,68 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
       console.error('Failed to delete channel:', err)
       toast('删除渠道失败', 'error')
       fetchChannels()
+    }
+  }
+
+  const startEdit = (ch: ChannelConfig) => {
+    setEditingId(ch.id)
+    setEditName(ch.name)
+    const fields: Record<string, string> = {}
+    if (ch.dingtalk) {
+      fields.appKey = ch.dingtalk.appKey || ''
+      fields.appSecret = ''
+    }
+    if (ch.feishu) {
+      fields.appId = ch.feishu.appId || ''
+      fields.appSecret = ''
+      fields.verificationToken = ch.feishu.verificationToken || ''
+      fields.encryptKey = ch.feishu.encryptKey || ''
+    }
+    setEditFields(fields)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editName.trim()) return
+    setEditSaving(true)
+    const ch = channels.find(c => c.id === editingId)
+    if (!ch) { setEditSaving(false); return }
+
+    const body: Record<string, unknown> = { name: editName }
+    switch (ch.type) {
+      case 'dingtalk':
+        body.dingtalk = {
+          appKey: editFields.appKey || ch.dingtalk?.appKey || '',
+          appSecret: editFields.appSecret || ch.dingtalk?.appSecret || '',
+        }
+        break
+      case 'feishu':
+        body.feishu = {
+          appId: editFields.appId || ch.feishu?.appId || '',
+          appSecret: editFields.appSecret || ch.feishu?.appSecret || '',
+          verificationToken: editFields.verificationToken || ch.feishu?.verificationToken || '',
+          encryptKey: editFields.encryptKey !== undefined ? (editFields.encryptKey || undefined) : ch.feishu?.encryptKey,
+        }
+        break
+    }
+
+    try {
+      const res = await fetch(`/api/channels?projectId=${encodeURIComponent(projectId)}&channelId=${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        setChannels(prev => prev.map(c => c.id === editingId ? { ...c, ...body } as ChannelConfig : c))
+        setEditingId(null)
+        toast('渠道已更新', 'success')
+      } else {
+        toast('更新渠道失败', 'error')
+      }
+    } catch (err) {
+      console.error('Failed to update channel:', err)
+      toast('更新渠道失败', 'error')
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -278,6 +385,93 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
     }
   }
 
+  const renderEditFields = (ch: ChannelConfig) => {
+    switch (ch.type) {
+      case 'dingtalk':
+        return (
+          <>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>App Key</label>
+              <input
+                type="text"
+                value={editFields.appKey || ''}
+                onChange={e => setEditFields(prev => ({ ...prev, appKey: e.target.value }))}
+                placeholder="钉钉机器人 AppKey"
+                className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>App Secret</label>
+              <input
+                type="password"
+                value={editFields.appSecret || ''}
+                onChange={e => setEditFields(prev => ({ ...prev, appSecret: e.target.value }))}
+                placeholder="留空则不修改"
+                className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+              />
+            </div>
+          </>
+        )
+      case 'feishu':
+        return (
+          <>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>App ID</label>
+              <input
+                type="text"
+                value={editFields.appId || ''}
+                onChange={e => setEditFields(prev => ({ ...prev, appId: e.target.value }))}
+                placeholder="飞书应用 App ID"
+                className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>App Secret</label>
+              <input
+                type="password"
+                value={editFields.appSecret || ''}
+                onChange={e => setEditFields(prev => ({ ...prev, appSecret: e.target.value }))}
+                placeholder="留空则不修改"
+                className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>Verification Token</label>
+              <input
+                type="text"
+                value={editFields.verificationToken || ''}
+                onChange={e => setEditFields(prev => ({ ...prev, verificationToken: e.target.value }))}
+                placeholder="事件订阅验证令牌"
+                className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>Encrypt Key (可选)</label>
+              <input
+                type="text"
+                value={editFields.encryptKey || ''}
+                onChange={e => setEditFields(prev => ({ ...prev, encryptKey: e.target.value }))}
+                placeholder="事件加密密钥"
+                className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none transition-colors focus:border-[var(--color-primary)]"
+                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+              />
+            </div>
+          </>
+        )
+      case 'wechat':
+        return (
+          <div className="text-xs py-1" style={{ color: 'var(--color-text-muted)' }}>
+            微信渠道凭据通过扫码获取，请使用下方扫码按钮管理。
+          </div>
+        )
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-4 space-y-3">
@@ -327,6 +521,14 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex items-center gap-1">
                     <button
+                      onClick={() => editingId === ch.id ? setEditingId(null) : startEdit(ch)}
+                      className="p-1 rounded cursor-pointer transition-colors"
+                      style={{ color: editingId === ch.id ? 'var(--color-primary)' : 'var(--color-text-muted)' }}
+                      title="编辑"
+                    >
+                      {editingId === ch.id ? <X size={12} /> : <Pencil size={12} />}
+                    </button>
+                    <button
                       onClick={() => handleToggle(ch)}
                       className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0 cursor-pointer"
                       style={{ backgroundColor: ch.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}
@@ -367,6 +569,65 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                     {copiedId === ch.id ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Copy size={12} />}
                   </button>
                 </div>
+
+                {/* 编辑表单 */}
+                {editingId === ch.id && (
+                  <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: 'var(--color-border)' }}>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>渠道名称</label>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-md border text-xs outline-none transition-colors focus:border-[var(--color-primary)]"
+                        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}
+                      />
+                    </div>
+                    {renderEditFields(ch)}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={!editName.trim() || editSaving}
+                        className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
+                      >
+                        {editSaving ? '保存中...' : '保存'}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-3 py-1.5 rounded-md text-xs border transition-colors cursor-pointer"
+                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 钉钉 Stream 连接状态 */}
+                {ch.type === 'dingtalk' && ch.dingtalk?.appKey && (() => {
+                  const ds = dingtalkStatus[ch.id]
+                  const statusLabel = ds?.status === 'connected' ? '已连接' : ds?.status === 'connecting' ? '连接中...' : ds?.status === 'error' ? '连接异常' : '未连接'
+                  const statusColor = ds?.status === 'connected' ? 'var(--color-success, #22c55e)' : ds?.status === 'error' ? 'var(--color-error, #ef4444)' : 'var(--color-text-muted)'
+                  return (
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor }} />
+                        <span style={{ color: statusColor }}>{statusLabel}</span>
+                        {ds?.error && <span className="text-[10px]" style={{ color: 'var(--color-error, #ef4444)' }}>({ds.error})</span>}
+                      </div>
+                      <button
+                        onClick={() => handleDingtalkReconnect(ch.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors cursor-pointer"
+                        style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
+                        title="重新连接"
+                      >
+                        <RefreshCw size={10} />
+                        重连
+                      </button>
+                    </div>
+                  )
+                })()}
 
                 {/* 微信 QR 码扫码登录区 */}
                 {ch.type === 'wechat' && (
