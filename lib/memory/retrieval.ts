@@ -341,8 +341,8 @@ function getZhSegmenter(): Intl.Segmenter | null {
   }
 }
 
-/** 从文本中提取用于匹配的关键词 */
-function extractMatchKeywords(text: string): string[] {
+/** 从文本中提取用于匹配的关键词（支持中文分词） */
+export function extractMatchKeywords(text: string): string[] {
   const segmenter = getZhSegmenter()
 
   if (segmenter) {

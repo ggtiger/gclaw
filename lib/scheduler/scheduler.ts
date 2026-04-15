@@ -56,8 +56,10 @@ class TaskScheduler {
 
       case 'interval': {
         if (!schedule.intervalMs) return null
-        const base = lastRunAt ? new Date(lastRunAt) : new Date()
-        return new Date(base.getTime() + schedule.intervalMs)
+        // 从未执行过 → 立即触发（返回当前时间）
+        if (!lastRunAt) return new Date()
+        // 已执行过 → 上次执行时间 + 间隔
+        return new Date(new Date(lastRunAt).getTime() + schedule.intervalMs)
       }
 
       case 'cron':

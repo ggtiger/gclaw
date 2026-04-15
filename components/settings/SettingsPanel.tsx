@@ -117,12 +117,12 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   return (
     <div>
       {/* Tab 栏 */}
-      <div className="flex px-4 pt-3 gap-1">
+      <div className="flex px-4 pt-3 gap-1 overflow-x-auto scrollbar-none">
         {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
               activeTab === tab.key
                 ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm'
                 : 'text-gray-500 dark:text-gray-400'

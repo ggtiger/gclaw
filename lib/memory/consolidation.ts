@@ -317,7 +317,7 @@ function generateShortTitle(summary: string, type: string): string {
 
 /**
  * 检查是否已有内容相似的条目（防止重复巩固）
- * 比较 title 和 content 的关键词重叠度
+ * 比较 title + content 的关键词重叠度
  */
 function hasSimilarEntry<T extends { title: string; content: string }>(
   existing: T[],
@@ -336,20 +336,29 @@ function hasSimilarEntry<T extends { title: string; content: string }>(
     const similarityA = overlap.length / Math.max(targetWords.length, 1)
     const similarityB = overlap.length / Math.max(existingWords.length, 1)
     const similarity = Math.max(similarityA, similarityB)
-    if (similarity >= 0.5) return true
+    if (similarity >= 0.35) return true
   }
 
   return false
 }
 
 /**
- * 简单关键词提取：按标点/空格分词，过滤短词
+ * 去重专用关键词提取
+ * 策略：先去掉中文虚词，再按标点/空格分词，保留有意义的片段
+ * 不使用 bigram（bigram 产生过多短 token 会导致去重过于激进）
  */
 function extractKeywords(text: string): string[] {
-  return text
+  const lower = text.toLowerCase()
+  // 提取英文单词
+  const enWords = lower.match(/[a-z]{2,}/g) || []
+  // 去掉中文虚词（单字虚词 + 常见双字虚词），用空格替代，让后续分词能断开
+  const cnClean = lower.replace(/[的了吗呢吧啊着过地得很了一是在也都有还会就能这那]/g, ' ')
+  // 按标点/空格分词
+  const parts = cnClean
     .replace(/[，。！？、；：""''（）【】《》\s,.\-!?;:()[\]{}<>]/g, ' ')
     .split(/\s+/)
     .filter(w => w.length >= 2)
+  return [...new Set([...enWords, ...parts])]
 }
 
 function groupBy<T>(arr: T[], keyFn: (item: T) => string): Map<string, T[]> {
