@@ -65,12 +65,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const apiKey = body.apiKey || process.env.ANTHROPIC_API_KEY
+  // 优先用前端传入的 key → 已存储的 key → 环境变量
+  const settings = getGlobalSettings()
+  const apiKey = body.apiKey || settings.apiKey || process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return Response.json({ error: '未配置 API Key' }, { status: 400 })
   }
 
-  const baseUrl = (body.apiBaseUrl || '').trim()
+  const baseUrl = (body.apiBaseUrl || settings.apiBaseUrl || '').trim()
   return fetchModels(baseUrl, apiKey)
 }
 
