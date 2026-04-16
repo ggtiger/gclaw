@@ -8,9 +8,12 @@
 
 import type { EpisodicEntry } from '@/types/memory'
 import { logger } from '@/lib/logger'
+import { getGlobalSettings } from '@/lib/store/settings'
 
-/** LLM 提取模型（使用最便宜的 Haiku） */
-const EXTRACT_MODEL = 'claude-haiku-4-20250414'
+/** 获取辅助模型名称 */
+function getAssistantModel(): string {
+  return getGlobalSettings().assistantModel || 'claude-haiku-4-20250414'
+}
 /** 超时时间（毫秒） */
 const EXTRACT_TIMEOUT = 8000
 /** 输入截断限制 */
@@ -87,7 +90,7 @@ export async function extractWithLLM(
   try {
     const response = await Promise.race([
       callAnthropicAPI(apiKey, {
-        model: EXTRACT_MODEL,
+        model: getAssistantModel(),
         max_tokens: 512,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],

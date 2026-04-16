@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-20250414',
+        model: settings.assistantModel || 'claude-haiku-4-20250414',
         max_tokens: 1024,
         system: `你是一个提示词优化助手。用户给你一段输入文本，你需要将其优化为更清晰、更具体、更有效的 AI 提示词。
 

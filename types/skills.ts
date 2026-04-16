@@ -19,6 +19,8 @@ export interface GlobalSettings {
   apiBaseUrl: string
   theme: 'light' | 'dark' | 'system'
   security: SecuritySettings
+  /** 辅助模型（记忆提取/总纲生成/提示词优化等轻量任务） */
+  assistantModel: string
 }
 
 export const DEFAULT_GLOBAL: GlobalSettings = {
@@ -29,6 +31,7 @@ export const DEFAULT_GLOBAL: GlobalSettings = {
     sensitiveWords: [],
     retentionDays: 0,
   },
+  assistantModel: 'claude-haiku-4-20250414',
 }
 
 // ── 项目级设置（每个项目独立）──

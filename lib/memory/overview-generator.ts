@@ -11,9 +11,12 @@ import { store } from './store'
 import type { SemanticEntry, ProceduralEntry } from '@/types/memory'
 import { callAnthropicAPI, timeout } from './llm-extractor'
 import { logger } from '@/lib/logger'
+import { getGlobalSettings } from '@/lib/store/settings'
 
-/** LLM 提练模型 */
-const OVERVIEW_MODEL = 'claude-haiku-4-20250414'
+/** 获取辅助模型名称 */
+function getAssistantModel(): string {
+  return getGlobalSettings().assistantModel || 'claude-haiku-4-20250414'
+}
 /** LLM 超时时间（毫秒） */
 const OVERVIEW_TIMEOUT = 10000
 
@@ -205,7 +208,7 @@ async function generateOverviewWithLLM(userId: string): Promise<string | null> {
   try {
     const response = await Promise.race([
       callAnthropicAPI(apiKey, {
-        model: OVERVIEW_MODEL,
+        model: getAssistantModel(),
         max_tokens: 1024,
         system: OVERVIEW_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],

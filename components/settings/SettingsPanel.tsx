@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw } from 'lucide-react'
 import type { GlobalSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { LogsPanel } from './LogsPanel'
@@ -30,6 +30,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const [showApiKey, setShowApiKey] = useState(false)
   const [apiKeyRawValue, setApiKeyRawValue] = useState('')
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'preferences')
+  const [models, setModels] = useState<{ id: string; name: string }[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
 
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
@@ -49,6 +51,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         apiBaseUrl: data.apiBaseUrl || '',
         theme: data.theme || 'system',
         security: data.security || { sensitiveWords: [], retentionDays: 0 },
+        assistantModel: data.assistantModel || '',
       })
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -66,6 +69,32 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     setSettings({ ...settings, [key]: value })
     setDirty(true)
   }
+
+  const fetchModels = useCallback(async () => {
+    if (!settings) return
+    setLoadingModels(true)
+    try {
+      // 把当前表单值（含未保存的）传给后端
+      const res = await fetch('/api/settings/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: apiKeyRawValue || undefined,
+          apiBaseUrl: settings.apiBaseUrl || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.models) {
+        setModels(data.models)
+      } else {
+        toast(data.error || '获取模型列表失败', 'error')
+      }
+    } catch {
+      toast('获取模型列表失败', 'error')
+    } finally {
+      setLoadingModels(false)
+    }
+  }, [settings, apiKeyRawValue, toast])
 
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
@@ -195,6 +224,46 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
             />
             <div className="text-xs mt-1 text-gray-400">
               留空使用默认地址，可填写代理地址
+            </div>
+          </div>
+
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs text-gray-500 dark:text-gray-400">
+                辅助模型 <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={fetchModels}
+                disabled={loadingModels}
+                className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
+                {models.length > 0 ? '刷新模型' : '获取模型列表'}
+              </button>
+            </div>
+            {models.length > 0 ? (
+              <select
+                value={settings.assistantModel || ''}
+                onChange={e => updateField('assistantModel', e.target.value)}
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+              >
+                <option value="" disabled>请选择模型</option>
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={settings.assistantModel || ''}
+                onChange={e => updateField('assistantModel', e.target.value)}
+                placeholder="先填写 API Key 后获取模型列表"
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+              />
+            )}
+            <div className="text-xs mt-1 text-gray-400">
+              用于记忆提取、总纲生成、提示词优化等轻量任务
             </div>
           </div>
 
