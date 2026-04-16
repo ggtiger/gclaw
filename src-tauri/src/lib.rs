@@ -401,9 +401,18 @@ fn git_download_url() -> Option<String> {
 
 /// 获取文件大小（Content-Length）
 fn get_remote_size(url: &str) -> u64 {
-    let output = hidden_command(curl_cmd())
-        .args(&["-sI", "-L", url])
-        .output();
+    let curl = curl_cmd();
+    let mut cmd = hidden_command(curl);
+    cmd.args(&["-sI", "-L", "--connect-timeout", "10", "--max-time", "15",
+           "--proxy-auto-config", "--proxy-anyauth"])
+        .arg(url);
+    // 透传代理环境变量
+    for key in &["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"] {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+    let output = cmd.output();
     match output {
         Ok(out) if out.status.success() => {
             let headers = String::from_utf8_lossy(&out.stdout);
@@ -467,6 +476,16 @@ fn download_runtime(
 
     let temp_dir = std::env::temp_dir().join(format!("gclaw-dl-{}", name));
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+
+    // 检查 curl 是否可用
+    let curl_check = hidden_command(curl_cmd())
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if curl_check.is_err() || !curl_check.unwrap().success() {
+        return Err(format!("未找到 curl，无法下载 {}。请确认系统已安装 curl", label));
+    }
     let archive_ext = if url.ends_with(".7z.exe") { ".7z.exe" }
                       else if url.ends_with(".zip") { ".zip" }
                       else if url.ends_with(".tar.xz") { ".tar.xz" }
@@ -482,17 +501,31 @@ fn download_runtime(
         &format!("{:.1} MB", total_mb));
     splash_check(app, name, "downloading");
 
-    // 启动 curl 下载
-    let mut child = hidden_command(curl_cmd())
-        .args(&["-L", "-f", "--progress-bar", "-o"])
+    // 启动 curl 下载（含超时，防止卡死）
+    let curl = curl_cmd();
+    let mut cmd = hidden_command(curl);
+    cmd.args(&["-L", "-f", "--progress-bar", "--connect-timeout", "30", "--max-time", "300",
+           // 使用系统代理（Windows 浏览器能访问但 curl 默认不走代理）
+           "--proxy-auto-config", "--proxy-anyauth"])
+        .arg("-o")
         .arg(&archive)
         .arg(url)
         .stderr(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null());
+
+    // 透传当前进程的代理环境变量
+    for key in &["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY", "ALL_PROXY", "all_proxy"] {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("curl 启动失败: {}", e))?;
 
     let start = std::time::Instant::now();
+    let download_timeout = std::time::Duration::from_secs(300); // 5 分钟总超时
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -504,6 +537,12 @@ fn download_runtime(
                 break;
             }
             Ok(None) => {
+                // 总超时保护
+                if start.elapsed() > download_timeout {
+                    let _ = child.kill();
+                    std::fs::remove_file(&archive).ok();
+                    return Err(format!("{} 下载超时（5分钟无响应）", label));
+                }
                 // 更新进度
                 let downloaded = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
                 let progress = if total > 0 {
