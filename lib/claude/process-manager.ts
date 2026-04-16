@@ -451,7 +451,10 @@ export async function* executeChat(
     }
 
     // 构建多模态 content blocks
-    const contentBlocks: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = []
+    const contentBlocks: Array<
+      | { type: 'text'; text: string }
+      | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    > = []
 
     // 主文本
     if (message) {
@@ -489,7 +492,7 @@ export async function* executeChat(
       yield {
         type: 'user',
         session_id: resumeId || '',
-        message: { role: 'user', content: contentBlocks },
+        message: { role: 'user', content: contentBlocks as any },
         parent_tool_use_id: null,
       }
     }
