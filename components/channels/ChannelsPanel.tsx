@@ -10,6 +10,7 @@ const CHANNEL_TYPES: { type: ChannelType; label: string; icon: string }[] = [
   { type: 'dingtalk', label: '钉钉', icon: '🔵' },
   { type: 'feishu', label: '飞书', icon: '🟣' },
   { type: 'wechat', label: '微信 ClawBot', icon: '🟢' },
+  { type: 'api', label: 'API 接入', icon: '🔌' },
 ]
 
 export function ChannelsPanel({ projectId }: { projectId: string }) {
@@ -151,6 +152,9 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
         break
       case 'wechat':
         body.wechat = { botToken: '', accountId: '' }
+        break
+      case 'api':
+        body.api = { apiKey: '' }
         break
     }
 
@@ -382,6 +386,13 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
             <p className="mt-1 opacity-75">需要 iOS 微信 8.0.70+ 版本</p>
           </div>
         )
+      case 'api':
+        return (
+          <div className="text-xs py-2" style={{ color: 'var(--color-text-muted)' }}>
+            <p>API Key 将在创建后自动生成。</p>
+            <p className="mt-1 opacity-75">第三方系统通过 HTTP API + SSE 与 Agent 交互。</p>
+          </div>
+        )
     }
   }
 
@@ -469,6 +480,12 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
             微信渠道凭据通过扫码获取，请使用下方扫码按钮管理。
           </div>
         )
+      case 'api':
+        return (
+          <div className="text-xs py-1" style={{ color: 'var(--color-text-muted)' }}>
+            API Key 创建后不可修改，如需更换请删除后重新创建。
+          </div>
+        )
     }
   }
 
@@ -548,12 +565,58 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                     </button>
                   </div>
                 </div>
-                {/* Webhook URL */}
+                {/* API 渠道：显示 Key + 端点 */}
+                {ch.type === 'api' ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>Key:</span>
+                      <input
+                        readOnly
+                        value={ch.api?.apiKey || ''}
+                        className="flex-1 min-w-0 px-2 py-1 rounded text-[10px] font-mono border outline-none"
+                        style={{
+                          borderColor: 'var(--color-border)',
+                          backgroundColor: 'var(--color-bg-secondary)',
+                          color: 'var(--color-text-muted)',
+                        }}
+                      />
+                      <button
+                        onClick={() => copyToClipboard(ch.api?.apiKey || '', `key_${ch.id}`)}
+                        className="p-1 rounded cursor-pointer transition-colors flex-shrink-0"
+                        style={{ color: 'var(--color-text-muted)' }}
+                        title="复制 API Key"
+                      >
+                        {copiedId === `key_${ch.id}` ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>POST:</span>
+                      <input
+                        readOnly
+                        value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/webhook/api/message`}
+                        className="flex-1 min-w-0 px-2 py-1 rounded text-[10px] font-mono border outline-none"
+                        style={{
+                          borderColor: 'var(--color-border)',
+                          backgroundColor: 'var(--color-bg-secondary)',
+                          color: 'var(--color-text-muted)',
+                        }}
+                      />
+                      <button
+                        onClick={() => copyToClipboard(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/webhook/api/message`, `url_${ch.id}`)}
+                        className="p-1 rounded cursor-pointer transition-colors flex-shrink-0"
+                        style={{ color: 'var(--color-text-muted)' }}
+                        title="复制端点 URL"
+                      >
+                        {copiedId === `url_${ch.id}` ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="flex items-center gap-1.5">
                   <input
                     readOnly
                     value={webhookUrl}
-                    className="flex-1 px-2 py-1 rounded text-[10px] font-mono border outline-none"
+                    className="flex-1 min-w-0 px-2 py-1 rounded text-[10px] font-mono border outline-none"
                     style={{
                       borderColor: 'var(--color-border)',
                       backgroundColor: 'var(--color-bg-secondary)',
@@ -562,13 +625,14 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                   />
                   <button
                     onClick={() => copyToClipboard(webhookUrl, ch.id)}
-                    className="p-1 rounded cursor-pointer transition-colors"
+                    className="p-1 rounded cursor-pointer transition-colors flex-shrink-0"
                     style={{ color: 'var(--color-text-muted)' }}
                     title="复制 Webhook URL"
                   >
                     {copiedId === ch.id ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Copy size={12} />}
                   </button>
                 </div>
+                )}
 
                 {/* 编辑表单 */}
                 {editingId === ch.id && (
