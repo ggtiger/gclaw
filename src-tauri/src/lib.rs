@@ -480,12 +480,20 @@ fn git_download_url() -> Option<String> {
     }
 }
 
+/// 构建 curl 下载命令（兼容 Windows 自带 curl 和官方 curl）
+fn curl_download_cmd(program: &str) -> Command {
+    let mut cmd = hidden_command(program);
+    // 不传 --proxy-auto-config / --proxy-anyauth：Windows 自带 curl 不支持
+    // 代理通过环境变量 http_proxy/https_proxy 透传即可
+    cmd.args(&["-L", "-f", "--progress-bar", "--connect-timeout", "30", "--max-time", "300"]);
+    cmd
+}
+
 /// 获取文件大小（Content-Length）
 fn get_remote_size(url: &str) -> u64 {
     let curl = curl_cmd();
     let mut cmd = hidden_command(curl);
-    cmd.args(&["-sI", "-L", "--connect-timeout", "10", "--max-time", "15",
-           "--proxy-auto-config", "--proxy-anyauth"])
+    cmd.args(&["-sI", "-L", "--connect-timeout", "10", "--max-time", "15"])
         .arg(url);
     // 透传代理环境变量
     for key in &["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"] {
@@ -584,11 +592,8 @@ fn download_runtime(
 
     // 启动 curl 下载（含超时，防止卡死）
     let curl = curl_cmd();
-    let mut cmd = hidden_command(curl);
-    cmd.args(&["-L", "-f", "--progress-bar", "--connect-timeout", "30", "--max-time", "300",
-           // 使用系统代理（Windows 浏览器能访问但 curl 默认不走代理）
-           "--proxy-auto-config", "--proxy-anyauth"])
-        .arg("-o")
+    let mut cmd = curl_download_cmd(curl);
+    cmd.arg("-o")
         .arg(&archive)
         .arg(url)
         .stderr(std::process::Stdio::null())
