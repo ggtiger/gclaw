@@ -85,7 +85,7 @@ export function convertSDKMessage(
 
     // ── stream_event (实时流式增量) ────────────────
     case 'stream_event': {
-      const event = (msg as { event: Record<string, unknown> }).event
+      const event = (msg as unknown as { event: Record<string, unknown> }).event
       if (!event || typeof event !== 'object') break
 
       const eventType = event.type as string | undefined
