@@ -13,7 +13,8 @@
 
 ## 认证
 
-所有请求使用 Bearer Token 认证，在 HTTP Header 中携带 API Key：
+- **URL 路径**：携带 `projectId`，标识目标项目
+- **Bearer Token**：携带 API Key，用于认证
 
 ```
 Authorization: Bearer <your-api-key>
@@ -26,9 +27,15 @@ Authorization: Bearer <your-api-key>
 建立持久 SSE 长连接，用于接收 Agent 执行结果。
 
 ```
-GET /api/channels/webhook/api/stream
+GET /api/channels/webhook/api/{projectId}/stream
 Authorization: Bearer <api-key>
 ```
+
+**路径参数：**
+
+| 参数 | 说明 |
+|------|------|
+| `projectId` | 目标项目 ID（在 GClaw Web UI 渠道配置中查看） |
 
 **响应：** `Content-Type: text/event-stream`
 
@@ -38,7 +45,7 @@ Authorization: Bearer <api-key>
 
 | 事件类型 | 说明 | 数据结构 |
 |---------|------|---------|
-| `connected` | 连接建立成功 | `{ "channelId": "xxx" }` |
+| `connected` | 连接建立成功 | `{ "channelId": "xxx", "projectId": "xxx" }` |
 | `api_done` | Agent 执行完成 | DoneEvent |
 | `api_error` | 执行出错 | ErrorEvent |
 | `heartbeat` | 心跳（SSE 注释行） | 无 |
@@ -73,10 +80,16 @@ Authorization: Bearer <api-key>
 向 Agent 发送一条消息，Agent 在后台异步执行，结果通过 SSE 连接推送。
 
 ```
-POST /api/channels/webhook/api/message
+POST /api/channels/webhook/api/{projectId}/message
 Authorization: Bearer <api-key>
 Content-Type: application/json
 ```
+
+**路径参数：**
+
+| 参数 | 说明 |
+|------|------|
+| `projectId` | 目标项目 ID（与 SSE 连接的 projectId 一致） |
 
 **请求体：**
 
@@ -102,16 +115,18 @@ Content-Type: application/json
 
 ## 完整调用示例
 
+以下示例中 `908251a4` 为 projectId，`e30d088f...` 为 API Key，请替换为实际值。
+
 ### curl
 
 ```bash
 # 终端 1：建立 SSE 连接，持续监听结果
-curl -N -H "Authorization: Bearer your-api-key-here" \
-  http://localhost:3000/api/channels/webhook/api/stream
+curl -N -H "Authorization: Bearer e30d088f2518ebfd2771f51d27f8f26c" \
+  http://localhost:3000/api/channels/webhook/api/908251a4/stream
 
 # 终端 2：发送消息
-curl -X POST http://localhost:3000/api/channels/webhook/api/message \
-  -H "Authorization: Bearer your-api-key-here" \
+curl -X POST http://localhost:3000/api/channels/webhook/api/908251a4/message \
+  -H "Authorization: Bearer e30d088f2518ebfd2771f51d27f8f26c" \
   -H "Content-Type: application/json" \
   -d '{"message": "你好，请介绍一下你自己"}'
 ```
@@ -120,7 +135,7 @@ curl -X POST http://localhost:3000/api/channels/webhook/api/message \
 
 ```
 event: connected
-data: {"channelId":"a1b2c3d4"}
+data: {"channelId":"a1b2c3d4","projectId":"908251a4"}
 
 : heartbeat
 
@@ -133,14 +148,17 @@ data: {"requestId":"req_1744867200000_a1b2c3","content":"你好！我是 GClaw A
 ```python
 import requests
 import sseclient
+import json
+import threading
 
-API_KEY = "your-api-key-here"
+API_KEY = "e30d088f2518ebfd2771f51d27f8f26c"
+PROJECT_ID = "908251a4"
 BASE_URL = "http://localhost:3000"
 
 # 1. 建立 SSE 连接（在独立线程中运行）
 def listen_sse():
     resp = requests.get(
-        f"{BASE_URL}/api/channels/webhook/api/stream",
+        f"{BASE_URL}/api/channels/webhook/api/{PROJECT_ID}/stream",
         headers={"Authorization": f"Bearer {API_KEY}"},
         stream=True,
     )
@@ -156,7 +174,7 @@ def listen_sse():
 # 2. 发送消息
 def send_message(text: str) -> str:
     resp = requests.post(
-        f"{BASE_URL}/api/channels/webhook/api/message",
+        f"{BASE_URL}/api/channels/webhook/api/{PROJECT_ID}/message",
         headers={
             "Authorization": f"Bearer {API_KEY}",
             "Content-Type": "application/json",
@@ -166,13 +184,9 @@ def send_message(text: str) -> str:
     return resp.json()["requestId"]
 
 # 使用示例
-import threading, json
-
-# 启动 SSE 监听线程
 t = threading.Thread(target=listen_sse, daemon=True)
 t.start()
 
-# 发送消息
 request_id = send_message("你好，请介绍一下你自己")
 print(f"已发送，requestId={request_id}")
 ```
@@ -180,20 +194,16 @@ print(f"已发送，requestId={request_id}")
 ### Node.js
 
 ```javascript
-const API_KEY = "your-api-key-here";
+const API_KEY = "e30d088f2518ebfd2771f51d27f8f26c";
+const PROJECT_ID = "908251a4";
 const BASE_URL = "http://localhost:3000";
 
-// 1. 建立 SSE 连接
-const eventSource = new EventSource(
-  `${BASE_URL}/api/channels/webhook/api/stream`,
-  { headers: { Authorization: `Bearer ${API_KEY}` } }
-);
-
-// 注意：标准 EventSource 不支持自定义 Header，需用 fetch 实现：
+// 1. 建立 SSE 连接（标准 EventSource 不支持自定义 Header，需用 fetch）
 async function listenSSE() {
-  const resp = await fetch(`${BASE_URL}/api/channels/webhook/api/stream`, {
-    headers: { Authorization: `Bearer ${API_KEY}` },
-  });
+  const resp = await fetch(
+    `${BASE_URL}/api/channels/webhook/api/${PROJECT_ID}/stream`,
+    { headers: { Authorization: `Bearer ${API_KEY}` } }
+  );
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
 
@@ -208,14 +218,17 @@ async function listenSSE() {
 
 // 2. 发送消息
 async function sendMessage(text) {
-  const resp = await fetch(`${BASE_URL}/api/channels/webhook/api/message`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ message: text }),
-  });
+  const resp = await fetch(
+    `${BASE_URL}/api/channels/webhook/api/${PROJECT_ID}/message`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message: text }),
+    }
+  );
   return await resp.json(); // { requestId: "req_xxx" }
 }
 ```
@@ -227,3 +240,4 @@ async function sendMessage(text) {
 - 同一项目的新消息会终止 Agent 正在执行的查询
 - Agent 执行结果同时会同步显示在 GClaw Web UI 中
 - API Key 在 GClaw Web UI 的渠道设置中创建时自动生成，无法修改，需更换时请删除后重新创建
+- projectId 在 GClaw Web UI 渠道配置卡片中显示的端点 URL 中可以查看
