@@ -486,15 +486,26 @@ fn curl_download_cmd(program: &str) -> Command {
     // 不传 --proxy-auto-config / --proxy-anyauth：Windows 自带 curl 不支持
     // 代理通过环境变量 http_proxy/https_proxy 透传即可
     cmd.args(&["-L", "-f", "--progress-bar", "--connect-timeout", "30", "--max-time", "300"]);
+    // Windows Schannel 跳过证书吊销检查（CRL 不可达时会导致 SSL 错误退出码 35）
+    #[cfg(target_os = "windows")]
+    cmd.arg("--ssl-no-revoke");
+    cmd
+}
+
+/// 构建 curl HEAD 请求命令
+fn curl_head_cmd(program: &str) -> Command {
+    let mut cmd = hidden_command(program);
+    cmd.args(&["-sI", "-L", "--connect-timeout", "10", "--max-time", "15"]);
+    #[cfg(target_os = "windows")]
+    cmd.arg("--ssl-no-revoke");
     cmd
 }
 
 /// 获取文件大小（Content-Length）
 fn get_remote_size(url: &str) -> u64 {
     let curl = curl_cmd();
-    let mut cmd = hidden_command(curl);
-    cmd.args(&["-sI", "-L", "--connect-timeout", "10", "--max-time", "15"])
-        .arg(url);
+    let mut cmd = curl_head_cmd(curl);
+    cmd.arg(url);
     // 透传代理环境变量
     for key in &["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"] {
         if let Ok(val) = std::env::var(key) {
@@ -596,7 +607,8 @@ fn download_runtime(
     cmd.arg("-o")
         .arg(&archive)
         .arg(url)
-        .stderr(std::process::Stdio::null())
+        // 捕获 stderr 用于错误诊断
+        .stderr(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null());
 
     // 透传当前进程的代理环境变量
@@ -616,9 +628,20 @@ fn download_runtime(
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
+                    // 读取 curl stderr 辅助诊断
+                    let stderr_msg = match child.wait_with_output() {
+                        Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_string(),
+                        Err(_) => String::new(),
+                    };
+                    let err_detail = if stderr_msg.is_empty() {
+                        format!("退出码: {:?}", status.code())
+                    } else {
+                        format!("退出码: {:?}, {}", status.code(), stderr_msg)
+                    };
+                    startup_log(&format!("{} download curl error: {}", label, err_detail));
                     // 清理不完整文件
                     std::fs::remove_file(&archive).ok();
-                    return Err(format!("{} 下载失败 (退出码: {:?})", label, status.code()));
+                    return Err(format!("{} 下载失败 ({})", label, err_detail));
                 }
                 break;
             }
