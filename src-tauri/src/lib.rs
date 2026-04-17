@@ -114,6 +114,41 @@ fn apply_splash_theme(app: &tauri::AppHandle) {
 
 // ============ 平台辅助 ============
 
+/// 启动日志文件路径（懒初始化）
+static STARTUP_LOG_PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// 初始化启动日志文件路径（需要 AppHandle，仅调用一次）
+fn init_startup_log(app: &tauri::AppHandle) {
+    let data_dir = app.path().app_data_dir()
+        .expect("Failed to get app data dir");
+    std::fs::create_dir_all(&data_dir).ok();
+    STARTUP_LOG_PATH.set(data_dir.join("gclaw-startup.log")).ok();
+}
+
+/// 写入启动日志（append，带时间戳）
+fn startup_log(msg: &str) {
+    println!("[GClaw] {}", msg);
+    if let Some(path) = STARTUP_LOG_PATH.get() {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let secs = (timestamp % 86400) / 3600;
+        let mins = (timestamp % 3600) / 60;
+        let secs_r = timestamp % 60;
+        let line = format!("[{:02}:{:02}:{:02}] {}\n", secs, mins, secs_r, msg);
+        // 使用 OpenOptions::append 追加写入
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+}
+
 #[allow(dead_code)]
 fn platform_name() -> &'static str {
     if cfg!(target_os = "windows") { "windows" }
@@ -220,8 +255,13 @@ fn find_node(app: &tauri::AppHandle) -> Option<String> {
         rd.join("node").join("bin").join("node")
     };
     if bundled.exists() {
-        println!("[GClaw] Found runtime Node: {}", bundled.display());
-        return Some(bundled.to_string_lossy().to_string());
+        if verify_node(&bundled.to_string_lossy()) {
+            startup_log(&format!("Found runtime Node: {}", bundled.display()));
+            return Some(bundled.to_string_lossy().to_string());
+        } else {
+            startup_log(&format!("Runtime Node exists but broken, removing: {}", bundled.display()));
+            std::fs::remove_dir_all(rd.join("node")).ok();
+        }
     }
     // 系统 fallback
     which_node()
@@ -236,8 +276,13 @@ fn find_python3(app: &tauri::AppHandle) -> Option<String> {
         rd.join("python").join("bin").join("python3")
     };
     if bundled.exists() {
-        println!("[GClaw] Found runtime Python: {}", bundled.display());
-        return Some(bundled.to_string_lossy().to_string());
+        if verify_python(&bundled.to_string_lossy()) {
+            startup_log(&format!("Found runtime Python: {}", bundled.display()));
+            return Some(bundled.to_string_lossy().to_string());
+        } else {
+            startup_log(&format!("Runtime Python exists but broken, removing: {}", bundled.display()));
+            std::fs::remove_dir_all(rd.join("python")).ok();
+        }
     }
     which_python3()
 }
@@ -250,7 +295,7 @@ fn find_git(_app: &tauri::AppHandle) -> Option<String> {
         let rd = runtimes_dir(_app);
         let bundled = rd.join("git").join("cmd").join("git.exe");
         if bundled.exists() {
-            println!("[GClaw] Found runtime PortableGit: {}", bundled.display());
+            startup_log(&format!("Found runtime PortableGit: {}", bundled.display()));
             return Some(bundled.to_string_lossy().to_string());
         }
     }
@@ -281,16 +326,52 @@ fn which_node() -> Option<String> {
     let cmd = if cfg!(target_os = "windows") { "where" } else { "which" };
     if let Ok(output) = hidden_command(cmd).arg("node").output() {
         if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
-            if !path.is_empty() { return Some(path); }
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let path = line.trim().to_string();
+                if !path.is_empty() && verify_node(&path) {
+                    startup_log(&format!("Found system Node: {} ({})", path, node_version(&path)));
+                    return Some(path);
+                }
+            }
         }
     }
+    // macOS 常见路径 fallback
     if !cfg!(target_os = "windows") {
         for path in &["/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node"] {
-            if std::path::Path::new(path).exists() { return Some(path.to_string()); }
+            if std::path::Path::new(path).exists() && verify_node(path) {
+                startup_log(&format!("Found system Node at fallback: {}", path));
+                return Some(path.to_string());
+            }
         }
     }
     None
+}
+
+/// 验证 node 二进制是否可用（node -v）
+fn verify_node(node_path: &str) -> bool {
+    match hidden_command(node_path).arg("-v").output() {
+        Ok(output) => {
+            let ok = output.status.success();
+            if !ok {
+                startup_log(&format!("Node verification failed for {}: exit code {:?}", node_path, output.status.code()));
+            }
+            ok
+        }
+        Err(e) => {
+            startup_log(&format!("Node verification error for {}: {}", node_path, e));
+            false
+        }
+    }
+}
+
+/// 获取 node 版本号
+fn node_version(node_path: &str) -> String {
+    match hidden_command(node_path).arg("-v").output() {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => "unknown".into(),
+    }
 }
 
 fn which_python3() -> Option<String> {
@@ -880,33 +961,50 @@ fn app_ready(app: tauri::AppHandle) {
 
 /// 生产模式启动流程：检查/下载运行时 → 启动服务 → 导航主窗口
 fn run_production_startup(handle: &tauri::AppHandle) {
+    // 初始化启动日志
+    init_startup_log(handle);
+    startup_log("=== GClaw startup ===");
+    startup_log(&format!("Platform: {}-{}", platform_name(), std::env::consts::ARCH));
+
     // 重置 splash 状态（重试时需要）
     splash_update(handle, "正在检查环境...", 20, "");
 
     let node_present = find_node(handle).is_some();
+    startup_log(&format!("Node.js present: {}", node_present));
     if !node_present {
         splash_update(handle, "正在准备运行环境...", 30, "首次启动需要下载，请稍候");
+        startup_log(&format!("Downloading Node.js from: {}", node_download_url()));
         match download_runtime(handle, "node", "Node.js", &node_download_url()) {
-            Ok(_) => {}
+            Ok(_) => {
+                startup_log("Node.js download OK");
+            }
             Err(e) => {
-                eprintln!("[GClaw] Node.js download failed: {}", e);
-                splash_error(handle, "环境准备失败，请检查网络后重试");
-                return;
+                startup_log(&format!("Node.js download failed: {}, trying system node...", e));
+                // 下载失败不直接退出，重新检查系统 PATH（用户可能已安装）
+                if find_node(handle).is_none() {
+                    startup_log("FATAL: No Node.js available (download failed, system not found)");
+                    splash_error(handle, "Node.js 下载失败，请检查网络或手动安装 Node.js 后重试");
+                    return;
+                }
+                startup_log("Fallback to system Node.js OK");
             }
         }
     }
 
     let python_present = find_python3(handle).is_some();
+    startup_log(&format!("Python present: {}", python_present));
     if !python_present {
         splash_update(handle, "正在准备运行环境...", 50, "即将完成");
+        startup_log(&format!("Downloading Python from: {}", python_download_url()));
         match download_runtime(handle, "python", "Python", &python_download_url()) {
             Ok(_) => {
+                startup_log("Python download OK");
                 if let Err(e) = install_python_pip(handle) {
-                    eprintln!("[GClaw] pip install failed: {}", e);
+                    startup_log(&format!("pip install warning: {}", e));
                 }
             }
             Err(e) => {
-                eprintln!("[GClaw] Python download failed: {}", e);
+                startup_log(&format!("Python download failed: {}", e));
                 splash_error(handle, "环境准备失败，请检查网络后重试");
                 return;
             }
@@ -915,13 +1013,17 @@ fn run_production_startup(handle: &tauri::AppHandle) {
 
     // Git 运行时
     let git_present = find_git(handle).is_some();
+    startup_log(&format!("Git present: {}", git_present));
     if !git_present {
         if let Some(git_url) = git_download_url() {
             splash_update(handle, "正在准备运行环境...", 60, "首次启动需要下载，请稍候");
+            startup_log(&format!("Downloading Git from: {}", git_url));
             match download_runtime(handle, "git", "Git", &git_url) {
-                Ok(_) => {}
+                Ok(_) => {
+                    startup_log("Git download OK");
+                }
                 Err(e) => {
-                    eprintln!("[GClaw] Git download failed: {}", e);
+                    startup_log(&format!("Git download failed: {}", e));
                     splash_error(handle, "环境准备失败，请检查网络后重试");
                     return;
                 }
@@ -932,12 +1034,13 @@ fn run_production_startup(handle: &tauri::AppHandle) {
             } else {
                 "未检测到 Git，请先安装: sudo apt install git"
             };
-            eprintln!("[GClaw] Git not found");
+            startup_log(&format!("Git not found: {}", msg));
             splash_error(handle, msg);
             return;
         }
     }
 
+    startup_log("All runtimes ready");
     splash_update(handle, "环境就绪", 70, "");
     splash_update(handle, "正在启动服务...", 85, "");
 
