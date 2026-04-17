@@ -275,6 +275,7 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
       case 'dingtalk': return `${base}/api/channels/webhook/dingtalk?key=${ch.dingtalk?.appKey || ''}`
       case 'feishu': return `${base}/api/channels/webhook/feishu?key=${ch.feishu?.appId || ''}`
       case 'wechat': return ch.wechat?.botToken ? `${base}/api/channels/webhook/wechat?key=${ch.wechat.botToken}` : ''
+      case 'api': return `${base}/api/channels/webhook/api/message`
     }
   }
 
