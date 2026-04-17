@@ -94,6 +94,9 @@ export function findChannelByWebhookKey(
           case 'wechat':
             match = ch.wechat?.botToken === key
             break
+          case 'api':
+            match = ch.api?.apiKey === key
+            break
         }
 
         if (match) return { projectId, channel: ch }

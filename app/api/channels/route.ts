@@ -27,7 +27,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: false, error: 'type and name required' }, { status: 400 })
   }
 
-  const channel = addChannel(projectId, { type, name, enabled, dingtalk, feishu, wechat })
+  // API 渠道自动生成 apiKey
+  const channelData: Record<string, unknown> = { type, name, enabled, dingtalk, feishu, wechat }
+  if (type === 'api') {
+    const { randomBytes } = await import('crypto')
+    channelData.api = { apiKey: randomBytes(16).toString('hex') }
+  }
+  const channel = addChannel(projectId, channelData as Omit<import('@/types/channels').ChannelConfig, 'id' | 'createdAt'>)
   return Response.json({ success: true, channel })
 }
 

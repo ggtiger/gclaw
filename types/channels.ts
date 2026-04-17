@@ -1,4 +1,4 @@
-export type ChannelType = 'dingtalk' | 'feishu' | 'wechat'
+export type ChannelType = 'dingtalk' | 'feishu' | 'wechat' | 'api'
 
 export interface DingtalkConfig {
   appKey: string
@@ -17,6 +17,10 @@ export interface WechatConfig {
   accountId: string
 }
 
+export interface ApiChannelConfig {
+  apiKey: string
+}
+
 export interface ChannelConfig {
   id: string
   type: ChannelType
@@ -26,10 +30,12 @@ export interface ChannelConfig {
   dingtalk?: DingtalkConfig
   feishu?: FeishuConfig
   wechat?: WechatConfig
+  api?: ApiChannelConfig
 }
 
 export const CHANNEL_LABELS: Record<ChannelType, string> = {
   dingtalk: '钉钉',
   feishu: '飞书',
   wechat: '微信 ClawBot',
+  api: 'API 接入',
 }
