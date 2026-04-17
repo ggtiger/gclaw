@@ -5,7 +5,7 @@
 
 import { executeChat } from '@/lib/claude/process-manager'
 import { addMessage } from '@/lib/store/messages'
-import { findChannelByWebhookKey } from '@/lib/store/channels'
+import { getChannels } from '@/lib/store/channels'
 import { apiEventBus } from './api-events'
 import { channelEventBus } from './channel-events'
 import type { ChatMessage } from '@/types/chat'
@@ -13,16 +13,18 @@ import type { ChannelConfig } from '@/types/channels'
 import { logger } from '@/lib/logger'
 
 /**
- * 从请求中提取 Bearer Token，认证 API 渠道
- * 返回 projectId + channel，失败返回 null
+ * 通过 projectId + Bearer API Key 认证
+ * URL 路径携带 projectId，API Key 纯做认证
  */
 export function authenticateApiChannel(
+  projectId: string,
   authHeader: string | null
-): { projectId: string; channel: ChannelConfig } | null {
+): ChannelConfig | null {
   if (!authHeader?.startsWith('Bearer ')) return null
   const apiKey = authHeader.slice(7).trim()
   if (!apiKey) return null
-  return findChannelByWebhookKey('api', apiKey)
+  const channels = getChannels(projectId)
+  return channels.find(ch => ch.type === 'api' && ch.enabled && ch.api?.apiKey === apiKey) || null
 }
 
 /**

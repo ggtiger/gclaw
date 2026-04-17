@@ -275,7 +275,7 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
       case 'dingtalk': return `${base}/api/channels/webhook/dingtalk?key=${ch.dingtalk?.appKey || ''}`
       case 'feishu': return `${base}/api/channels/webhook/feishu?key=${ch.feishu?.appId || ''}`
       case 'wechat': return ch.wechat?.botToken ? `${base}/api/channels/webhook/wechat?key=${ch.wechat.botToken}` : ''
-      case 'api': return `${base}/api/channels/webhook/api/message`
+      case 'api': return `${base}/api/channels/webhook/api/${projectId}/message`
     }
   }
 
@@ -594,7 +594,7 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                       <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>POST:</span>
                       <input
                         readOnly
-                        value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/webhook/api/message`}
+                        value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/webhook/api/${projectId}/message`}
                         className="flex-1 min-w-0 px-2 py-1 rounded text-[10px] font-mono border outline-none"
                         style={{
                           borderColor: 'var(--color-border)',
@@ -603,7 +603,7 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                         }}
                       />
                       <button
-                        onClick={() => copyToClipboard(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/webhook/api/message`, `url_${ch.id}`)}
+                        onClick={() => copyToClipboard(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/channels/webhook/api/${projectId}/message`, `url_${ch.id}`)}
                         className="p-1 rounded cursor-pointer transition-colors flex-shrink-0"
                         style={{ color: 'var(--color-text-muted)' }}
                         title="复制端点 URL"

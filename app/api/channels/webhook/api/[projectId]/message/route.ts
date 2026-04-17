@@ -1,7 +1,7 @@
 /**
  * API 渠道 - 发送消息端点
- * POST /api/channels/webhook/api/message
- * 认证后异步执行 Agent，立即返回 202
+ * POST /api/channels/webhook/api/[projectId]/message
+ * URL 路径携带 projectId，Bearer API Key 做认证
  */
 
 import { NextRequest } from 'next/server'
@@ -9,17 +9,17 @@ import { authenticateApiChannel, handleApiMessage } from '@/lib/channels/api-ser
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: NextRequest) {
-  // 认证
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const { projectId } = await params
   const authHeader = request.headers.get('authorization')
-  const result = authenticateApiChannel(authHeader)
-  if (!result) {
+  const channel = authenticateApiChannel(projectId, authHeader)
+  if (!channel) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { projectId, channel } = result
-
-  // 解析请求体
   let body: { message?: string; attachments?: unknown[] }
   try {
     body = await request.json()
@@ -34,7 +34,6 @@ export async function POST(request: NextRequest) {
 
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
-  // 异步执行，不阻塞响应
   handleApiMessage(projectId, channel, requestId, message).catch(err => {
     console.error('[ApiMessage] handleApiMessage unhandled error:', err)
   })
