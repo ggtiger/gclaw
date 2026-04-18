@@ -9,9 +9,9 @@ import { getCodeMirrorExtensions, getLanguageLabel } from './types'
 import { useIsDark } from './useIsDark'
 import * as Diff from 'diff'
 import type { Extension } from '@codemirror/state'
-import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
+import { EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
 import type { DecorationSet, ViewUpdate } from '@codemirror/view'
-import { Decoration, ViewPlugin, WidgetType, EditorView } from '@codemirror/view'
+import { Decoration, ViewPlugin, WidgetType, EditorView, lineNumbers } from '@codemirror/view'
 import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
 
 const CodeMirror = dynamic(() => import('@uiw/react-codemirror'), { ssr: false })
@@ -64,7 +64,7 @@ export function HtmlEditor({ content, fileName, onSave, saving }: HtmlEditorProp
             <CodeMirror
               value={editContent}
               onChange={setEditContent}
-              theme={isDark ? oneDark : undefined}
+              theme={isDark ? oneDark : 'light'}
               extensions={extensions}
               className="h-full text-sm"
               style={{ height: '100%' }}
@@ -135,7 +135,7 @@ export function CodeEditor({ content, fileName, onSave, saving }: CodeEditorProp
         <CodeMirror
           value={editContent}
           onChange={setEditContent}
-          theme={isDark ? oneDark : undefined}
+          theme={isDark ? oneDark : 'light'}
           extensions={extensions}
           className="h-full text-sm"
           style={{ height: '100%' }}
@@ -198,7 +198,7 @@ export function MarkdownEditor({ content, fileName, onSave, saving }: MarkdownEd
             <CodeMirror
               value={editContent}
               onChange={setEditContent}
-              theme={isDark ? oneDark : undefined}
+              theme={isDark ? oneDark : 'light'}
               extensions={extensions}
               className="h-full text-sm"
               style={{ height: '100%' }}
@@ -251,7 +251,7 @@ export function TextEditor({ content, fileName, onSave, saving }: TextEditorProp
         <CodeMirror
           value={editContent}
           onChange={setEditContent}
-          theme={isDark ? oneDark : undefined}
+          theme={isDark ? oneDark : 'light'}
           extensions={extensions}
           className="h-full text-sm"
           style={{ height: '100%' }}
@@ -391,11 +391,15 @@ interface DiffEditorProps {
   oldContent: string
   newContent: string
   fileName: string
-  onSave: (content: string) => void
-  saving: boolean
+  onSave?: (content: string) => void
+  saving?: boolean
+  /** 只读模式：隐藏工具栏、不可编辑 */
+  readOnly?: boolean
+  /** 起始行号偏移（让行号与原文件一致） */
+  startLine?: number
 }
 
-export function DiffEditor({ oldContent, newContent, fileName, onSave, saving }: DiffEditorProps) {
+export function DiffEditor({ oldContent, newContent, fileName, onSave, saving, readOnly, startLine }: DiffEditorProps) {
   const [editContent, setEditContent] = useState(newContent)
   const cmRef = useRef<ReactCodeMirrorRef>(null)
   const [currentChange, setCurrentChange] = useState(-1)
@@ -440,7 +444,18 @@ export function DiffEditor({ oldContent, newContent, fileName, onSave, saving }:
     }, { decorations: v => v.decorations })
   }, []) // 只创建一次，通过 ref 读取最新数据
 
-  const extensions = useMemo(() => [...langExtensions, diffExt, removedLinesField], [langExtensions, diffExt])
+  const extensions = useMemo(() => {
+    const exts: Extension[] = [...langExtensions, diffExt, removedLinesField]
+    // 行号偏移：让行号与原文件一致
+    if (startLine && startLine > 1) {
+      exts.push(lineNumbers({ formatNumber: (n: number) => String(n + startLine! - 1) }))
+    }
+    // 只读模式：用 EditorState.readOnly 保留语法高亮渲染
+    if (readOnly) {
+      exts.push(EditorState.readOnly.of(true))
+    }
+    return exts
+  }, [langExtensions, diffExt, startLine, readOnly])
 
   // addedLines 变化时强制刷新 ViewPlugin decorations
   // removeWidgets 变化时通过 StateEffect 更新 StateField block widgets
@@ -474,6 +489,7 @@ export function DiffEditor({ oldContent, newContent, fileName, onSave, saving }:
 
   return (
     <div className="flex flex-col h-full">
+      {!readOnly && (
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-1">
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Diff</span>
@@ -501,14 +517,17 @@ export function DiffEditor({ oldContent, newContent, fileName, onSave, saving }:
               </button>
             </>
           )}
+          {onSave && (
           <button onClick={() => onSave(editContent)} disabled={saving}
             className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
             style={{ color: 'var(--color-primary)' }} title="保存修改">
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 保存
           </button>
+          )}
         </div>
       </div>
-      <div className="flex-1 overflow-hidden">
+      )}
+      <div className={readOnly ? 'flex-1 overflow-hidden' : 'flex-1 overflow-hidden'}>
         <CodeMirror
           ref={cmRef}
           value={editContent}
@@ -520,7 +539,7 @@ export function DiffEditor({ oldContent, newContent, fileName, onSave, saving }:
               view.dispatch({ effects: [setRemovedLinesEffect.of(w)] })
             }
           }}
-          theme={isDark ? oneDark : undefined}
+          theme={isDark ? oneDark : 'light'}
           extensions={extensions}
           className="h-full text-sm cm-diffEditor"
           style={{ height: '100%' }}

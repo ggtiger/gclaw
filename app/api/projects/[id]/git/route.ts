@@ -15,17 +15,11 @@ function git(workingDir: string, args: string[]): Promise<{ stdout: string; stde
   return execFileAsync('git', args, { cwd: workingDir, maxBuffer: 10 * 1024 * 1024 })
 }
 
-/** 扫描项目目录下所有有 .git 的目录，返回相对路径和分支 */
+/** 扫描项目目录下所有有 .git 的子目录，返回相对路径和分支 */
 async function scanGitDirs(projectDir: string): Promise<{ path: string; branch: string }[]> {
   const result: { path: string; branch: string }[] = []
 
-  // 检查项目目录本身
-  if (fs.existsSync(path.join(projectDir, '.git'))) {
-    const branch = await getBranch(projectDir)
-    result.push({ path: '', branch })
-  }
-
-  // 扫描直接子目录
+  // 只扫描直接子目录，不扫描项目根目录（它是 GClaw 数据目录，不是代码仓库）
   try {
     const entries = fs.readdirSync(projectDir, { withFileTypes: true })
     for (const entry of entries) {
@@ -52,8 +46,7 @@ async function getBranch(dir: string): Promise<string> {
 /** 根据 dir 参数解析 git 工作目录的绝对路径 */
 function resolveGitDir(projectDir: string, dir?: string | null): string | null {
   if (!dir) {
-    // 默认：项目目录本身
-    if (fs.existsSync(path.join(projectDir, '.git'))) return projectDir
+    // 不使用项目根目录（它是 GClaw 数据目录，不是代码仓库）
     return null
   }
   const target = path.join(projectDir, dir)
@@ -191,7 +184,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const [statusResult, branchResult, branchesResult, remoteResult] = await Promise.all([
-      git(gitDir, ['-c', 'core.quotepath=false', 'status', '--porcelain=v1']),
+      git(gitDir, ['-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-u']),
       git(gitDir, ['branch', '--show-current']).catch(() => ({ stdout: '', stderr: '' })),
       git(gitDir, ['branch']).catch(() => ({ stdout: '', stderr: '' })),
       git(gitDir, ['remote']).catch(() => ({ stdout: '', stderr: '' })),

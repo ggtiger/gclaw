@@ -47,6 +47,10 @@ export interface FilesPanelProps {
   hideHeaderButtons?: boolean
   /** 外部刷新信号：值变化时刷新文件树和 git 状态 */
   refreshKey?: number
+  /** 外部请求预览 diff 的文件路径（消费后由 onDiffFileConsumed 清除） */
+  diffFilePath?: string | null
+  /** diffFilePath 被消费后回调 */
+  onDiffFileConsumed?: () => void
 }
 
 export interface MenuItem {

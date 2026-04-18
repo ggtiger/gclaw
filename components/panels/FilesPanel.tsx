@@ -6,6 +6,7 @@ import {
   File,
   FileText,
   FolderOpen,
+  Folder,
   AlertCircle,
   Loader2,
   FilePlus,
@@ -35,6 +36,8 @@ import {
   Send,
   Sparkles,
   Check,
+  ListTree,
+  List,
 } from 'lucide-react'
 import type { TreeEntry, FilesPanelProps, MenuItem, ClipboardState } from './files/types'
 import type { GitStatusResponse, GitFileStatus, GitDirInfo } from '@/types/git'
@@ -63,6 +66,7 @@ function GitFileItem({
   showStage,
   showUnstage,
   showDiscard,
+  indent,
 }: {
   file: GitFileStatus
   onStage?: (path: string) => void
@@ -72,12 +76,14 @@ function GitFileItem({
   showStage?: boolean
   showUnstage?: boolean
   showDiscard?: boolean
+  indent?: number
 }) {
   const fileName = file.path.split('/').pop() || file.path
-  const dirPath = file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/') + 1) : ''
+  const dirPath = !indent && file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/') + 1) : ''
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-[2px] group cursor-pointer transition-colors"
+    <div className="flex items-center gap-1.5 py-[2px] group cursor-pointer transition-colors"
+      style={{ paddingLeft: indent ? `${indent}px` : '8px', paddingRight: '8px' }}
       onClick={() => onSelect(file.path)}
       onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
       onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -106,10 +112,111 @@ function GitFileItem({
   )
 }
 
+// ─── Git 变更文件树形展示 ───
+
+interface GitTreeNode {
+  name: string
+  path: string
+  files: GitFileStatus[]
+  children: Map<string, GitTreeNode>
+}
+
+/** 将平铺文件列表按目录结构分组 */
+function buildGitTree(files: GitFileStatus[]): GitTreeNode {
+  const root: GitTreeNode = { name: '', path: '', files: [], children: new Map() }
+  for (const f of files) {
+    const parts = f.path.split('/')
+    if (parts.length === 1) {
+      root.files.push(f)
+    } else {
+      let node = root
+      for (let i = 0; i < parts.length - 1; i++) {
+        const dir = parts.slice(0, i + 1).join('/')
+        if (!node.children.has(dir)) {
+          node.children.set(dir, { name: parts[i], path: dir, files: [], children: new Map() })
+        }
+        node = node.children.get(dir)!
+      }
+      node.files.push(f)
+    }
+  }
+  return root
+}
+
+function GitTreeGroup({
+  node,
+  depth,
+  expandedDirs,
+  onToggleDir,
+  ...itemProps
+}: {
+  node: GitTreeNode
+  depth: number
+  expandedDirs: Set<string>
+  onToggleDir: (path: string) => void
+  onStage?: (path: string) => void
+  onUnstage?: (path: string) => void
+  onDiscard?: (path: string) => void
+  onSelect: (path: string) => void
+  showStage?: boolean
+  showUnstage?: boolean
+  showDiscard?: boolean
+}) {
+  const sortedChildren = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name))
+  const sortedFiles = [...node.files].sort((a, b) => {
+    const na = a.path.split('/').pop() || ''
+    const nb = b.path.split('/').pop() || ''
+    return na.localeCompare(nb)
+  })
+
+  return (
+    <>
+      {sortedChildren.map(child => {
+        const isExpanded = expandedDirs.has(child.path)
+        // 计算子树中的变更文件数
+        const count = countFiles(child)
+        return (
+          <div key={child.path}>
+            <div className="flex items-center gap-1 cursor-pointer group transition-colors"
+              style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: '8px' }}
+              onClick={() => onToggleDir(child.path)}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              {isExpanded
+                ? <ChevronDown size={10} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                : <ChevronRight size={10} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+              }
+              <Folder size={12} className="text-blue-500 shrink-0" />
+              <span className="text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>{child.name}</span>
+              <span className="text-[10px] ml-auto shrink-0" style={{ color: 'var(--color-text-muted)' }}>{count}</span>
+            </div>
+            {isExpanded && (
+              <GitTreeGroup node={child} depth={depth + 1} expandedDirs={expandedDirs} onToggleDir={onToggleDir} {...itemProps} />
+            )}
+          </div>
+        )
+      })}
+      {sortedFiles.map(f => (
+        <div key={f.path} style={{ paddingLeft: `${(depth + (sortedChildren.length > 0 ? 0 : 0)) * 0}px` }}>
+          <GitFileItem file={f} {...itemProps} indent={depth * 12 + 12} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function countFiles(node: GitTreeNode): number {
+  let n = node.files.length
+  for (const child of node.children.values()) n += countFiles(child)
+  return n
+}
+
 // ─── 主组件 ───
 
 export default function FilesPanel({
   projectId, onToggleFullscreen, isFullscreen, onHide, hideHeaderButtons, refreshKey,
+  diffFilePath, onDiffFileConsumed,
 }: FilesPanelProps) {
   // 文件树
   const [tree, setTree] = useState<TreeEntry[]>([])
@@ -177,6 +284,8 @@ export default function FilesPanel({
   const [gitError, setGitError] = useState<string | null>(null)
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
   const [switchingBranch, setSwitchingBranch] = useState(false)
+  const [gitViewMode, setGitViewMode] = useState<'flat' | 'tree'>('flat')
+  const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set(['']))
 
   // 多 git 目录管理
   const [gitDirs, setGitDirs] = useState<GitDirInfo[]>([])
@@ -218,6 +327,44 @@ export default function FilesPanel({
       fetchGitStatus()
     }
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── 外部请求 diff 预览（从动态面板点击文件）───
+  useEffect(() => {
+    if (!diffFilePath || !onDiffFileConsumed) return
+    const fileName = diffFilePath.split('/').pop() || diffFilePath
+    const entry: TreeEntry = { name: fileName, path: diffFilePath, type: 'file' }
+    setSelectedFile(entry)
+    setSelectedPath(diffFilePath)
+    setPreviewKey(k => k + 1)
+    setDiffOldContent(null)
+    setDiffNewContent(null)
+    setPreviewLoading(true)
+    setPreviewError(null)
+    // 通过文件 API 读取当前内容
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/files?action=read&path=${encodeURIComponent(diffFilePath)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.content !== undefined) {
+          setPreviewContent(data.content)
+          setDiffNewContent(data.content)
+          // 尝试通过 git 获取旧版本做 diff
+          if (activeGitDir) {
+            const relPath = activeGitDir ? diffFilePath.replace(`${activeGitDir}/`, '') : diffFilePath
+            fetch(`/api/projects/${encodeURIComponent(projectId)}/git?diff=${encodeURIComponent(relPath)}&dir=${encodeURIComponent(activeGitDir)}`)
+              .then(r => r.json())
+              .then(d => {
+                if (d.oldContent !== undefined) setDiffOldContent(d.oldContent)
+              })
+              .catch(() => {})
+          }
+        } else {
+          setPreviewError(data.error || '读取文件失败')
+        }
+      })
+      .catch(err => setPreviewError(err instanceof Error ? err.message : '读取文件失败'))
+      .finally(() => setPreviewLoading(false))
+    onDiffFileConsumed()
+  }, [diffFilePath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 扫描 git 目录 ───
   const scanGitDirs = useCallback(async () => {
@@ -585,6 +732,7 @@ export default function FilesPanel({
         setExpandedFolders(prev => new Set(prev).add(targetDir))
       }
       fetchTree()
+      fetchGitStatus()
     } catch (err) {
       setError(err instanceof Error ? err.message : '粘贴失败')
     }
@@ -607,6 +755,7 @@ export default function FilesPanel({
           setSelectedPath(destPath)
         }
         fetchTree()
+        fetchGitStatus()
       })
       .catch(err => {
         console.error('[FilesPanel] 移动失败:', err)
@@ -773,6 +922,7 @@ export default function FilesPanel({
         setSelectedFile({ ...selectedFile, path: newPath || renameValue.trim(), name: renameValue.trim() })
       }
       fetchTree()
+      fetchGitStatus()
     } catch (err) { setError(err instanceof Error ? err.message : '重命名失败') }
     setRenamingPath(null)
   }
@@ -792,6 +942,7 @@ export default function FilesPanel({
         setExpandedFolders(prev => new Set(prev).add(creating.parentPath))
       }
       fetchTree()
+      fetchGitStatus()
     } catch (err) { setError(err instanceof Error ? err.message : '创建失败') }
     setCreating(null)
   }
@@ -811,6 +962,7 @@ export default function FilesPanel({
         setExpandedFolders(prev => new Set(prev).add(uploadDirRef.current))
       }
       fetchTree()
+      fetchGitStatus()
     } catch (err) { setError(err instanceof Error ? err.message : '上传失败') }
     finally { setUploading(false) }
   }
@@ -844,11 +996,6 @@ export default function FilesPanel({
           {!hideHeaderButtons && onHide && !isFullscreen && (
             <button onClick={onHide} className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer" title="收起面板">
               <PanelRightClose size={14} />
-            </button>
-          )}
-          {(!hideHeaderButtons || isFullscreen) && onToggleFullscreen && (
-            <button onClick={onToggleFullscreen} className="p-0.5 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title={isFullscreen ? '退出全屏' : '全屏'}>
-              {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           )}
           <Code2 size={16} style={{ color: 'var(--color-primary)' }} />
@@ -1080,6 +1227,14 @@ export default function FilesPanel({
                       {pushing ? <Loader2 size={12} className="animate-spin" /> : <PushIcon size={12} />}
                     </button>
                   )}
+                  {totalGitChanges > 0 && (
+                    <button onClick={() => setGitViewMode(gitViewMode === 'flat' ? 'tree' : 'flat')}
+                      className="p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                      style={{ color: gitViewMode === 'tree' ? 'var(--color-primary)' : 'var(--color-text-muted)' }}
+                      title={gitViewMode === 'flat' ? '树形视图' : '平铺视图'}>
+                      {gitViewMode === 'flat' ? <ListTree size={12} /> : <List size={12} />}
+                    </button>
+                  )}
                 </div>
               </div>
               {/* 变更文件列表（可滚动） */}
@@ -1099,9 +1254,20 @@ export default function FilesPanel({
                         <Minus size={10} className="text-amber-500" />
                       </button>
                     </div>
-                    {gitSectionOpen && stagedFiles.map(f => (
-                      <GitFileItem key={f.path} file={f} onSelect={selectGitFile}
-                        onUnstage={p => gitAction('unstage', p)} showUnstage />
+                    {gitSectionOpen && (gitViewMode === 'flat' ? (
+                      stagedFiles.map(f => (
+                        <GitFileItem key={f.path} file={f} onSelect={selectGitFile}
+                          onUnstage={p => gitAction('unstage', p)} showUnstage />
+                      ))
+                    ) : (
+                      <GitTreeGroup node={buildGitTree(stagedFiles)} depth={0}
+                        expandedDirs={gitExpandedDirs}
+                        onToggleDir={p => setGitExpandedDirs(prev => {
+                          const next = new Set(prev)
+                          next.has(p) ? next.delete(p) : next.add(p)
+                          return next
+                        })}
+                        onSelect={selectGitFile} onUnstage={p => gitAction('unstage', p)} showUnstage />
                     ))}
                   </div>
                 )}
@@ -1120,8 +1286,21 @@ export default function FilesPanel({
                         <Plus size={10} className="text-emerald-500" />
                       </button>
                     </div>
-                    {gitSectionOpen && changesFiles.map(f => (
-                      <GitFileItem key={f.path} file={f} onSelect={selectGitFile}
+                    {gitSectionOpen && (gitViewMode === 'flat' ? (
+                      changesFiles.map(f => (
+                        <GitFileItem key={f.path} file={f} onSelect={selectGitFile}
+                          onStage={p => gitAction('stage', p)} onDiscard={p => gitAction('discard', p)}
+                          showStage showDiscard />
+                      ))
+                    ) : (
+                      <GitTreeGroup node={buildGitTree(changesFiles)} depth={0}
+                        expandedDirs={gitExpandedDirs}
+                        onToggleDir={p => setGitExpandedDirs(prev => {
+                          const next = new Set(prev)
+                          next.has(p) ? next.delete(p) : next.add(p)
+                          return next
+                        })}
+                        onSelect={selectGitFile}
                         onStage={p => gitAction('stage', p)} onDiscard={p => gitAction('discard', p)}
                         showStage showDiscard />
                     ))}
@@ -1242,6 +1421,7 @@ export default function FilesPanel({
                         setPreviewContent(null)
                       }
                       fetchTree()
+                      fetchGitStatus()
                     })
                     .catch((err) => {
                       console.error('[FilesPanel] 删除失败:', err)

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Sun, Moon, Monitor, Eye, Code2, Maximize2, PanelRightClose
+  Sun, Moon, Monitor, Eye, Code2, Maximize2, Minimize2, PanelRightClose
 } from 'lucide-react'
 import { ChatPanel } from './ChatPanel'
 import { SkillsPanel } from '../skills/SkillsPanel'
@@ -43,6 +43,7 @@ export function ChatLayout() {
   const [rightPanelHidden, setRightPanelHidden] = useState(false)
   const [devPanelTab, setDevPanelTab] = useState<'files' | 'preview'>('files')
   const [filesRefreshKey, setFilesRefreshKey] = useState(0)
+  const [diffFilePath, setDiffFilePath] = useState<string | null>(null)
 
   // AI 工具操作完成后刷新文件树 + git 状态
   useEffect(() => {
@@ -426,56 +427,56 @@ export function ChatLayout() {
               <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} />
             ) : (
               <>
-                {/* 开发项目 tab 栏 — 全屏时隐藏 */}
-                {!filesFullscreen ? (
-                  <div
-                    data-tauri-drag-region
-                    className="flex items-center gap-1 px-2 pt-2 pb-1 border-b shrink-0 select-none"
-                    style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
-                  >
-                    {/* 左侧操作按钮 */}
-                    <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                {/* 开发项目 tab 栏 — 全屏时显示简化版 */}
+                <div
+                  data-tauri-drag-region
+                  className="flex items-center gap-1 px-2 pt-2 pb-1 border-b shrink-0 select-none"
+                  style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
+                >
+                  {/* 左侧操作按钮 */}
+                  <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                    {!filesFullscreen && (
                       <button onClick={() => setRightPanelHidden(true)} className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer" title="收起面板">
                         <PanelRightClose size={14} />
                       </button>
-                      <button onClick={() => setFilesFullscreen(true)} className="p-0.5 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title="全屏">
-                        <Maximize2 size={14} />
-                      </button>
-                    </div>
-                    {/* Tab pills */}
-                    <div className="flex items-center gap-0.5 ml-1 p-0.5 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-                      <button
-                        onClick={() => setDevPanelTab('files')}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
-                        style={{
-                          backgroundColor: devPanelTab === 'files' ? 'var(--color-surface)' : 'transparent',
-                          color: devPanelTab === 'files' ? 'var(--color-text)' : 'var(--color-text-muted)',
-                          boxShadow: devPanelTab === 'files' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                        }}
-                      >
-                        <Code2 size={12} />
-                        文件
-                      </button>
-                      <button
-                        onClick={() => setDevPanelTab('preview')}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
-                        style={{
-                          backgroundColor: devPanelTab === 'preview' ? 'var(--color-surface)' : 'transparent',
-                          color: devPanelTab === 'preview' ? 'var(--color-text)' : 'var(--color-text-muted)',
-                          boxShadow: devPanelTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                        }}
-                      >
-                        <Eye size={12} />
-                        动态
-                        {chat.activityData.fileChanges.length > 0 && (
-                          <span className="text-[10px] min-w-[16px] text-center px-1 rounded-full" style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}>
-                            {chat.activityData.fileChanges.length}
-                          </span>
-                        )}
-                      </button>
-                    </div>
+                    )}
+                    <button onClick={() => setFilesFullscreen(!filesFullscreen)} className="p-0.5 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title={filesFullscreen ? '退出全屏' : '全屏'}>
+                      {filesFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                    </button>
                   </div>
-                ) : null}
+                  {/* Tab pills */}
+                  <div className="flex items-center gap-0.5 ml-1 p-0.5 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                    <button
+                      onClick={() => setDevPanelTab('files')}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
+                      style={{
+                        backgroundColor: devPanelTab === 'files' ? 'var(--color-surface)' : 'transparent',
+                        color: devPanelTab === 'files' ? 'var(--color-text)' : 'var(--color-text-muted)',
+                        boxShadow: devPanelTab === 'files' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                      }}
+                    >
+                      <Code2 size={12} />
+                      文件
+                    </button>
+                    <button
+                      onClick={() => setDevPanelTab('preview')}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
+                      style={{
+                        backgroundColor: devPanelTab === 'preview' ? 'var(--color-surface)' : 'transparent',
+                        color: devPanelTab === 'preview' ? 'var(--color-text)' : 'var(--color-text-muted)',
+                        boxShadow: devPanelTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                      }}
+                    >
+                      <Eye size={12} />
+                      动态
+                      {chat.activityData.fileChanges.length > 0 && (
+                        <span className="text-[10px] min-w-[16px] text-center px-1 rounded-full" style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}>
+                          {chat.activityData.fileChanges.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
                 {/* Tab 内容 — 使用绝对定位确保 h-full 在 flex 容器中正确解析 */}
                 <div className="flex-1 min-h-0 relative">
                   <div className="absolute inset-0 overflow-hidden">
@@ -487,6 +488,8 @@ export function ChatLayout() {
                         onHide={() => setRightPanelHidden(true)}
                         hideHeaderButtons
                         refreshKey={filesRefreshKey}
+                        diffFilePath={diffFilePath}
+                        onDiffFileConsumed={() => setDiffFilePath(null)}
                       />
                     ) : (
                       <ActivityPanel activityData={chat.activityData} />
