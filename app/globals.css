@@ -381,6 +381,48 @@ body {
   border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
+/* ═══════════════ CodeMirror Diff 样式 ═══════════════ */
+/* 新增行：绿色背景 + "+" 标记 */
+.cm-editor .cm-line.cm-diffLineAdd {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.cm-editor .cm-line.cm-diffLineAdd::before {
+  content: '+';
+  color: #059669;
+  font-weight: 700;
+  font-size: 0.75rem;
+  margin-right: 0.25rem;
+  user-select: none;
+}
+/* 删除行 block widget */
+.cm-editor .cm-diffRemovedLine {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  padding: 0 4px 0 0;
+  font-family: var(--cm-font-family, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: flex;
+  align-items: baseline;
+}
+.cm-editor .cm-diffMinusMarker {
+  color: #dc2626;
+  font-weight: 700;
+  font-size: 0.75rem;
+  width: 1em;
+  display: inline-block;
+  text-align: center;
+  user-select: none;
+  flex-shrink: 0;
+  margin-right: 0.25rem;
+}
+.cm-editor .cm-diffRemovedText {
+  color: #dc2626;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
 /* ═══════════════ Markdown 渲染样式 ═══════════════ */
 .markdown-body h1 { font-size: 1.5em; font-weight: 700; margin: 0.75em 0 0.5em; }
 .markdown-body h2 { font-size: 1.3em; font-weight: 600; margin: 0.75em 0 0.5em; }

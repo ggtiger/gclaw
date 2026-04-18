@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, memo } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, GitBranch } from 'lucide-react'
 import type { TreeEntry, MenuItem } from './types'
+import type { GitStatusCode } from '@/types/git'
 
 import { getFileIcon } from './types'
 
@@ -15,6 +16,44 @@ export function FileIconSm({ name, type }: { name: string; type: 'file' | 'direc
       <Icon size={15} className={c.color} />
     </span>
   )
+}
+
+// ─── Git 状态标记 ───
+
+function GitStatusBadge({ status }: { status: GitStatusCode }) {
+  const styles: Record<GitStatusCode, { color: string; bg: string; label: string }> = {
+    M: { color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'M' },
+    A: { color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'A' },
+    '?': { color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'U' },
+    D: { color: 'text-red-500', bg: 'bg-red-500/10', label: 'D' },
+    R: { color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'R' },
+    C: { color: 'text-purple-500', bg: 'bg-purple-500/10', label: 'C' },
+    '!': { color: 'text-gray-400', bg: 'bg-gray-400/10', label: '!' },
+  }
+  const s = styles[status]
+  return (
+    <span className={`text-[10px] font-bold leading-none px-1 rounded ${s.color} ${s.bg}`}>
+      {s.label}
+    </span>
+  )
+}
+
+// 计算目录下变更文件数
+function countChanges(entry: TreeEntry): number {
+  if (entry.type === 'file') return entry.gitStatus ? 1 : 0
+  if (!entry.children) return 0
+  return entry.children.reduce((sum, c) => sum + countChanges(c), 0)
+}
+
+// 查找目录下最严重的 git 状态
+function getDirectoryStatus(entry: TreeEntry): GitStatusCode | undefined {
+  if (!entry.children) return undefined
+  for (const child of entry.children) {
+    if (child.type === 'file' && child.gitStatus) return child.gitStatus
+    const s = getDirectoryStatus(child)
+    if (s) return s
+  }
+  return undefined
 }
 
 // ─── 右键菜单 ───
@@ -78,6 +117,12 @@ interface TreeViewProps {
   // 拖拽视觉反馈
   draggedPath: string | null
   dropTargetPath: string | null
+  // Git 目录信息：Map<path, branch>
+  gitDirsMap?: Map<string, string>
+  // 点击 git 目录时的回调
+  onSelectGitDir?: (dirPath: string) => void
+  // 当前活跃的 git 目录
+  activeGitDir?: string | null
 }
 
 function matchesSearch(entry: TreeEntry, query: string): boolean {
@@ -94,7 +139,7 @@ export const TreeView = memo(function TreeView({
   entries, selectedPath, expandedFolders, onToggleFolder, onSelectFile,
   onContextMenu, renamingPath, renameValue, onRenameChange, onRenameConfirm,
   onRenameCancel, renameInputRef, searchQuery, level,
-  draggedPath, dropTargetPath,
+  draggedPath, dropTargetPath, gitDirsMap, onSelectGitDir, activeGitDir,
 }: TreeViewProps) {
   const filtered = searchQuery ? entries.filter(e => matchesSearch(e, searchQuery)) : entries
 
@@ -109,6 +154,9 @@ export const TreeView = memo(function TreeView({
 
         if (entry.type === 'directory') {
           const isDropTarget = dropTargetPath === entry.path && draggedPath !== entry.path
+          const isGitDir = gitDirsMap?.has(entry.path)
+          const gitBranch = gitDirsMap?.get(entry.path)
+          const isActiveGitDir = activeGitDir === entry.path
           return (
             <div key={entry.path}>
               <div
@@ -117,17 +165,21 @@ export const TreeView = memo(function TreeView({
                 className="flex items-center gap-1 py-[3px] pr-2 cursor-pointer transition-colors group"
                 style={{
                   paddingLeft,
-                  backgroundColor: isDropTarget
+                  backgroundColor: isActiveGitDir
                     ? 'var(--color-primary-subtle)'
+                    : isDropTarget ? 'var(--color-primary-subtle)'
                     : isSelected ? 'var(--color-primary-subtle)' : 'transparent',
                   outline: isDropTarget ? '1.5px dashed var(--color-primary)' : 'none',
                   borderRadius: isDropTarget ? 3 : 0,
                   opacity: isDragged ? 0.4 : 1,
                 }}
-                onClick={() => onToggleFolder(entry.path)}
+                onClick={() => {
+                  onToggleFolder(entry.path)
+                  if (isGitDir && onSelectGitDir) onSelectGitDir(entry.path)
+                }}
                 onContextMenu={e => onContextMenu(e, entry)}
-                onMouseEnter={e => { if (!isSelected && !isDropTarget) e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)' }}
-                onMouseLeave={e => { if (!isSelected && !isDropTarget) e.currentTarget.style.backgroundColor = 'transparent' }}
+                onMouseEnter={e => { if (!isSelected && !isDropTarget && !isActiveGitDir) e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)' }}
+                onMouseLeave={e => { if (!isSelected && !isDropTarget && !isActiveGitDir) e.currentTarget.style.backgroundColor = 'transparent' }}
               >
                 {isExpanded
                   ? <ChevronDown size={12} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />
@@ -135,6 +187,12 @@ export const TreeView = memo(function TreeView({
                 }
                 <FileIconSm name={entry.name} type="directory" />
                 <span className="text-sm truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</span>
+                {gitBranch && (
+                  <span className="text-[9px] leading-none px-1 py-[1px] rounded-full ml-auto shrink-0 flex items-center gap-0.5"
+                    style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}>
+                    <GitBranch size={8} /> {gitBranch}
+                  </span>
+                )}
               </div>
               {isExpanded && entry.children && (
                 <TreeView
@@ -154,6 +212,9 @@ export const TreeView = memo(function TreeView({
                   level={level + 1}
                   draggedPath={draggedPath}
                   dropTargetPath={dropTargetPath}
+                  gitDirsMap={gitDirsMap}
+                  onSelectGitDir={onSelectGitDir}
+                  activeGitDir={activeGitDir}
                 />
               )}
             </div>
@@ -191,6 +252,7 @@ export const TreeView = memo(function TreeView({
             ) : (
               <span className="text-sm truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</span>
             )}
+            {entry.gitStatus && <GitStatusBadge status={entry.gitStatus} />}
           </div>
         )
       })}

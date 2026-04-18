@@ -8,14 +8,8 @@
 
 import type { EpisodicEntry } from '@/types/memory'
 import { logger } from '@/lib/logger'
-import { getGlobalSettings } from '@/lib/store/settings'
+import { callLLM } from '@/lib/llm'
 
-/** 获取辅助模型名称 */
-function getAssistantModel(): string {
-  return getGlobalSettings().assistantModel || 'claude-haiku-4-20250414'
-}
-/** 超时时间（毫秒） */
-const EXTRACT_TIMEOUT = 8000
 /** 输入截断限制 */
 const MAX_USER_MSG = 500
 const MAX_REPLY = 1000
@@ -75,10 +69,6 @@ export async function extractWithLLM(
   assistantReply: string,
   projectId: string
 ): Promise<EpisodicDraft[] | null> {
-  // 检查 API Key
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return null
-
   const truncatedUser = userMessage.slice(0, MAX_USER_MSG)
   const truncatedReply = assistantReply.slice(0, MAX_REPLY)
 
@@ -88,23 +78,16 @@ export async function extractWithLLM(
     : `## 用户消息\n${truncatedUser}\n\n注意：以上是用户当前发送的消息，请从中提取有记忆价值的信息。`
 
   try {
-    const response = await Promise.race([
-      callAnthropicAPI(apiKey, {
-        model: getAssistantModel(),
-        max_tokens: 512,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-      timeout(EXTRACT_TIMEOUT),
-    ])
+    const text = await callLLM({
+      system: SYSTEM_PROMPT,
+      user: userPrompt,
+      maxTokens: 512,
+      timeoutMs: 8000,
+    })
 
-    if (!response) return null
+    if (!text) return null
 
-    // 提取文本内容
-    const textBlock = response.content?.find((b: { type: string }) => b.type === 'text') as { type: 'text'; text: string } | undefined
-    if (!textBlock?.text) return null
-
-    const parsed = parseResponse(textBlock.text, projectId)
+    const parsed = parseResponse(text, projectId)
     return parsed
   } catch (err) {
     logger.warn('[GClaw] LLM extraction failed, will fallback to regex:', (err as Error).message)
@@ -149,42 +132,4 @@ function parseResponse(text: string, projectId: string): EpisodicDraft[] | null 
   } catch {
     return null
   }
-}
-
-/**
- * 直接调用 Anthropic Messages API（无需 SDK 依赖）
- */
-export async function callAnthropicAPI(
-  apiKey: string,
-  body: {
-    model: string
-    max_tokens: number
-    system: string
-    messages: Array<{ role: string; content: string }>
-  }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
-  const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com'
-  const resp = await fetch(`${baseUrl}/v1/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!resp.ok) {
-    throw new Error(`Anthropic API ${resp.status}: ${await resp.text()}`)
-  }
-
-  return resp.json()
-}
-
-/**
- * 超时 Promise
- */
-export function timeout(ms: number): Promise<null> {
-  return new Promise(resolve => setTimeout(() => resolve(null), ms))
 }

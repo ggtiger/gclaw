@@ -1,4 +1,5 @@
 import type { Extension } from '@codemirror/state'
+import type { GitStatusCode } from '@/types/git'
 import {
   File,
   FileCode,
@@ -35,6 +36,7 @@ export interface TreeEntry {
   path: string
   type: 'file' | 'directory'
   children?: TreeEntry[]
+  gitStatus?: GitStatusCode
 }
 
 export interface FilesPanelProps {
@@ -42,6 +44,9 @@ export interface FilesPanelProps {
   onToggleFullscreen?: () => void
   isFullscreen?: boolean
   onHide?: () => void
+  hideHeaderButtons?: boolean
+  /** 外部刷新信号：值变化时刷新文件树和 git 状态 */
+  refreshKey?: number
 }
 
 export interface MenuItem {

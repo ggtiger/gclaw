@@ -9,14 +9,9 @@
 
 import { store } from './store'
 import type { SemanticEntry, ProceduralEntry } from '@/types/memory'
-import { callAnthropicAPI, timeout } from './llm-extractor'
+import { callLLM, getAssistantModel } from '@/lib/llm'
 import { logger } from '@/lib/logger'
-import { getGlobalSettings } from '@/lib/store/settings'
 
-/** 获取辅助模型名称 */
-function getAssistantModel(): string {
-  return getGlobalSettings().assistantModel || 'claude-haiku-4-20250414'
-}
 /** LLM 超时时间（毫秒） */
 const OVERVIEW_TIMEOUT = 10000
 
@@ -167,9 +162,6 @@ export async function generateAndSaveOverviewAsync(userId: string): Promise<stri
  * 用 LLM 从记忆条目生成精简总纲
  */
 async function generateOverviewWithLLM(userId: string): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return null
-
   const userDir = store.userMemoryDir(userId)
   const semantic = store.readSemantic(userDir)
   const procedural = store.readProcedural(userDir)
@@ -206,24 +198,17 @@ async function generateOverviewWithLLM(userId: string): Promise<string | null> {
   const userPrompt = inputLines.join('\n')
 
   try {
-    const response = await Promise.race([
-      callAnthropicAPI(apiKey, {
-        model: getAssistantModel(),
-        max_tokens: 1024,
-        system: OVERVIEW_PROMPT,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-      timeout(OVERVIEW_TIMEOUT),
-    ])
+    const text = await callLLM({
+      system: OVERVIEW_PROMPT,
+      user: userPrompt,
+      maxTokens: 1024,
+      timeoutMs: OVERVIEW_TIMEOUT,
+    })
 
-    if (!response) return null
-
-    // 提取文本内容
-    const textBlock = response.content?.find((b: { type: string }) => b.type === 'text') as { type: 'text'; text: string } | undefined
-    if (!textBlock?.text?.trim()) return null
+    if (!text) return null
 
     // 组装最终总纲
-    const overview = `## 用户记忆总纲\n\n${textBlock.text.trim()}\n\n> 详细记忆可通过 API 检索：POST $GCLAW_API_BASE/api/memory/recall`
+    const overview = `## 用户记忆总纲\n\n${text}\n\n> 详细记忆可通过 API 检索：POST $GCLAW_API_BASE/api/memory/recall`
     logger.info(`[GClaw] LLM overview generated (${overview.length} chars)`)
     return overview
   } catch (err) {

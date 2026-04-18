@@ -548,16 +548,44 @@ export async function* executeChat(
             yield { event: 'thinking', data: { content: parsed.content } }
             break
 
-          case 'tool_use':
+          case 'tool_use': {
+            // 对于 Edit/MultiEdit/Write 工具，计算 old_string 在原文件中的起始行号
+            let startLine: number | undefined
+            const toolInput = parsed.input || {}
+            const toolNames = ['Edit', 'MultiEdit', 'Write']
+            if (toolNames.includes(parsed.toolName)) {
+              const filePath = (toolInput.file_path || toolInput.path || '') as string
+              if (filePath) {
+                const absPath = path.isAbsolute(filePath) ? filePath : path.join(sdkCwd, filePath)
+                try {
+                  if (parsed.toolName === 'Write') {
+                    startLine = 1
+                  } else {
+                    const fileContent = fs.readFileSync(absPath, 'utf-8')
+                    const searchStr = parsed.toolName === 'MultiEdit'
+                      ? ((toolInput.edits as Array<Record<string, string>>)?.[0]?.old_string || '')
+                      : (toolInput.old_string as string || '')
+                    if (searchStr) {
+                      const idx = fileContent.indexOf(searchStr)
+                      if (idx >= 0) {
+                        startLine = fileContent.substring(0, idx).split('\n').length
+                      }
+                    }
+                  }
+                } catch { /* 文件不存在或不可读，忽略 */ }
+              }
+            }
             yield {
               event: 'tool_use',
               data: {
                 toolUseId: parsed.toolUseId,
                 toolName: parsed.toolName,
                 input: parsed.input,
+                startLine,
               },
             }
             break
+          }
 
           case 'tool_result':
             yield {

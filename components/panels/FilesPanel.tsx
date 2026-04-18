@@ -19,23 +19,98 @@ import {
   Maximize2,
   Minimize2,
   PanelRightClose,
+  X,
   Copy,
   Scissors,
   ClipboardPaste,
   ExternalLink,
   MoreHorizontal,
+  GitBranch,
+  Plus,
+  Minus,
+  Undo2,
+  ChevronDown,
+  ChevronRight,
+  Upload as PushIcon,
+  Send,
+  Sparkles,
+  Check,
 } from 'lucide-react'
 import type { TreeEntry, FilesPanelProps, MenuItem, ClipboardState } from './files/types'
+import type { GitStatusResponse, GitFileStatus, GitDirInfo } from '@/types/git'
 import { getFileCategory } from './files/types'
 import { ContextMenu, TreeView } from './files/FileTree'
 import { FileIconSm } from './files/FileTree'
 import { ImagePreview, PDFPreview, WordPreview, ExcelPreview, PPTPreview } from './files/previews'
-import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor } from './files/editors'
+import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor, DiffEditor } from './files/editors'
 import { isTauri, openWithSystemApp, revealInFinder } from '@/lib/tauri'
+
+// ─── Git 状态标记字母 ───
+
+function StatusLetter({ code }: { code: string }) {
+  const map: Record<string, string> = { M: 'text-amber-500', A: 'text-emerald-500', D: 'text-red-500', R: 'text-blue-500', C: 'text-purple-500', '?': 'text-emerald-500', '!': 'text-gray-400' }
+  return <span className={`text-[10px] font-bold w-3 text-center ${map[code] || 'text-gray-400'}`}>{code === '?' ? 'U' : code}</span>
+}
+
+// ─── Git 变更文件行 ───
+
+function GitFileItem({
+  file,
+  onStage,
+  onUnstage,
+  onDiscard,
+  onSelect,
+  showStage,
+  showUnstage,
+  showDiscard,
+}: {
+  file: GitFileStatus
+  onStage?: (path: string) => void
+  onUnstage?: (path: string) => void
+  onDiscard?: (path: string) => void
+  onSelect: (path: string) => void
+  showStage?: boolean
+  showUnstage?: boolean
+  showDiscard?: boolean
+}) {
+  const fileName = file.path.split('/').pop() || file.path
+  const dirPath = file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/') + 1) : ''
+
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-[2px] group cursor-pointer transition-colors"
+      onClick={() => onSelect(file.path)}
+      onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
+      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+    >
+      <StatusLetter code={file.statusCode} />
+      <span className="text-xs truncate" style={{ color: 'var(--color-text)' }}>{fileName}</span>
+      {dirPath && <span className="text-[10px] truncate opacity-50" style={{ color: 'var(--color-text-muted)' }}>{dirPath}</span>}
+      <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        {showStage && onStage && (
+          <button onClick={e => { e.stopPropagation(); onStage(file.path) }} className="p-0.5 rounded cursor-pointer hover:bg-emerald-500/10" title="暂存">
+            <Plus size={11} className="text-emerald-500" />
+          </button>
+        )}
+        {showUnstage && onUnstage && (
+          <button onClick={e => { e.stopPropagation(); onUnstage(file.path) }} className="p-0.5 rounded cursor-pointer hover:bg-amber-500/10" title="取消暂存">
+            <Minus size={11} className="text-amber-500" />
+          </button>
+        )}
+        {showDiscard && onDiscard && file.statusCode !== '?' && (
+          <button onClick={e => { e.stopPropagation(); onDiscard(file.path) }} className="p-0.5 rounded cursor-pointer hover:bg-red-500/10" title="丢弃更改">
+            <Undo2 size={11} className="text-red-500" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ─── 主组件 ───
 
-export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen, onHide }: FilesPanelProps) {
+export default function FilesPanel({
+  projectId, onToggleFullscreen, isFullscreen, onHide, hideHeaderButtons, refreshKey,
+}: FilesPanelProps) {
   // 文件树
   const [tree, setTree] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,6 +126,9 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
+  // diff 预览模式
+  const [diffOldContent, setDiffOldContent] = useState<string | null>(null)
+  const [diffNewContent, setDiffNewContent] = useState<string | null>(null)
 
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
@@ -90,6 +168,22 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
   const splitStartXRef = useRef(0)
   const splitStartWidthRef = useRef(0)
 
+  // Git 源码管理区域
+  const [gitSectionOpen, setGitSectionOpen] = useState(true)
+  const [commitMessage, setCommitMessage] = useState('')
+  const [committing, setCommitting] = useState(false)
+  const [pushing, setPushing] = useState(false)
+  const [generatingCommit, setGeneratingCommit] = useState(false)
+  const [gitError, setGitError] = useState<string | null>(null)
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
+  const [switchingBranch, setSwitchingBranch] = useState(false)
+
+  // 多 git 目录管理
+  const [gitDirs, setGitDirs] = useState<GitDirInfo[]>([])
+  const [activeGitDir, setActiveGitDir] = useState<string | null>(null) // 相对路径
+  const [activeGitStatus, setActiveGitStatus] = useState<GitStatusResponse | null>(null)
+  const gitDirsMap = new Map(gitDirs.map(d => [d.path, d.branch]))
+
   // 全屏切换时自动调整树宽度
   useEffect(() => {
     if (isFullscreen) {
@@ -116,6 +210,47 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
   }, [projectId])
 
   useEffect(() => { fetchTree() }, [fetchTree])
+
+  // ─── 外部刷新信号（AI 工具操作完成后触发）───
+  useEffect(() => {
+    if (refreshKey && refreshKey > 0) {
+      fetchTree()
+      fetchGitStatus()
+    }
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── 扫描 git 目录 ───
+  const scanGitDirs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git?scan`)
+      const data: { gitDirs: GitDirInfo[] } = await res.json()
+      setGitDirs(data.gitDirs || [])
+      // 自动选中第一个（如果没有选中）
+      if (data.gitDirs?.length > 0 && !activeGitDir) {
+        setActiveGitDir(data.gitDirs[0].path)
+      }
+    } catch { /* ignore */ }
+  }, [projectId, activeGitDir])
+
+  useEffect(() => { scanGitDirs() }, [scanGitDirs])
+
+  // ─── 获取活跃 git 目录的状态 ───
+  const fetchGitStatus = useCallback(async (gitDir?: string | null) => {
+    const dir = gitDir ?? activeGitDir
+    if (dir === null && gitDirs.length === 0) return
+    try {
+      const params = dir ? `?dir=${encodeURIComponent(dir)}` : ''
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git${params}`)
+      const data: GitStatusResponse = await res.json()
+      setActiveGitStatus(data)
+    } catch { /* ignore */ }
+  }, [projectId, activeGitDir, gitDirs.length])
+
+  useEffect(() => {
+    if (activeGitDir !== null || gitDirs.length > 0) {
+      fetchGitStatus()
+    }
+  }, [activeGitDir, gitDirs.length, fetchGitStatus])
 
   // ─── 分栏拖拽 ───
   useEffect(() => {
@@ -180,6 +315,116 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
     return data
   }
 
+  // ─── Git 操作 ───
+  const gitAction = useCallback(async (action: string, filePath?: string) => {
+    setGitError(null)
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, path: filePath, dir: activeGitDir }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || '操作失败')
+      fetchGitStatus()
+    } catch (err) {
+      setGitError(err instanceof Error ? err.message : '操作失败')
+    }
+  }, [projectId, activeGitDir, fetchGitStatus])
+
+  const handleGenerateCommit = async () => {
+    const staged = activeGitStatus?.staged ?? []
+    if (staged.length === 0) {
+      setGitError('请先暂存要提交的文件')
+      return
+    }
+    setGeneratingCommit(true)
+    setGitError(null)
+    try {
+      const stagedInfo = staged.map(f => `${f.statusCode} ${f.path}`).join('\n')
+      const res = await fetch('/api/llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system: '你是一个 git 提交信息生成助手。根据暂存的文件变更，中文提交信息。仅返回提交信息文本，不要解释，不要用引号包裹。',
+          user: stagedInfo,
+          maxTokens: 2000,
+          projectId,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '生成失败')
+      if (data.text) setCommitMessage(data.text)
+    } catch (err) {
+      setGitError(err instanceof Error ? err.message : '生成提交信息失败')
+    } finally {
+      setGeneratingCommit(false)
+    }
+  }
+
+  const handleCommit = async () => {
+    if (!commitMessage.trim()) return
+    setCommitting(true)
+    setGitError(null)
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commit', message: commitMessage.trim(), dir: activeGitDir }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || '提交失败')
+      setCommitMessage('')
+      fetchGitStatus()
+      fetchTree()
+    } catch (err) {
+      setGitError(err instanceof Error ? err.message : '提交失败')
+    } finally {
+      setCommitting(false)
+    }
+  }
+
+  const handlePush = async () => {
+    setPushing(true)
+    setGitError(null)
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'push', dir: activeGitDir }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || '推送失败')
+      fetchGitStatus()
+    } catch (err) {
+      setGitError(err instanceof Error ? err.message : '推送失败')
+    } finally {
+      setPushing(false)
+    }
+  }
+
+  const handleCheckout = async (branchName: string) => {
+    setSwitchingBranch(true)
+    setGitError(null)
+    setBranchDropdownOpen(false)
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'checkout', path: branchName, dir: activeGitDir }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || '切换分支失败')
+      scanGitDirs()
+      fetchGitStatus()
+      fetchTree()
+    } catch (err) {
+      setGitError(err instanceof Error ? err.message : '切换分支失败')
+    } finally {
+      setSwitchingBranch(false)
+    }
+  }
+
   // ─── 保存文件 ───
   const saveFile = async (content: string) => {
     if (!selectedFile) return
@@ -193,6 +438,13 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '保存失败')
       setPreviewContent(content)
+      // 保存成功后刷新文件树和 git 状态
+      fetchTree()
+      fetchGitStatus()
+      // 如果在 diff 模式，更新 newContent 为最新保存内容
+      if (diffOldContent !== null) {
+        setDiffNewContent(content)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -215,7 +467,41 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
     setSelectedFile(entry)
     setSelectedPath(entry.path)
     setPreviewKey(k => k + 1)
+    setDiffOldContent(null)
+    setDiffNewContent(null)
     await loadFileContent(entry)
+  }
+
+  // 从 git 变更列表选择文件 → 显示 diff
+  const selectGitFile = async (filePath: string) => {
+    const fileName = filePath.split('/').pop() || filePath
+    const fullPath = activeGitDir ? `${activeGitDir}/${filePath}` : filePath
+    const entry: TreeEntry = { name: fileName, path: fullPath, type: 'file' }
+    setSelectedFile(entry)
+    setSelectedPath(fullPath)
+    setPreviewKey(k => k + 1)
+    setPreviewContent(null)
+    setDiffOldContent(null)
+    setDiffNewContent(null)
+    setPreviewLoading(true)
+    setPreviewError(null)
+
+    try {
+      // 判断是 staged 还是 unstaged/untracked
+      const isStaged = activeGitStatus?.staged.some(f => f.path === filePath)
+      const params = new URLSearchParams({ diff: filePath })
+      if (activeGitDir) params.set('dir', activeGitDir)
+      if (isStaged) params.set('staged', '1')
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git?${params}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '获取 diff 失败')
+      setDiffOldContent(data.oldContent ?? null)
+      setDiffNewContent(data.newContent ?? null)
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : '获取 diff 失败')
+    } finally {
+      setPreviewLoading(false)
+    }
   }
 
   const loadFileContent = async (entry: TreeEntry) => {
@@ -276,10 +562,9 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
   // ─── 粘贴操作 ───
   const handlePaste = async (targetDir: string) => {
     if (!clipboard) return
-    const { mode, sourcePath, sourceName, sourceType } = clipboard
+    const { mode, sourcePath, sourceName } = clipboard
     const destPath = targetDir ? `${targetDir}/${sourceName}` : sourceName
 
-    // 检查是否粘贴到自身目录
     if (sourcePath === destPath) {
       setClipboard(null)
       return
@@ -289,10 +574,8 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       if (mode === 'copy') {
         await fileAction('copy', sourcePath, destPath)
       } else {
-        // 剪切 = 移动（使用 rename API）
         await fileAction('rename', sourcePath, destPath)
         setClipboard(null)
-        // 如果剪切的是当前选中的文件，更新选中状态
         if (selectedFile?.path === sourcePath) {
           setSelectedFile({ ...selectedFile, path: destPath })
           setSelectedPath(destPath)
@@ -313,7 +596,6 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
     const fileName = srcPath.split('/').pop()!
     const destPath = targetDir ? `${targetDir}/${fileName}` : fileName
     if (srcPath === destPath) return
-    // 已在目标目录中
     const srcDir = srcPath.includes('/') ? srcPath.substring(0, srcPath.lastIndexOf('/')) : ''
     if (srcDir === targetDir) return
 
@@ -332,12 +614,11 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       })
   }
 
-  // 文件树容器的 mousedown —— 启动拖拽跟踪
   const handleTreeMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return // 只响应左键
+    if (e.button !== 0) return
     const el = (e.target as HTMLElement).closest('[data-entry-path]') as HTMLElement | null
     if (!el) return
-    if ((e.target as HTMLElement).tagName === 'INPUT') return // 重命名输入框不触发
+    if ((e.target as HTMLElement).tagName === 'INPUT') return
     const entryPath = el.dataset.entryPath!
     mouseDragRef.current = { sourcePath: entryPath, startX: e.clientX, startY: e.clientY, active: false }
   }
@@ -350,7 +631,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       if (!drag.active) {
         const dx = Math.abs(e.clientX - drag.startX)
         const dy = Math.abs(e.clientY - drag.startY)
-        if (dx + dy < 8) return // 阈值，避免误触发
+        if (dx + dy < 8) return
         drag.active = true
         draggedPathRef.current = drag.sourcePath
         setDraggedPath(drag.sourcePath)
@@ -358,7 +639,6 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
         document.body.style.userSelect = 'none'
       }
 
-      // 找到光标下方的目录元素
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const dirEl = el?.closest('[data-entry-type="directory"]') as HTMLElement | null
       const treeContainer = el?.closest('[data-tree-container]') as HTMLElement | null
@@ -366,12 +646,11 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       let targetPath: string | null = null
       if (dirEl) {
         const dirPath = dirEl.dataset.entryPath!
-        // 不能拖放到自身或子目录
         if (dirPath !== drag.sourcePath && !dirPath.startsWith(drag.sourcePath + '/')) {
           targetPath = dirPath
         }
       } else if (treeContainer) {
-        targetPath = '' // 空白区域 = 根目录
+        targetPath = ''
       }
 
       if (dropTargetRef.current !== targetPath) {
@@ -389,11 +668,10 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       dragJustEndedRef.current = true
-      setTimeout(() => { dragJustEndedRef.current = false }, 50) // 短暂标记阻止 click
+      setTimeout(() => { dragJustEndedRef.current = false }, 50)
 
       const targetDir = dropTargetRef.current
 
-      // 重置视觉状态
       draggedPathRef.current = null
       setDraggedPath(null)
       dropTargetRef.current = null
@@ -419,7 +697,6 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
     const tauriMode = isTauri()
 
     if (entry.type === 'file') {
-      // 文件菜单
       if (tauriMode) {
         items.push({ label: '打开', icon: <ExternalLink size={12} />, onClick: () => handleOpenLocal(entry.path) })
         items.push({ label: '打开所在目录', icon: <FolderOpen size={12} />, onClick: () => handleRevealInDir(entry.path) })
@@ -435,7 +712,6 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
         setClipboard({ mode: 'cut', sourcePath: entry.path, sourceName: entry.name, sourceType: entry.type })
       }})
     } else {
-      // 文件夹菜单
       if (tauriMode) {
         items.push({ label: '打开', icon: <ExternalLink size={12} />, onClick: () => handleOpenLocal(entry.path) })
         items.push({ label: '打开所在目录', icon: <FolderOpen size={12} />, onClick: () => handleRevealInDir(entry.path) })
@@ -539,6 +815,14 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
     finally { setUploading(false) }
   }
 
+  // ─── Git 数据（基于活跃 git 目录） ───
+  const stagedFiles = activeGitStatus?.staged ?? []
+  const unstagedFiles = activeGitStatus?.unstaged ?? []
+  const untrackedFiles = activeGitStatus?.untracked ?? []
+  const changesFiles = [...unstagedFiles, ...untrackedFiles]
+  const totalGitChanges = stagedFiles.length + changesFiles.length
+  const isGitRepo = activeGitStatus?.isGitRepo ?? false
+
   // ─── 渲染 ───
   if (loading && tree.length === 0) {
     return (
@@ -557,29 +841,58 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
         style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {onHide && !isFullscreen && (
+          {!hideHeaderButtons && onHide && !isFullscreen && (
             <button onClick={onHide} className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer" title="收起面板">
               <PanelRightClose size={14} />
             </button>
           )}
-          {onToggleFullscreen && (
+          {(!hideHeaderButtons || isFullscreen) && onToggleFullscreen && (
             <button onClick={onToggleFullscreen} className="p-0.5 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title={isFullscreen ? '退出全屏' : '全屏'}>
               {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           )}
           <Code2 size={16} style={{ color: 'var(--color-primary)' }} />
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>文件</span>
+          {isGitRepo && activeGitStatus?.branch && (
+            <div className="relative">
+              <button
+                onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
+                className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors"
+                style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}
+                title="切换分支"
+              >
+                {switchingBranch ? <Loader2 size={9} className="animate-spin" /> : <GitBranch size={9} />}
+                {activeGitStatus.branch}
+                <ChevronDown size={8} />
+              </button>
+              {branchDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setBranchDropdownOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[120px] max-h-40 overflow-y-auto"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                    {activeGitStatus.branches.map(b => (
+                      <button key={b.name}
+                        onClick={() => { if (!b.isCurrent) handleCheckout(b.name) }}
+                        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ color: b.isCurrent ? 'var(--color-primary)' : 'var(--color-text)' }}
+                      >
+                        {b.isCurrent ? <Check size={10} /> : <GitBranch size={10} />}
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div className="fp-toolbar flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* 始终显示的核心按钮 */}
           <button onClick={() => startCreate('file', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件">
             <FilePlus size={15} />
           </button>
           <button onClick={refreshCurrentFile} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title={selectedFile ? '刷新当前文件' : '刷新文件树'}>
             <RefreshCw size={15} />
           </button>
-
-          {/* 宽屏：直接显示更多按钮 */}
           <button onClick={() => startCreate('folder', '')} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件夹">
             <FolderPlus size={15} />
           </button>
@@ -604,15 +917,8 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
               <FolderOpen size={15} />
             </button>
           )}
-
-          {/* 窄屏：更多下拉 */}
           <div className="fp-more relative">
-            <button
-              onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-              className="p-1 rounded cursor-pointer"
-              style={{ color: 'var(--color-text-secondary)' }}
-              title="更多"
-            >
+            <button onClick={() => setMoreMenuOpen(!moreMenuOpen)} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="更多">
               <MoreHorizontal size={15} />
             </button>
             {moreMenuOpen && (
@@ -662,7 +968,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
 
       {/* ── 左右分栏 ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* 左侧：文件树 */}
+        {/* 左侧：文件树 + Git 变更 */}
         <div className="flex flex-col overflow-hidden shrink-0" style={{ width: treeWidth }}>
           {/* 搜索框 */}
           <div className="px-2 py-1 border-b shrink-0" style={{ borderColor: 'var(--panel-border)' }}>
@@ -672,7 +978,7 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="搜索文件..."
-                className="text-xs bg-transparent outline-none flex-1"
+                className="text-xs bg-transparent outline-none flex-1 min-w-0"
                 style={{ color: 'var(--color-text)' }}
               />
             </div>
@@ -680,10 +986,10 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
           {/* 文件树列表 */}
           <div
             data-tree-container
-            className="flex-1 overflow-y-auto py-1"
+            className="min-h-0 overflow-y-auto py-1"
+            style={{ flex: totalGitChanges > 0 && isGitRepo ? '1 1 50%' : '1 1 100%' }}
             onContextMenu={handleBgContextMenu}
             onMouseDown={handleTreeMouseDown}
-            style={dropTargetPath === '' ? { backgroundColor: 'var(--color-primary-subtle)', outline: '1.5px dashed var(--color-primary)', borderRadius: 3 } : undefined}
           >
             {tree.length === 0 && !loading ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
@@ -708,9 +1014,11 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
                 level={0}
                 draggedPath={draggedPath}
                 dropTargetPath={dropTargetPath}
+                gitDirsMap={gitDirsMap}
+                onSelectGitDir={(dirPath) => { setActiveGitDir(dirPath) }}
+                activeGitDir={activeGitDir}
               />
             )}
-            {/* 新建项输入 */}
             {creating && (
               <div
                 className="flex items-center gap-1 py-[3px] pr-2"
@@ -735,6 +1043,93 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
               </div>
             )}
           </div>
+
+          {/* ── Git 源码管理区域（文件树下方） ── */}
+          {isGitRepo && totalGitChanges > 0 && (
+            <div className="border-t shrink-0 flex flex-col" style={{ borderColor: 'var(--panel-border)', flex: '1 1 50%', minHeight: 0 }}>
+              {/* Git 错误 */}
+              {gitError && (
+                <div className="mx-2 my-1 px-2 py-1 rounded-md text-[10px] flex items-center gap-1 shrink-0"
+                  style={{ backgroundColor: 'color-mix(in srgb, var(--color-error) 10%, transparent)', color: 'var(--color-error)' }}>
+                  <AlertCircle size={10} /> {gitError}
+                  <button onClick={() => setGitError(null)} className="ml-auto cursor-pointer">&times;</button>
+                </div>
+              )}
+              {/* 提交栏 */}
+              <div className="px-2 py-1 border-b shrink-0" style={{ borderColor: 'var(--panel-border)' }}>
+                <div className="flex items-center gap-1">
+                  <input
+                    value={commitMessage}
+                    onChange={e => setCommitMessage(e.target.value)}
+                    onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); handleCommit() } }}
+                    placeholder="提交信息..."
+                    className="text-[11px] rounded px-1.5 py-0.5 flex-1 min-w-0 bg-transparent outline-none"
+                    style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
+                  />
+                  <button onClick={handleGenerateCommit} disabled={generatingCommit || stagedFiles.length === 0}
+                    className="p-0.5 rounded cursor-pointer disabled:opacity-30" style={{ color: 'var(--color-primary)' }} title="AI 生成提交信息">
+                    {generatingCommit ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  </button>
+                  <button onClick={handleCommit} disabled={committing || !commitMessage.trim() || stagedFiles.length === 0}
+                    className="p-0.5 rounded cursor-pointer disabled:opacity-30" style={{ color: 'var(--color-primary)' }} title="提交">
+                    {committing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  </button>
+                  {activeGitStatus?.hasRemote && (
+                    <button onClick={handlePush} disabled={pushing}
+                      className="p-0.5 rounded cursor-pointer disabled:opacity-30" style={{ color: 'var(--color-text-secondary)' }} title="推送">
+                      {pushing ? <Loader2 size={12} className="animate-spin" /> : <PushIcon size={12} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* 变更文件列表（可滚动） */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {/* 已暂存 */}
+                {stagedFiles.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1 px-2 py-0.5 select-none cursor-pointer"
+                      onClick={() => setGitSectionOpen(!gitSectionOpen)}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      {gitSectionOpen ? <ChevronDown size={10} style={{ color: 'var(--color-text-muted)' }} /> : <ChevronRight size={10} style={{ color: 'var(--color-text-muted)' }} />}
+                      <span className="text-[10px] font-medium uppercase" style={{ color: 'var(--color-text-secondary)' }}>已暂存</span>
+                      <span className="text-[10px] px-1 rounded-full" style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)' }}>{stagedFiles.length}</span>
+                      <button onClick={e => { e.stopPropagation(); gitAction('unstage-all') }} className="ml-auto p-0.5 rounded cursor-pointer hover:bg-amber-500/10" title="全部取消暂存">
+                        <Minus size={10} className="text-amber-500" />
+                      </button>
+                    </div>
+                    {gitSectionOpen && stagedFiles.map(f => (
+                      <GitFileItem key={f.path} file={f} onSelect={selectGitFile}
+                        onUnstage={p => gitAction('unstage', p)} showUnstage />
+                    ))}
+                  </div>
+                )}
+                {/* 更改 */}
+                {changesFiles.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1 px-2 py-0.5 select-none cursor-pointer"
+                      onClick={() => setGitSectionOpen(!gitSectionOpen)}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      {gitSectionOpen ? <ChevronDown size={10} style={{ color: 'var(--color-text-muted)' }} /> : <ChevronRight size={10} style={{ color: 'var(--color-text-muted)' }} />}
+                      <span className="text-[10px] font-medium uppercase" style={{ color: 'var(--color-text-secondary)' }}>更改</span>
+                      <span className="text-[10px] px-1 rounded-full" style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)' }}>{changesFiles.length}</span>
+                      <button onClick={e => { e.stopPropagation(); gitAction('stage-all') }} className="ml-auto p-0.5 rounded cursor-pointer hover:bg-emerald-500/10" title="全部暂存">
+                        <Plus size={10} className="text-emerald-500" />
+                      </button>
+                    </div>
+                    {gitSectionOpen && changesFiles.map(f => (
+                      <GitFileItem key={f.path} file={f} onSelect={selectGitFile}
+                        onStage={p => gitAction('stage', p)} onDiscard={p => gitAction('discard', p)}
+                        showStage showDiscard />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 分栏拖拽手柄 */}
@@ -752,12 +1147,18 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
         <div className="flex-1 overflow-hidden min-w-0 flex flex-col">
           {selectedFile ? (
             <>
-              {/* 文件名标题栏 */}
               <div className="flex items-center gap-1.5 px-2 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
                 <FileIconSm name={selectedFile.name} type={selectedFile.type} />
-                <span className="text-sm truncate" style={{ color: 'var(--color-text)' }}>{selectedFile.name}</span>
+                <span className="text-sm truncate flex-1 min-w-0" style={{ color: 'var(--color-text)' }}>{selectedFile.name}</span>
+                <button
+                  onClick={() => { setSelectedFile(null); setSelectedPath(null); setPreviewContent(null); setDiffOldContent(null); setDiffNewContent(null) }}
+                  className="p-0.5 rounded cursor-pointer shrink-0 hover:bg-[var(--color-bg-tertiary)]"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  title="关闭预览"
+                >
+                  <X size={14} />
+                </button>
               </div>
-              {/* 内容区 */}
               <div className="flex-1 overflow-hidden min-h-0">
                 {previewLoading ? (
                   <div className="flex items-center justify-center h-full">
@@ -765,6 +1166,14 @@ export default function FilesPanel({ projectId, onToggleFullscreen, isFullscreen
                   </div>
                 ) : previewError ? (
                   <div className="flex items-center justify-center h-full text-sm" style={{ color: 'var(--color-error)' }}>{previewError}</div>
+                ) : diffOldContent !== null || diffNewContent !== null ? (
+                  <DiffEditor
+                    oldContent={diffOldContent || ''}
+                    newContent={diffNewContent || ''}
+                    fileName={selectedFile.name}
+                    onSave={saveFile}
+                    saving={saving}
+                  />
                 ) : (() => {
                   const cat = getFileCategory(selectedFile.name)
                   if (cat === 'image') return <ImagePreview key={previewKey} projectId={projectId} filePath={selectedFile.path} refreshKey={previewKey} />

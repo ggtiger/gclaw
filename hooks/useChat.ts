@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem } from '@/types/chat'
 
 // ============================================================
 // 模块级 per-project 流状态缓冲
@@ -19,6 +19,9 @@ interface StreamBuffer {
   askQuestion: AskUserQuestionRequest | null
   pendingMessages: ChatMessage[] // 流结束后产生的消息（assistant/error）
   statusText: string | null     // 当前状态文本（如 'compacting'）
+  planContent: string | null
+  fileChanges: FileChangeEntry[]
+  todos: ActivityTodoItem[]
 }
 
 const streamBuffers = new Map<string, StreamBuffer>()
@@ -41,6 +44,9 @@ function getBuffer(projectId: string): StreamBuffer {
       askQuestion: null,
       pendingMessages: [],
       statusText: null,
+      planContent: null,
+      fileChanges: [],
+      todos: [],
     }
     streamBuffers.set(projectId, buf)
   }
@@ -54,6 +60,58 @@ function setActive(projectId: string, active: boolean) {
     activeProjectIds.delete(projectId)
   }
   activeListeners.forEach(fn => fn())
+}
+
+function extractActivityFromTool(
+  toolName: string,
+  input: Record<string, unknown>,
+  toolUseId: string,
+  buf: StreamBuffer,
+  startLine?: number
+) {
+  // ExitPlanMode -> planContent
+  if (toolName === 'ExitPlanMode' && input.plan) {
+    buf.planContent = input.plan as string
+  }
+  // Write/Edit/MultiEdit -> fileChanges
+  if (['Write', 'Edit', 'MultiEdit'].includes(toolName)) {
+    const filePath = (input.file_path || input.path || '') as string
+    if (filePath && !buf.fileChanges.find(c => c.toolUseId === toolUseId)) {
+      // MultiEdit 使用 edits 数组，将多个编辑合并为 diff 文本
+      let content: string | undefined
+      let oldString: string | undefined
+      let newString: string | undefined
+      if (toolName === 'Write') {
+        content = input.content as string
+      } else if (toolName === 'MultiEdit' && Array.isArray(input.edits)) {
+        const edits = input.edits as Array<Record<string, string>>
+        oldString = edits.map(e => e.old_string).filter(Boolean).join('\n---\n')
+        newString = edits.map(e => e.new_string).filter(Boolean).join('\n---\n')
+      } else {
+        oldString = input.old_string as string
+        newString = input.new_string as string
+      }
+      buf.fileChanges.push({
+        filePath,
+        type: toolName.toLowerCase() as 'write' | 'edit' | 'multiedit',
+        content,
+        oldString,
+        newString,
+        startLine,
+        timestamp: new Date().toISOString(),
+        toolUseId,
+        status: 'pending',
+      })
+      // 上限 100 条，超出移除最旧的
+      if (buf.fileChanges.length > 100) {
+        buf.fileChanges = buf.fileChanges.slice(-100)
+      }
+    }
+  }
+  // TodoWrite/todo_write -> todos
+  if (['TodoWrite', 'todo_write'].includes(toolName) && input.todos) {
+    buf.todos = input.todos as ActivityTodoItem[]
+  }
 }
 
 /**
@@ -90,6 +148,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [activityData, setActivityData] = useState<ActivityData>({ planContent: null, fileChanges: [], todos: [] })
 
   // 当前 projectId 的 ref，供闭包内判断
   const currentProjectIdRef = useRef(projectId)
@@ -163,6 +222,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       setPermissionRequest(buf.permissionRequest)
       setAskQuestion(buf.askQuestion)
       setStatusText(buf.statusText)
+      setActivityData({ planContent: buf.planContent, fileChanges: buf.fileChanges, todos: buf.todos })
 
       // 捕获 pendingMessages（流结束但用户不在该项目时产生的消息）
       const pendingMsgs = buf.pendingMessages
@@ -198,6 +258,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         setPermissionRequest(b.permissionRequest)
         setAskQuestion(b.askQuestion)
         setStatusText(b.statusText)
+        setActivityData({ planContent: b.planContent, fileChanges: [...b.fileChanges], todos: b.todos })
       })
     }
   }, [])
@@ -254,6 +315,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           const pending = prev?.pendingTools || []
           const completed = prev?.completedTools || []
           b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
+          extractActivityFromTool(tool.toolName, tool.input, tool.toolUseId, b, data.startLine as number | undefined)
         })
       } catch {}
     })
@@ -273,6 +335,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               : []),
           ]
           b.toolSummary = { pendingTools: pending, completedTools: completed }
+          const fc = b.fileChanges.find(c => c.toolUseId === resultId)
+          if (fc) fc.status = data.isError ? 'error' : 'completed'
         })
       } catch {}
     })
@@ -454,6 +518,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                 } else {
                   b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
                 }
+                extractActivityFromTool(tool.toolName, tool.input, tool.toolUseId, b, data.startLine as number | undefined)
               })
               break
             }
@@ -477,6 +542,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                     : []),
                 ]
                 b.toolSummary = { pendingTools: pending, completedTools: completed }
+                // 更新 fileChanges 状态
+                const fc = b.fileChanges.find(c => c.toolUseId === resultId)
+                if (fc) fc.status = effectiveIsError ? 'error' : 'completed'
               })
               break
             }
@@ -830,6 +898,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                 } else {
                   b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
                 }
+                extractActivityFromTool(tool.toolName, tool.input, tool.toolUseId, b, data.startLine as number | undefined)
               })
               break
             }
@@ -850,6 +919,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                     : []),
                 ]
                 b.toolSummary = { pendingTools: pending, completedTools: completed }
+                const fc = b.fileChanges.find(c => c.toolUseId === resultId)
+                if (fc) fc.status = effectiveIsError ? 'error' : 'completed'
               })
               break
             }
@@ -965,6 +1036,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     permissionRequest,
     askQuestion,
     statusText,
+    activityData,
     sendMessage,
     abortChat,
     clearChat,

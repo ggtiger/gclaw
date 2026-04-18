@@ -112,3 +112,29 @@ export interface BranchInfo {
 }
 
 export const MAX_BRANCHES = 5
+
+// ── 预览面板 ──
+
+export interface FileChangeEntry {
+  filePath: string
+  type: 'write' | 'edit' | 'multiedit'
+  content?: string
+  oldString?: string
+  newString?: string
+  startLine?: number
+  timestamp: string
+  toolUseId: string
+  status: 'pending' | 'completed' | 'error'
+}
+
+export interface ActivityTodoItem {
+  id?: string
+  content: string
+  status: string
+}
+
+export interface ActivityData {
+  planContent: string | null
+  fileChanges: FileChangeEntry[]
+  todos: ActivityTodoItem[]
+}
