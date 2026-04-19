@@ -335,13 +335,71 @@ fn which_node() -> Option<String> {
             }
         }
     }
-    // macOS 常见路径 fallback
+    startup_log(&format!("{} node not found, trying PATH scan", cmd));
+    // 方法2: 手动扫描 PATH 目录（不依赖 where/which 子进程）
+    if let Some(path) = find_in_path("node") {
+        if verify_node(&path) {
+            startup_log(&format!("Found system Node via PATH scan: {} ({})", path, node_version(&path)));
+            return Some(path);
+        }
+    }
+    // 方法3: 硬编码常见路径 fallback
+    if cfg!(target_os = "windows") {
+        let mut paths: Vec<String> = Vec::new();
+        // 官方安装器默认路径
+        if let Ok(pf) = std::env::var("PROGRAMFILES") {
+            paths.push(format!("{}\\nodejs\\node.exe", pf));
+        }
+        if let Ok(pf86) = std::env::var("PROGRAMFILES(X86)") {
+            paths.push(format!("{}\\nodejs\\node.exe", pf86));
+        }
+        // nvm-windows: 扫描版本目录
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let nvm_dir = std::path::Path::new(&appdata).join("nvm");
+            if nvm_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                    for entry in entries.flatten() {
+                        let node_path = entry.path().join("node.exe");
+                        if node_path.exists() {
+                            paths.push(node_path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+        startup_log(&format!("Windows fallback: checking {} paths", paths.len()));
+        for path in &paths {
+            if std::path::Path::new(path).exists() && verify_node(path) {
+                startup_log(&format!("Found system Node at Windows fallback: {}", path));
+                return Some(path.clone());
+            }
+        }
+    }
+    // macOS/Linux 常见路径 fallback
     if !cfg!(target_os = "windows") {
         for path in &["/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node"] {
             if std::path::Path::new(path).exists() && verify_node(path) {
                 startup_log(&format!("Found system Node at fallback: {}", path));
                 return Some(path.to_string());
             }
+        }
+    }
+    None
+}
+
+/// 手动在 PATH 中查找可执行文件（不依赖 where/which 子进程）
+fn find_in_path(bin_name: &str) -> Option<String> {
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
+    for dir in path_var.split(sep) {
+        if dir.is_empty() { continue; }
+        let candidate = if cfg!(target_os = "windows") {
+            std::path::Path::new(dir).join(format!("{}.exe", bin_name))
+        } else {
+            std::path::Path::new(dir).join(bin_name)
+        };
+        if candidate.exists() {
+            return Some(candidate.to_string_lossy().to_string());
         }
     }
     None
@@ -383,16 +441,56 @@ fn which_python3() -> Option<String> {
             if !path.is_empty() {
                 // Windows: 排除 Microsoft Store 跳板（WindowsApps 目录下的不是真正的 Python）
                 if cfg!(target_os = "windows") && path.contains("WindowsApps") {
-                    println!("[GClaw] Ignoring Windows Store python stub: {}", path);
+                    startup_log(&format!("Ignoring Windows Store python stub: {}", path));
                 } else if verify_python(&path) {
                     return Some(path);
                 }
             }
         }
     }
+    // 方法2: 手动扫描 PATH
+    let scan_name = if cfg!(target_os = "windows") { "python" } else { "python3" };
+    if let Some(path) = find_in_path(scan_name) {
+        if cfg!(target_os = "windows") && path.contains("WindowsApps") {
+            startup_log(&format!("Ignoring Windows Store python stub: {}", path));
+        } else if verify_python(&path) {
+            return Some(path);
+        }
+    }
     if cfg!(target_os = "windows") {
-        for path in &["C:\\Python312\\python.exe", "C:\\Python311\\python.exe"] {
-            if std::path::Path::new(path).exists() && verify_python(path) { return Some(path.to_string()); }
+        let mut paths: Vec<String> = Vec::new();
+        // 官方安装器默认路径（按用户安装）
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let py_dir = std::path::Path::new(&local).join("Programs").join("Python");
+            if py_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&py_dir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path().join("python.exe");
+                        if p.exists() { paths.push(p.to_string_lossy().to_string()); }
+                    }
+                }
+            }
+        }
+        // 系统级安装
+        if let Ok(pf) = std::env::var("PROGRAMFILES") {
+            let py_dir = std::path::Path::new(&pf).join("Python");
+            if py_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&py_dir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path().join("python.exe");
+                        if p.exists() { paths.push(p.to_string_lossy().to_string()); }
+                    }
+                }
+            }
+        }
+        // 旧式路径
+        paths.push("C:\\Python313\\python.exe".into());
+        paths.push("C:\\Python312\\python.exe".into());
+        paths.push("C:\\Python311\\python.exe".into());
+        for path in &paths {
+            if std::path::Path::new(path).exists() && verify_python(path) {
+                return Some(path.clone());
+            }
         }
     } else {
         for path in &["/usr/local/bin/python3", "/opt/homebrew/bin/python3", "/opt/homebrew/bin/python3.12", "/usr/bin/python3"] {
@@ -426,15 +524,30 @@ fn which_git() -> Option<String> {
             if !path.is_empty() { return Some(path); }
         }
     }
+    // 手动扫描 PATH
+    if let Some(path) = find_in_path("git") {
+        return Some(path);
+    }
     if !cfg!(target_os = "windows") {
         // macOS 常见 git 安装路径
         for path in &["/usr/local/bin/git", "/opt/homebrew/bin/git", "/usr/bin/git"] {
             if std::path::Path::new(path).exists() { return Some(path.to_string()); }
         }
     } else {
-        // Windows: 常见 git 安装路径
-        for path in &["C:\\Program Files\\Git\\bin\\git.exe", "C:\\Program Files (x86)\\Git\\bin\\git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"] {
-            if std::path::Path::new(path).exists() { return Some(path.to_string()); }
+        let mut paths: Vec<String> = Vec::new();
+        if let Ok(pf) = std::env::var("PROGRAMFILES") {
+            paths.push(format!("{}\\Git\\bin\\git.exe", pf));
+            paths.push(format!("{}\\Git\\cmd\\git.exe", pf));
+        }
+        if let Ok(pf86) = std::env::var("PROGRAMFILES(X86)") {
+            paths.push(format!("{}\\Git\\bin\\git.exe", pf86));
+        }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            paths.push(format!("{}\\Programs\\Git\\bin\\git.exe", local));
+            paths.push(format!("{}\\Programs\\Git\\cmd\\git.exe", local));
+        }
+        for path in &paths {
+            if std::path::Path::new(path).exists() { return Some(path.clone()); }
         }
     }
     None
