@@ -921,6 +921,16 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
 
 // ============ 启动服务器 ============
 
+/// 去除 Windows 扩展路径前缀 \\?\（Node.js 不兼容此格式）
+fn clean_windows_path(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy().to_string();
+    if cfg!(target_os = "windows") {
+        s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+    } else {
+        s
+    }
+}
+
 fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
     let port = find_available_port();
     let resource_dir = app.path().resource_dir()
@@ -1016,24 +1026,25 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         format!("{}{}{}", path_parts.join(sep), sep, current_path)
     };
 
-    startup_log(&format!("Starting server: node {} (port={})", server_js.display(), port));
+    startup_log(&format!("Starting server: node {} (port={})", clean_windows_path(&server_js), port));
 
+    let server_dir = clean_windows_path(&resource_dir.join("server"));
     let mut cmd = hidden_command(&node_bin);
-    cmd.arg(&server_js)
+    cmd.arg(clean_windows_path(&server_js))
         .env("PORT", port.to_string())
         .env("HOSTNAME", "127.0.0.1")
-        .env("GCLAW_DATA_DIR", data_dir.to_string_lossy().as_ref())
-        .env("GCLAW_SKILLS_DIR", skills_dir.to_string_lossy().as_ref())
+        .env("GCLAW_DATA_DIR", clean_windows_path(&data_dir))
+        .env("GCLAW_SKILLS_DIR", clean_windows_path(&skills_dir))
         .env("PATH", &enhanced_path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    println!("[GClaw] GCLAW_SKILLS_DIR={}", skills_dir.display());
+    startup_log(&format!("GCLAW_DATA_DIR={}", clean_windows_path(&data_dir)));
 
     // 内嵌 Python 的 PYTHONHOME
     if runtime_python.exists() {
         let python_home = rd.join("python");
-        cmd.env("PYTHONHOME", python_home.to_string_lossy().as_ref());
-        println!("[GClaw] PYTHONHOME={}", python_home.display());
+        cmd.env("PYTHONHOME", clean_windows_path(&python_home));
+        startup_log(&format!("PYTHONHOME={}", clean_windows_path(&python_home)));
     }
 
     // Windows: 强制 Python 使用 UTF-8 编码（避免中文乱码）
@@ -1045,12 +1056,12 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
 
     // Windows: 设置 CLAUDE_CODE_GIT_BASH_PATH（Claude Code on Windows 必需）
     if let Some(bash_path) = find_git_bash(app) {
-        cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &bash_path);
-        println!("[GClaw] CLAUDE_CODE_GIT_BASH_PATH={}", bash_path);
+        cmd.env("CLAUDE_CODE_GIT_BASH_PATH", clean_windows_path(std::path::Path::new(&bash_path)));
+        startup_log(&format!("CLAUDE_CODE_GIT_BASH_PATH={}", bash_path));
     }
 
     let mut child = cmd
-        .current_dir(resource_dir.join("server"))
+        .current_dir(&server_dir)
         .spawn()
         .expect("Failed to start Next.js server");
 
