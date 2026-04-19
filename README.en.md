@@ -80,6 +80,8 @@ English | **[中文](./README.md)**
 ### Desktop App
 
 - Built with [Tauri v2](https://v2.tauri.app/), cross-platform support for macOS / Windows / Linux
+- Auto-downloads Node.js / Python / Git runtimes on first launch — zero configuration
+- Smart detection of system-installed runtimes (nvm-windows / fnm / Homebrew, etc.)
 - Auto-update detection via GitHub Releases
 - Next.js standalone bundled as a sidecar process
 
@@ -101,6 +103,19 @@ English | **[中文](./README.md)**
 ---
 
 ## Getting Started
+
+### Download
+
+Grab the installer for your platform from [GitHub Releases](https://github.com/ggtiger/gclaw/releases/latest):
+
+| Platform | Format |
+|----------|--------|
+| macOS (Apple Silicon) | `.dmg` |
+| macOS (Intel) | `.dmg` |
+| Windows | `.msi` / `.exe` (NSIS) |
+| Linux | `.AppImage` / `.deb` |
+
+The desktop app auto-downloads required runtimes (Node.js / Python / Git) on first launch — no manual setup needed.
 
 ### Prerequisites
 

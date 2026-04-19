@@ -80,6 +80,8 @@
 ### 桌面应用
 
 - 基于 [Tauri v2](https://v2.tauri.app/) 构建，跨平台 macOS / Windows / Linux
+- 首次启动自动下载 Node.js / Python / Git 运行时，零配置开箱即用
+- 智能查找系统已安装的运行时（支持 nvm-windows / fnm / Homebrew 等）
 - 自动更新检测（GitHub Releases）
 - Next.js standalone 打包为 sidecar 进程
 
@@ -101,6 +103,19 @@
 ---
 
 ## 快速开始
+
+### 下载安装
+
+从 [GitHub Releases](https://github.com/ggtiger/gclaw/releases/latest) 下载对应平台安装包：
+
+| 平台 | 格式 |
+|------|------|
+| macOS (Apple Silicon) | `.dmg` |
+| macOS (Intel) | `.dmg` |
+| Windows | `.msi` / `.exe` (NSIS) |
+| Linux | `.AppImage` / `.deb` |
+
+桌面端首次启动会自动下载所需运行时（Node.js / Python / Git），无需手动安装。
 
 ### 环境要求
 

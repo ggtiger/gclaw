@@ -190,14 +190,17 @@ fn find_available_port() -> u16 {
 }
 
 fn wait_for_server(port: u16) {
-    for _ in 0..300 {
+    for i in 0..300 {
         if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
-            println!("[GClaw] Server ready at http://127.0.0.1:{}", port);
+            startup_log(&format!("Server ready at http://127.0.0.1:{}", port));
             return;
+        }
+        if i > 0 && i % 50 == 0 {
+            startup_log(&format!("Waiting for server... ({}s)", i / 10));
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    eprintln!("[GClaw] Warning: Server did not start within 30s");
+    startup_log("WARNING: Server did not start within 30s");
 }
 
 /// 更新启动页状态
@@ -1013,7 +1016,7 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         format!("{}{}{}", path_parts.join(sep), sep, current_path)
     };
 
-    println!("[GClaw] Starting server: node {} (port={})", server_js.display(), port);
+    startup_log(&format!("Starting server: node {} (port={})", server_js.display(), port));
 
     let mut cmd = hidden_command(&node_bin);
     cmd.arg(&server_js)
@@ -1021,7 +1024,9 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         .env("HOSTNAME", "127.0.0.1")
         .env("GCLAW_DATA_DIR", data_dir.to_string_lossy().as_ref())
         .env("GCLAW_SKILLS_DIR", skills_dir.to_string_lossy().as_ref())
-        .env("PATH", &enhanced_path);
+        .env("PATH", &enhanced_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
     println!("[GClaw] GCLAW_SKILLS_DIR={}", skills_dir.display());
 
     // 内嵌 Python 的 PYTHONHOME
@@ -1044,10 +1049,27 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
         println!("[GClaw] CLAUDE_CODE_GIT_BASH_PATH={}", bash_path);
     }
 
-    let child = cmd
+    let mut child = cmd
         .current_dir(resource_dir.join("server"))
         .spawn()
         .expect("Failed to start Next.js server");
+
+    // 将 Node 进程的 stderr 输出到启动日志
+    if let Some(stderr) = child.stderr.take() {
+        let log_path = STARTUP_LOG_PATH.get().cloned();
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                if let Some(p) = &log_path {
+                    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open(p) {
+                        use std::io::Write;
+                        let _ = writeln!(f, "[node] {}", line);
+                    }
+                }
+            }
+        });
+    }
 
     (child, port)
 }
