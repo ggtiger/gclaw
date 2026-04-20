@@ -68,11 +68,13 @@ export async function GET(request: NextRequest) {
 
     if (level === 'all' || level === 'episodic') {
       const dirs = store.getMemoryBaseDirs(userId, projectId)
-      const entries: EpisodicEntry[] = []
+      const seen = new Map<string, EpisodicEntry>()
       for (const dir of dirs) {
-        entries.push(...store.readRecentEpisodic(dir, 30))
+        for (const e of store.readRecentEpisodic(dir, 30)) {
+          seen.set(e.id, e)
+        }
       }
-      const sorted = entries.sort((a, b) =>
+      const sorted = [...seen.values()].sort((a, b) =>
         b.timestamp.localeCompare(a.timestamp)
       )
       result.episodic = paginate(sorted, page, pageSize)

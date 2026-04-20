@@ -137,12 +137,16 @@ export function listProcedural(
   scope?: 'user' | 'project' | 'all'
 ): ProceduralEntry[] {
   const dirs = store.getMemoryBaseDirs(userId, projectId)
-  const allEntries: ProceduralEntry[] = []
+  const seen = new Map<string, ProceduralEntry>()
 
   for (const dir of dirs) {
     const data = store.readProcedural(dir)
-    allEntries.push(...data.entries.filter(e => e.status !== 'archived'))
+    for (const e of data.entries) {
+      if (e.status !== 'archived') seen.set(e.id, e)
+    }
   }
+
+  const allEntries = [...seen.values()]
 
   let filtered = allEntries
   if (scope === 'user') {
