@@ -3,6 +3,7 @@
 import { memo, useState, useCallback } from 'react'
 import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { StreamingBlocksRenderer, adaptContentBlocks } from './StreamingBlocksRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
 import type { ChatMessage, ChatAttachment } from '@/types/chat'
 
@@ -123,25 +124,35 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
           </div>
         ) : (
           <div className="p-4 text-sm leading-relaxed break-words max-w-full rounded-lg rounded-tl-sm border text-[var(--color-text)] shadow-sm glass-card">
-            {/* 长消息折叠：只渲染前 COLLAPSE_THRESHOLD 字符，大幅减少 DOM 节点 */}
-            <MarkdownRenderer
-              content={expanded || message.isStreaming ? message.content : message.content.slice(0, COLLAPSE_THRESHOLD) + '\n\n...'}
-              isStreaming={message.isStreaming}
-            />
-            {!expanded && !message.isStreaming && message.content.length > COLLAPSE_THRESHOLD && (
-              <button
-                onClick={() => setExpanded(true)}
-                className="mt-3 flex items-center gap-1 text-xs font-medium cursor-pointer text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300"
-              >
-                <ChevronDown size={14} />
-                展开完整内容（{Math.ceil(message.content.length / 1000)}k 字符）
-              </button>
+            {message.contentBlocks && message.contentBlocks.length > 0 ? (
+              // 新模式：交错渲染文本和工具调用
+              <StreamingBlocksRenderer
+                blocks={adaptContentBlocks(message.contentBlocks)}
+                isStreaming={message.isStreaming}
+              />
+            ) : (
+              // 旧模式回退：纯文本渲染
+              <>
+                <MarkdownRenderer
+                  content={expanded || message.isStreaming ? message.content : message.content.slice(0, COLLAPSE_THRESHOLD) + '\n\n...'}
+                  isStreaming={message.isStreaming}
+                />
+                {!expanded && !message.isStreaming && message.content.length > COLLAPSE_THRESHOLD && (
+                  <button
+                    onClick={() => setExpanded(true)}
+                    className="mt-3 flex items-center gap-1 text-xs font-medium cursor-pointer text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300"
+                  >
+                    <ChevronDown size={14} />
+                    展开完整内容（{Math.ceil(message.content.length / 1000)}k 字符）
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
 
-        {/* 消息级工具摘要（含 Todo 列表） */}
-        {!isUser && message.toolSummary &&
+        {/* 旧消息 toolSummary（仅无 contentBlocks 时显示） */}
+        {!isUser && !message.contentBlocks && message.toolSummary &&
           (message.toolSummary.pendingTools.length > 0 || message.toolSummary.completedTools.length > 0) && (
           <div className="mt-1 w-full">
             <ToolCallSummary summary={message.toolSummary} />

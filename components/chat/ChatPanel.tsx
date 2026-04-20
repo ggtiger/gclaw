@@ -4,23 +4,21 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
 import { Bot, Brain, ChevronDown, ChevronUp, FileText, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
-import { ToolCallSummary } from './ToolCallSummary'
-import { MarkdownRenderer } from './MarkdownRenderer'
+import { StreamingBlocksRenderer } from './StreamingBlocksRenderer'
 import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
 import Modal from '@/components/ui/Modal'
 // BranchSwitcher 已隐藏
-import type { ChatMessage, ChatAttachment, ToolSummary, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, StreamingBlock, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 import appIcon from '@/public/icon.png'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
   initialLoading?: boolean
-  streamingContent: string
+  streamingBlocks: StreamingBlock[]
   thinkingContent?: string
-  toolSummary: ToolSummary | null
   sending: boolean
   permissionRequest: PermissionRequest | null
   askQuestion: AskUserQuestionRequest | null
@@ -83,7 +81,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingContent, thinkingContent, toolSummary, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -225,7 +223,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
       }
     })
     return () => cancelAnimationFrame(raf)
-  }, [messages, streamingContent, toolSummary])
+  }, [messages, streamingBlocks])
 
   // 检测用户是否手动向上滚动 — 使用原生 passive 监听器，不阻塞滚动合成
   const scrollRafRef = useRef<number>(0)
@@ -244,7 +242,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
     return () => container.removeEventListener('scroll', onScroll)
   }, [])
 
-  const isEmpty = messages.length === 0 && !streamingContent
+  const isEmpty = messages.length === 0 && streamingBlocks.length === 0
 
   // ─── 提示词日志 ───
   const [showPromptLog, setShowPromptLog] = useState(false)
@@ -475,15 +473,8 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
               </div>
             )}
 
-            {/* 工具调用摘要 */}
-            {toolSummary && (toolSummary.pendingTools.length > 0 || toolSummary.completedTools.length > 0) && (
-              <div className="px-4 py-2">
-                <ToolCallSummary summary={toolSummary} askQuestion={askQuestion} onRespondAskQuestion={onRespondAskQuestion} />
-              </div>
-            )}
-
-            {/* 流式输出 */}
-            {streamingContent && (
+            {/* 流式输出：文本 + 工具交错渲染 */}
+            {streamingBlocks.length > 0 && (
               <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
@@ -492,15 +483,20 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
                 </div>
                 <div className="flex-1 min-w-0 text-sm leading-relaxed">
                   <div className="text-xs font-medium mb-1 text-slate-500 dark:text-slate-400">
-                    Claude
+                    小瑶
                   </div>
-                  <MarkdownRenderer content={streamingContent} isStreaming />
+                  <StreamingBlocksRenderer
+                    blocks={streamingBlocks}
+                    isStreaming
+                    askQuestion={askQuestion}
+                    onRespondAskQuestion={onRespondAskQuestion}
+                  />
                 </div>
               </div>
             )}
 
             {/* 等待响应指示 */}
-            {sending && !streamingContent && !toolSummary && (
+            {sending && streamingBlocks.length === 0 && (
               <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
@@ -509,7 +505,7 @@ export function ChatPanel({ messages, initialLoading, streamingContent, thinking
                 </div>
                 <div className="flex-1">
                   <div className="text-xs font-medium mb-2 text-slate-500 dark:text-slate-400">
-                    Claude
+                    小瑶
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-purple-500" style={{ animationDelay: '0ms' }} />
