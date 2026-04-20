@@ -10,6 +10,43 @@ export interface ChatAttachment {
   aesKey?: string           // 微信媒体解密密钥（可选）
 }
 
+// ── 流式块（流式阶段使用） ──
+
+export interface StreamingTextBlock {
+  type: 'text'
+  id: string              // "text_0", "text_1" ... 递增
+  content: string
+}
+export interface StreamingToolBlock {
+  type: 'tool'
+  id: string              // 直接用 toolUseId
+  toolUseId: string
+  toolName: string
+  input: Record<string, unknown>
+  status: 'pending' | 'completed' | 'error'
+  output?: string
+  isError?: boolean
+  elapsedSeconds?: number
+}
+export type StreamingBlock = StreamingTextBlock | StreamingToolBlock
+
+// ── 持久化块（存储到 ChatMessage，done 时从 streamingBlocks 构造） ──
+
+export interface ContentTextBlock {
+  type: 'text'
+  content: string
+}
+export interface ContentToolBlock {
+  type: 'tool'
+  toolUseId: string
+  toolName: string
+  input: Record<string, unknown>
+  status: 'completed' | 'error'
+  output?: string
+  isError?: boolean
+}
+export type ContentBlock = ContentTextBlock | ContentToolBlock
+
 // ── 消息 ──
 
 export interface ChatMessage {
@@ -20,6 +57,7 @@ export interface ChatMessage {
   createdAt: string
   isStreaming?: boolean
   toolSummary?: ToolSummary
+  contentBlocks?: ContentBlock[]   // 新字段：交错文本/工具块
   stats?: ConversationStats
   attachments?: ChatAttachment[]  // 附件列表
   feedback?: 'like' | 'dislike'   // 用户反馈：点赞/踩

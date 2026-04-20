@@ -348,9 +348,8 @@ export function ChatLayout() {
             initialLoading={chat.initialLoading}
             hasMore={chat.hasMore}
             onLoadMore={chat.loadMoreMessages}
-            streamingContent={chat.streamingContent}
+            streamingBlocks={chat.streamingBlocks}
             thinkingContent={chat.thinkingContent}
-            toolSummary={chat.toolSummary}
             sending={chat.sending}
             permissionRequest={chat.permissionRequest}
             askQuestion={chat.askQuestion}

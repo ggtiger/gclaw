@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem, StreamingBlock, ContentBlock } from '@/types/chat'
+
+// 模块级常量，避免每次渲染重建
+const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
 
 // ============================================================
 // 模块级 per-project 流状态缓冲
@@ -9,16 +12,16 @@ import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, Conversati
 // ============================================================
 
 interface StreamBuffer {
-  content: string
-  thinkingContent: string       // thinking 思考过程
-  toolSummary: ToolSummary | null
+  streamingBlocks: StreamingBlock[]    // 替代 content + toolSummary
+  textBlockCounter: number             // text block ID 递增
+  thinkingContent: string              // thinking 思考过程
   sending: boolean
   sessionId: string | null
   lastStats: ConversationStats | null
   permissionRequest: PermissionRequest | null
   askQuestion: AskUserQuestionRequest | null
-  pendingMessages: ChatMessage[] // 流结束后产生的消息（assistant/error）
-  statusText: string | null     // 当前状态文本（如 'compacting'）
+  pendingMessages: ChatMessage[]       // 流结束后产生的消息（assistant/error）
+  statusText: string | null            // 当前状态文本（如 'compacting'）
   planContent: string | null
   fileChanges: FileChangeEntry[]
   todos: ActivityTodoItem[]
@@ -34,9 +37,9 @@ function getBuffer(projectId: string): StreamBuffer {
   let buf = streamBuffers.get(projectId)
   if (!buf) {
     buf = {
-      content: '',
+      streamingBlocks: [],
+      textBlockCounter: 0,
       thinkingContent: '',
-      toolSummary: null,
       sending: false,
       sessionId: null,
       lastStats: null,
@@ -114,6 +117,37 @@ function extractActivityFromTool(
   }
 }
 
+// ── 将 streamingBlocks 构造为 contentBlocks 和 fullContent ──
+
+function buildContentFromBlocks(streamingBlocks: StreamingBlock[]): {
+  contentBlocks: ContentBlock[]
+  fullContent: string
+} {
+  const contentBlocks: ContentBlock[] = []
+  let fullContent = ''
+  for (const block of streamingBlocks) {
+    if (block.type === 'text') {
+      const trimmed = block.content.trim()
+      if (trimmed && !NOISE_PATTERN.test(trimmed)) {
+        contentBlocks.push({ type: 'text', content: block.content })
+        fullContent += block.content
+      }
+    } else {
+      // block.type === 'tool'
+      contentBlocks.push({
+        type: 'tool',
+        toolUseId: block.toolUseId,
+        toolName: block.toolName,
+        input: block.input,
+        status: block.status === 'pending' ? 'completed' : block.status,
+        output: block.output,
+        isError: block.isError,
+      })
+    }
+  }
+  return { contentBlocks, fullContent }
+}
+
 /**
  * 外部 hook：获取当前活跃的项目 ID 集合
  */
@@ -135,9 +169,8 @@ export function useActiveProjects(): Set<string> {
 
 export function useChat(projectId: string, onSettingsRequired?: () => void) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [streamingContent, setStreamingContent] = useState('')
+  const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([])
   const [thinkingContent, setThinkingContent] = useState('')
-  const [toolSummary, setToolSummary] = useState<ToolSummary | null>(null)
   const [sending, setSending] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [lastStats, setLastStats] = useState<ConversationStats | null>(null)
@@ -213,9 +246,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
 
       // 从 buffer 恢复新项目的流状态
       const buf = getBuffer(projectId)
-      setStreamingContent(buf.content)
+      setStreamingBlocks([...buf.streamingBlocks])
       setThinkingContent(buf.thinkingContent)
-      setToolSummary(buf.toolSummary)
       setSending(buf.sending)
       setSessionId(buf.sessionId)
       setLastStats(buf.lastStats)
@@ -249,9 +281,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         rafRef.current = 0
         const b = getBuffer(forProjectId)
         if (currentProjectIdRef.current !== forProjectId) return
-        setStreamingContent(b.content)
+        setStreamingBlocks([...b.streamingBlocks])
         setThinkingContent(b.thinkingContent)
-        setToolSummary(b.toolSummary)
         setSending(b.sending)
         setSessionId(b.sessionId)
         setLastStats(b.lastStats)
@@ -271,9 +302,6 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       `/api/channels/events?projectId=${encodeURIComponent(projectId)}`
     )
 
-    // 渠道缓冲：累积渠道 Agent 的流式内容
-    let channelAccContent = ''
-
     channelEvtSource.addEventListener('channel_user_message', (e) => {
       try {
         const data = JSON.parse(e.data)
@@ -284,11 +312,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     })
 
     channelEvtSource.addEventListener('channel_start', () => {
-      channelAccContent = ''
       updateState(projectId, b => {
         b.sending = true
-        b.content = ''
-        b.toolSummary = null
+        b.streamingBlocks = []
+        b.textBlockCounter = 0
       })
       setActive(projectId, true)
     })
@@ -296,26 +323,53 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     channelEvtSource.addEventListener('channel_delta', (e) => {
       try {
         const data = JSON.parse(e.data)
-        channelAccContent += data.content || ''
-        updateState(projectId, b => { b.content = channelAccContent })
+        const content = data.content || ''
+        if (!content) return
+        updateState(projectId, b => {
+          const last = b.streamingBlocks[b.streamingBlocks.length - 1]
+          if (last?.type === 'text') {
+            last.content += content
+          } else {
+            b.streamingBlocks.push({
+              type: 'text',
+              id: `text_${b.textBlockCounter++}`,
+              content,
+            })
+          }
+        })
       } catch {}
     })
 
     channelEvtSource.addEventListener('channel_tool_use', (e) => {
       try {
         const data = JSON.parse(e.data)
-        const tool = {
-          toolUseId: data.toolUseId as string,
-          toolName: data.toolName as string,
-          input: data.input as Record<string, unknown>,
-          status: 'pending' as const,
-        }
+        const toolUseId = data.toolUseId as string
         updateState(projectId, b => {
-          const prev = b.toolSummary
-          const pending = prev?.pendingTools || []
-          const completed = prev?.completedTools || []
-          b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
-          extractActivityFromTool(tool.toolName, tool.input, tool.toolUseId, b, data.startLine as number | undefined)
+          const idx = b.streamingBlocks.findIndex(
+            bl => bl.type === 'tool' && bl.toolUseId === toolUseId
+          )
+          if (idx >= 0) {
+            const existing = b.streamingBlocks[idx]
+            if (existing.type === 'tool') {
+              b.streamingBlocks[idx] = { ...existing, input: data.input as Record<string, unknown> }
+            }
+          } else {
+            b.streamingBlocks.push({
+              type: 'tool',
+              id: toolUseId,
+              toolUseId,
+              toolName: data.toolName as string,
+              input: data.input as Record<string, unknown>,
+              status: 'pending',
+            })
+          }
+          extractActivityFromTool(
+            data.toolName as string,
+            data.input as Record<string, unknown>,
+            toolUseId,
+            b,
+            data.startLine as number | undefined
+          )
         })
       } catch {}
     })
@@ -325,16 +379,20 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         const data = JSON.parse(e.data)
         const resultId = data.toolUseId as string
         updateState(projectId, b => {
-          if (!b.toolSummary) return
-          const pending = b.toolSummary.pendingTools.filter(t => t.toolUseId !== resultId)
-          const completedTool = b.toolSummary.pendingTools.find(t => t.toolUseId === resultId)
-          const completed = [
-            ...b.toolSummary.completedTools,
-            ...(completedTool
-              ? [{ ...completedTool, status: (data.isError ? 'error' : 'completed') as 'error' | 'completed', output: data.content as string, isError: data.isError as boolean }]
-              : []),
-          ]
-          b.toolSummary = { pendingTools: pending, completedTools: completed }
+          const idx = b.streamingBlocks.findIndex(
+            bl => bl.type === 'tool' && bl.toolUseId === resultId
+          )
+          if (idx >= 0) {
+            const tool = b.streamingBlocks[idx]
+            if (tool.type === 'tool') {
+              b.streamingBlocks[idx] = {
+                ...tool,
+                status: data.isError ? 'error' : 'completed',
+                output: data.content as string,
+                isError: data.isError as boolean,
+              }
+            }
+          }
           const fc = b.fileChanges.find(c => c.toolUseId === resultId)
           if (fc) fc.status = data.isError ? 'error' : 'completed'
         })
@@ -348,11 +406,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           setMessages(prev => [...prev, data.message])
         }
       } catch {}
-      channelAccContent = ''
       updateState(projectId, b => {
         b.sending = false
-        b.content = ''
-        b.toolSummary = null
+        b.streamingBlocks = []
+        b.textBlockCounter = 0
       })
       setActive(projectId, false)
     })
@@ -368,6 +425,153 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       channelEvtSource.close()
     }
   }, [projectId, updateState])
+
+  // ── SSE 事件处理辅助：delta/tool_use/tool_result/tool_progress 的统一处理 ──
+
+  function handleDeltaEvent(pid: string, content: string) {
+    updateState(pid, b => {
+      const last = b.streamingBlocks[b.streamingBlocks.length - 1]
+      if (last?.type === 'text') {
+        last.content += content
+      } else {
+        b.streamingBlocks.push({
+          type: 'text',
+          id: `text_${b.textBlockCounter++}`,
+          content,
+        })
+      }
+    })
+  }
+
+  function handleToolUseEvent(pid: string, data: Record<string, unknown>) {
+    const toolUseId = data.toolUseId as string
+    const toolName = data.toolName as string
+    const input = data.input as Record<string, unknown>
+    updateState(pid, b => {
+      const idx = b.streamingBlocks.findIndex(
+        bl => bl.type === 'tool' && bl.toolUseId === toolUseId
+      )
+      if (idx >= 0) {
+        const existing = b.streamingBlocks[idx]
+        if (existing.type === 'tool') {
+          b.streamingBlocks[idx] = { ...existing, input }
+        }
+      } else {
+        b.streamingBlocks.push({
+          type: 'tool',
+          id: toolUseId,
+          toolUseId,
+          toolName,
+          input,
+          status: 'pending',
+        })
+      }
+      extractActivityFromTool(toolName, input, toolUseId, b, data.startLine as number | undefined)
+    })
+  }
+
+  function handleToolResultEvent(pid: string, data: Record<string, unknown>) {
+    const resultId = data.toolUseId as string
+    const resultContent = data.content as string
+    const isError = data.isError as boolean
+    updateState(pid, b => {
+      const idx = b.streamingBlocks.findIndex(
+        bl => bl.type === 'tool' && bl.toolUseId === resultId
+      )
+      if (idx >= 0) {
+        const tool = b.streamingBlocks[idx]
+        if (tool.type === 'tool') {
+          // AskUserQuestion 被前端拦截后 SDK 返回 isError=true，
+          // 但实际是用户回答而非错误，前端不显示为错误
+          const isAskQuestion = tool.toolName === 'AskUserQuestion'
+          const effectiveIsError = isAskQuestion ? false : isError
+          b.streamingBlocks[idx] = {
+            ...tool,
+            status: effectiveIsError ? 'error' : 'completed',
+            output: resultContent,
+            isError: effectiveIsError,
+          }
+        }
+      }
+      // 更新 fileChanges 状态
+      const fc = b.fileChanges.find(c => c.toolUseId === resultId)
+      if (fc) {
+        const toolAtIdx = b.streamingBlocks.find(bl => bl.type === 'tool' && bl.toolUseId === resultId)
+        const isAskQuestion = toolAtIdx?.type === 'tool' && toolAtIdx.toolName === 'AskUserQuestion'
+        fc.status = (isAskQuestion ? false : isError) ? 'error' : 'completed'
+      }
+    })
+  }
+
+  function handleToolProgressEvent(pid: string, data: Record<string, unknown>) {
+    const progressId = data.toolUseId as string
+    const elapsed = data.elapsedSeconds as number
+    updateState(pid, b => {
+      const idx = b.streamingBlocks.findIndex(
+        bl => bl.type === 'tool' && bl.toolUseId === progressId
+      )
+      if (idx >= 0) {
+        const tool = b.streamingBlocks[idx]
+        if (tool.type === 'tool') {
+          b.streamingBlocks[idx] = { ...tool, elapsedSeconds: elapsed }
+        }
+      }
+    })
+  }
+
+  function handleDoneEvent(
+    pid: string,
+    data: Record<string, unknown>,
+    accContent: string,
+  ) {
+    const stats: ConversationStats | null = data.usage
+      ? {
+          costUsd: (data.costUsd as number) || 0,
+          inputTokens: (data.usage as Record<string, number>).inputTokens || 0,
+          outputTokens: (data.usage as Record<string, number>).outputTokens || 0,
+          cachedTokens: (data.usage as Record<string, number>).cachedTokens || 0,
+          model: (data.model as string) || '',
+        }
+      : null
+
+    // 从 streamingBlocks 构造 contentBlocks 和 fullContent
+    const buf = getBuffer(pid)
+    const { contentBlocks, fullContent } = buildContentFromBlocks(buf.streamingBlocks)
+    // 如果 streamingBlocks 为空，回退到 accContent 或 fullContent
+    let finalContent = fullContent || accContent || (data.fullContent as string) || ''
+    if (NOISE_PATTERN.test(finalContent)) finalContent = ''
+
+    if (contentBlocks.length > 0 || (finalContent.trim() && !NOISE_PATTERN.test(finalContent))) {
+      const assistantMsg: ChatMessage = {
+        id: `msg_${Date.now()}_assistant`,
+        role: 'assistant',
+        content: finalContent,
+        messageType: 'text',
+        createdAt: new Date().toISOString(),
+        stats: stats || undefined,
+        contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
+      }
+      // 延迟一帧加入 messages，确保流式内容先渲染出来
+      requestAnimationFrame(() => {
+        if (currentProjectIdRef.current === pid) {
+          setMessages(prev => [...prev, assistantMsg])
+        } else {
+          getBuffer(pid).pendingMessages.push(assistantMsg)
+        }
+        updateState(pid, b => {
+          b.streamingBlocks = []
+          b.textBlockCounter = 0
+          b.lastStats = stats
+        })
+      })
+    } else {
+      updateState(pid, b => {
+        b.streamingBlocks = []
+        b.textBlockCounter = 0
+        b.lastStats = stats
+      })
+    }
+  }
 
   // 发送消息
   const sendMessage = useCallback(async (text: string, attachments?: ChatAttachment[]) => {
@@ -394,9 +598,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     // 初始化 buffer
     updateState(sendProjectId, buf => {
       buf.sending = true
-      buf.content = ''
+      buf.streamingBlocks = []
+      buf.textBlockCounter = 0
       buf.thinkingContent = ''
-      buf.toolSummary = null
       buf.lastStats = null
       buf.permissionRequest = null
       buf.askQuestion = null
@@ -486,12 +690,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               updateState(sendProjectId, b => { b.sessionId = data.sessionId as string })
               break
 
-            case 'delta':
-              accContent += data.content as string
-              if (!/^[\s()]*(?:no content[)\s]*)+$/i.test(accContent)) {
-                updateState(sendProjectId, b => { b.content = accContent })
+            case 'delta': {
+              const content = data.content as string
+              accContent += content
+              if (!NOISE_PATTERN.test(accContent)) {
+                handleDeltaEvent(sendProjectId, content)
               }
               break
+            }
 
             case 'thinking':
               updateState(sendProjectId, b => {
@@ -499,70 +705,17 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               })
               break
 
-            case 'tool_use': {
-              const tool: ToolCallItem = {
-                toolUseId: data.toolUseId as string,
-                toolName: data.toolName as string,
-                input: data.input as Record<string, unknown>,
-                status: 'pending',
-              }
-              updateState(sendProjectId, b => {
-                const prev = b.toolSummary
-                const pending = prev?.pendingTools || []
-                const completed = prev?.completedTools || []
-                const existingIdx = pending.findIndex(t => t.toolUseId === tool.toolUseId)
-                if (existingIdx >= 0) {
-                  const updated = [...pending]
-                  updated[existingIdx] = { ...updated[existingIdx], input: tool.input }
-                  b.toolSummary = { pendingTools: updated, completedTools: completed }
-                } else {
-                  b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
-                }
-                extractActivityFromTool(tool.toolName, tool.input, tool.toolUseId, b, data.startLine as number | undefined)
-              })
+            case 'tool_use':
+              handleToolUseEvent(sendProjectId, data)
               break
-            }
 
-            case 'tool_result': {
-              const resultId = data.toolUseId as string
-              const resultContent = data.content as string
-              const isError = data.isError as boolean
-              updateState(sendProjectId, b => {
-                if (!b.toolSummary) return
-                const pending = b.toolSummary.pendingTools.filter(t => t.toolUseId !== resultId)
-                const completedTool = b.toolSummary.pendingTools.find(t => t.toolUseId === resultId)
-                // AskUserQuestion 被前端拦截后 SDK 返回 isError=true，
-                // 但实际是用户回答而非错误，前端不显示为错误
-                const isAskQuestion = completedTool?.toolName === 'AskUserQuestion'
-                const effectiveIsError = isAskQuestion ? false : isError
-                const completed = [
-                  ...b.toolSummary.completedTools,
-                  ...(completedTool
-                    ? [{ ...completedTool, status: effectiveIsError ? 'error' as const : 'completed' as const, output: resultContent, isError: effectiveIsError }]
-                    : []),
-                ]
-                b.toolSummary = { pendingTools: pending, completedTools: completed }
-                // 更新 fileChanges 状态
-                const fc = b.fileChanges.find(c => c.toolUseId === resultId)
-                if (fc) fc.status = effectiveIsError ? 'error' : 'completed'
-              })
+            case 'tool_result':
+              handleToolResultEvent(sendProjectId, data)
               break
-            }
 
-            case 'tool_progress': {
-              const progressId = data.toolUseId as string
-              const elapsed = data.elapsedSeconds as number
-              updateState(sendProjectId, b => {
-                if (!b.toolSummary) return
-                const idx = b.toolSummary.pendingTools.findIndex(t => t.toolUseId === progressId)
-                if (idx >= 0) {
-                  const updated = [...b.toolSummary.pendingTools]
-                  updated[idx] = { ...updated[idx], elapsedSeconds: elapsed }
-                  b.toolSummary = { ...b.toolSummary, pendingTools: updated }
-                }
-              })
+            case 'tool_progress':
+              handleToolProgressEvent(sendProjectId, data)
               break
-            }
 
             case 'status':
               updateState(sendProjectId, b => {
@@ -607,60 +760,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               break
             }
 
-            case 'done': {
-              const stats: ConversationStats | null = data.usage
-                ? {
-                    costUsd: (data.costUsd as number) || 0,
-                    inputTokens: (data.usage as Record<string, number>).inputTokens || 0,
-                    outputTokens: (data.usage as Record<string, number>).outputTokens || 0,
-                    cachedTokens: (data.usage as Record<string, number>).cachedTokens || 0,
-                    model: (data.model as string) || '',
-                  }
-                : null
-
-              let finalContent = accContent || (data.fullContent as string) || ''
-              const noisePattern = /^[\s()]*(?:no content[)\s]*)+$/i
-              if (noisePattern.test(finalContent)) finalContent = ''
-
-              // 快照当前 toolSummary 到消息中，确保 todo 列表随消息持久化
-              const buf = getBuffer(sendProjectId)
-              const snapshotSummary = buf.toolSummary &&
-                (buf.toolSummary.pendingTools.length > 0 || buf.toolSummary.completedTools.length > 0)
-                ? { ...buf.toolSummary }
-                : undefined
-
-              if (finalContent.trim() && !noisePattern.test(finalContent)) {
-                const assistantMsg: ChatMessage = {
-                  id: `msg_${Date.now()}_assistant`,
-                  role: 'assistant',
-                  content: finalContent,
-                  messageType: 'text',
-                  createdAt: new Date().toISOString(),
-                  stats: stats || undefined,
-                  toolSummary: snapshotSummary,
-                }
-                // 延迟一帧加入 messages，确保流式内容先渲染出来
-                requestAnimationFrame(() => {
-                  if (currentProjectIdRef.current === sendProjectId) {
-                    setMessages(prev => [...prev, assistantMsg])
-                  } else {
-                    getBuffer(sendProjectId).pendingMessages.push(assistantMsg)
-                  }
-                  updateState(sendProjectId, b => {
-                    b.content = ''
-                    b.lastStats = stats
-                    b.toolSummary = null
-                  })
-                })
-              } else {
-                updateState(sendProjectId, b => {
-                  b.content = ''
-                  b.lastStats = stats
-                  b.toolSummary = null
-                })
-              }
+            case 'done':
+              handleDoneEvent(sendProjectId, data, accContent)
               break
-            }
 
             case 'error': {
               console.error('Stream error:', data.message)
@@ -705,7 +807,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       requestAnimationFrame(() => {
         updateState(sendProjectId, b => {
           b.sending = false
-          b.content = ''
+          b.streamingBlocks = []
         })
         setActive(sendProjectId, false)
       })
@@ -728,7 +830,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     } catch {}
     updateState(abortProjectId, b => {
       b.sending = false
-      b.content = ''
+      b.streamingBlocks = []
     })
     setActive(abortProjectId, false)
   }, [updateState])
@@ -767,7 +869,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       await fetch(`/api/chat/messages?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' })
       setMessages([])
       setSessionId(null)
-      setToolSummary(null)
+      setStreamingBlocks([])
       setLastStats(null)
     } catch (err) {
       console.error('Failed to clear chat:', err)
@@ -800,9 +902,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     // 初始化目标项目的 buffer
     updateState(targetProjectId, buf => {
       buf.sending = true
-      buf.content = ''
+      buf.streamingBlocks = []
+      buf.textBlockCounter = 0
       buf.thinkingContent = ''
-      buf.toolSummary = null
       buf.lastStats = null
       buf.permissionRequest = null
       buf.askQuestion = null
@@ -866,12 +968,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               updateState(targetProjectId, b => { b.sessionId = data.sessionId as string })
               break
 
-            case 'delta':
-              accContent += data.content as string
-              if (!/^[\s()]*(?:no content[)\s]*)+$/i.test(accContent)) {
-                updateState(targetProjectId, b => { b.content = accContent })
+            case 'delta': {
+              const content = data.content as string
+              accContent += content
+              if (!NOISE_PATTERN.test(accContent)) {
+                handleDeltaEvent(targetProjectId, content)
               }
               break
+            }
 
             case 'thinking':
               updateState(targetProjectId, b => {
@@ -879,65 +983,17 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               })
               break
 
-            case 'tool_use': {
-              const tool: ToolCallItem = {
-                toolUseId: data.toolUseId as string,
-                toolName: data.toolName as string,
-                input: data.input as Record<string, unknown>,
-                status: 'pending',
-              }
-              updateState(targetProjectId, b => {
-                const prev = b.toolSummary
-                const pending = prev?.pendingTools || []
-                const completed = prev?.completedTools || []
-                const existingIdx = pending.findIndex(t => t.toolUseId === tool.toolUseId)
-                if (existingIdx >= 0) {
-                  const updated = [...pending]
-                  updated[existingIdx] = { ...updated[existingIdx], input: tool.input }
-                  b.toolSummary = { pendingTools: updated, completedTools: completed }
-                } else {
-                  b.toolSummary = { pendingTools: [...pending, tool], completedTools: completed }
-                }
-                extractActivityFromTool(tool.toolName, tool.input, tool.toolUseId, b, data.startLine as number | undefined)
-              })
+            case 'tool_use':
+              handleToolUseEvent(targetProjectId, data)
               break
-            }
 
-            case 'tool_result': {
-              const resultId = data.toolUseId as string
-              const isError = data.isError as boolean
-              updateState(targetProjectId, b => {
-                if (!b.toolSummary) return
-                const pending = b.toolSummary.pendingTools.filter(t => t.toolUseId !== resultId)
-                const completedTool = b.toolSummary.pendingTools.find(t => t.toolUseId === resultId)
-                const isAskQuestion = completedTool?.toolName === 'AskUserQuestion'
-                const effectiveIsError = isAskQuestion ? false : isError
-                const completed = [
-                  ...b.toolSummary.completedTools,
-                  ...(completedTool
-                    ? [{ ...completedTool, status: effectiveIsError ? 'error' as const : 'completed' as const, output: data.content as string, isError: effectiveIsError }]
-                    : []),
-                ]
-                b.toolSummary = { pendingTools: pending, completedTools: completed }
-                const fc = b.fileChanges.find(c => c.toolUseId === resultId)
-                if (fc) fc.status = effectiveIsError ? 'error' : 'completed'
-              })
+            case 'tool_result':
+              handleToolResultEvent(targetProjectId, data)
               break
-            }
 
-            case 'tool_progress': {
-              const elapsed = data.elapsedSeconds as number
-              updateState(targetProjectId, b => {
-                if (!b.toolSummary) return
-                const idx = b.toolSummary.pendingTools.findIndex(t => t.toolUseId === data.toolUseId as string)
-                if (idx >= 0) {
-                  const updated = [...b.toolSummary.pendingTools]
-                  updated[idx] = { ...updated[idx], elapsedSeconds: elapsed }
-                  b.toolSummary = { ...b.toolSummary, pendingTools: updated }
-                }
-              })
+            case 'tool_progress':
+              handleToolProgressEvent(targetProjectId, data)
               break
-            }
 
             case 'status':
               updateState(targetProjectId, b => {
@@ -945,50 +1001,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               })
               break
 
-            case 'done': {
-              const stats: ConversationStats | null = data.usage
-                ? {
-                    costUsd: (data.costUsd as number) || 0,
-                    inputTokens: (data.usage as Record<string, number>).inputTokens || 0,
-                    outputTokens: (data.usage as Record<string, number>).outputTokens || 0,
-                    cachedTokens: (data.usage as Record<string, number>).cachedTokens || 0,
-                    model: (data.model as string) || '',
-                  }
-                : null
-
-              let finalContent = accContent || (data.fullContent as string) || ''
-              const noisePattern = /^[\s()]*(?:no content[)\s]*)+$/i
-              if (noisePattern.test(finalContent)) finalContent = ''
-
-              if (finalContent.trim()) {
-                const assistantMsg: ChatMessage = {
-                  id: `msg_${Date.now()}_assistant`,
-                  role: 'assistant',
-                  content: finalContent,
-                  messageType: 'text',
-                  createdAt: new Date().toISOString(),
-                  stats: stats || undefined,
-                }
-                // 如果当前就在目标项目，直接加入 messages
-                if (currentProjectIdRef.current === targetProjectId) {
-                  setMessages(prev => [...prev, assistantMsg])
-                } else {
-                  getBuffer(targetProjectId).pendingMessages.push(assistantMsg)
-                }
-                updateState(targetProjectId, b => {
-                  b.content = ''
-                  b.lastStats = stats
-                  b.toolSummary = null
-                })
-              } else {
-                updateState(targetProjectId, b => {
-                  b.content = ''
-                  b.lastStats = stats
-                  b.toolSummary = null
-                })
-              }
+            case 'done':
+              handleDoneEvent(targetProjectId, data, accContent)
               break
-            }
 
             case 'error': {
               const errorMsg: ChatMessage = {
@@ -1016,7 +1031,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       requestAnimationFrame(() => {
         updateState(targetProjectId, b => {
           b.sending = false
-          b.content = ''
+          b.streamingBlocks = []
         })
         setActive(targetProjectId, false)
       })
@@ -1027,9 +1042,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
   return {
     messages,
     initialLoading,
-    streamingContent,
+    streamingBlocks,
     thinkingContent,
-    toolSummary,
     sending,
     sessionId,
     lastStats,
