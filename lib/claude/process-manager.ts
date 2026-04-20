@@ -13,6 +13,7 @@ import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
 import { getProjectById } from '@/lib/store/projects'
 import { writeEpisodic } from '@/lib/memory/episodic-writer'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 import { extractWithLLM } from '@/lib/memory/llm-extractor'
 import { runConsolidation } from '@/lib/memory/consolidation'
 import type { SSEEvent, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
@@ -467,9 +468,15 @@ export async function* executeChat(
       if (att.isImage) {
         // 图片：先附带文本描述（兜底不支持图片的模型），再发送 base64 图片数据
         const approxSizeKB = Math.round(att.content.length * 0.75 / 1024)
+        const imageTemplate = getPromptTemplate('attachmentImage')
+        const imageText = imageTemplate
+          .replace('{filename}', att.filename)
+          .replace('{mimeType}', att.mimeType)
+          .replace('{sizeKB}', String(approxSizeKB))
+          .replace('{pathInfo}', pathInfo)
         contentBlocks.push({
           type: 'text',
-          text: `[图片附件: ${att.filename}, 格式: ${att.mimeType}, 大小: ~${approxSizeKB}KB]${pathInfo}`,
+          text: imageText,
         })
         contentBlocks.push({
           type: 'image',
@@ -480,9 +487,14 @@ export async function* executeChat(
           },
         })
       } else {
+        const fileTemplate = getPromptTemplate('attachmentFile')
+        const fileText = fileTemplate
+          .replace(/\{filename\}/g, att.filename)
+          .replace('{pathInfo}', pathInfo)
+          .replace('{content}', att.content)
         contentBlocks.push({
           type: 'text',
-          text: `--- File: ${att.filename} ---${pathInfo}\n${att.content}\n--- End of ${att.filename} ---`,
+          text: fileText,
         })
       }
     }

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getGlobalSettings } from '@/lib/store/settings'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: settings.assistantModel || 'claude-haiku-4-20250414',
         max_tokens: 1024,
-        system: `你是一个提示词优化助手。用户给你一段输入文本，你需要将其优化为更清晰、更具体、更有效的 AI 提示词。
+        system: getPromptTemplate('promptOptimization') || `你是一个提示词优化助手。用户给你一段输入文本，你需要将其优化为更清晰、更具体、更有效的 AI 提示词。
 
 优化原则：
 - 保持用户的原始意图不变

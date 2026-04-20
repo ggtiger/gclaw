@@ -9,6 +9,7 @@
 import type { EpisodicEntry } from '@/types/memory'
 import { logger } from '@/lib/logger'
 import { callLLM } from '@/lib/llm'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 
 /** 输入截断限制 */
 const MAX_USER_MSG = 500
@@ -17,7 +18,7 @@ const MAX_REPLY = 1000
 /** 情节记忆草稿（LLM 提取结果），扩展 title 字段供巩固使用 */
 export type EpisodicDraft = Omit<EpisodicEntry, 'id' | 'timestamp'> & { title?: string }
 
-const SYSTEM_PROMPT = `你是一个记忆提取助手。从用户消息中提取值得长期记住的信息。
+const DEFAULT_SYSTEM_PROMPT = `你是一个记忆提取助手。从用户消息中提取值得长期记住的信息。
 
 你必须返回一个 JSON 对象，格式如下：
 {
@@ -42,8 +43,8 @@ const SYSTEM_PROMPT = `你是一个记忆提取助手。从用户消息中提取
 
 2. title 标题规范（极其重要）：
    - 必须是简短的标签式短语，2-8个字，像目录标题
-   - 好的例子："Java开发偏好"、"科幻短剧爱好"、"焦梦瑶喜好"、"兼职老师身份"
-   - 坏的例子："用户表达了对焦梦瑶的喜好"、"用户喜欢看科幻类AI短剧"（这些是 summary 不是 title）
+   - 好的例子："Java开发偏好"、"科幻短剧爱好"、"小瑶AI喜好"、"兼职老师身份"
+   - 坏的例子："用户表达了对小瑶AI的喜好"、"用户喜欢看科幻类AI短剧"（这些是 summary 不是 title）
    - title 绝对不要以"用户"开头
 
 3. 提取原则：
@@ -79,7 +80,7 @@ export async function extractWithLLM(
 
   try {
     const text = await callLLM({
-      system: SYSTEM_PROMPT,
+      system: getPromptTemplate('memoryExtraction') || DEFAULT_SYSTEM_PROMPT,
       user: userPrompt,
       maxTokens: 512,
       timeoutMs: 8000,

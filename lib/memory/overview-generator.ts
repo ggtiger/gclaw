@@ -11,11 +11,12 @@ import { store } from './store'
 import type { SemanticEntry, ProceduralEntry } from '@/types/memory'
 import { callLLM, getAssistantModel } from '@/lib/llm'
 import { logger } from '@/lib/logger'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 
 /** LLM 超时时间（毫秒） */
 const OVERVIEW_TIMEOUT = 10000
 
-const OVERVIEW_PROMPT = `你是一个用户画像总结助手。根据下方提供的用户记忆条目，生成一份精简的用户画像总纲。
+const DEFAULT_OVERVIEW_PROMPT = `你是一个用户画像总结助手。根据下方提供的用户记忆条目，生成一份精简的用户画像总纲。
 
 ## 格式规则（必须严格遵守）
 
@@ -37,7 +38,7 @@ const OVERVIEW_PROMPT = `你是一个用户画像总结助手。根据下方提�
 **开发环境**: TypeScript strict + Tailwind CSS
 **搜索偏好**: 使用百度技能，不用 websearch
 **回复风格**: 简洁无 emoji
-**兴趣爱好**: 科幻类 AI 短剧、焦梦瑶
+**兴趣爱好**: 科幻类 AI 短剧、小瑶AI
 **日程**: 周二周四去亳州技术学院上课`
 
 export interface OverviewOptions {
@@ -199,7 +200,7 @@ async function generateOverviewWithLLM(userId: string): Promise<string | null> {
 
   try {
     const text = await callLLM({
-      system: OVERVIEW_PROMPT,
+      system: getPromptTemplate('overviewGeneration') || DEFAULT_OVERVIEW_PROMPT,
       user: userPrompt,
       maxTokens: 1024,
       timeoutMs: OVERVIEW_TIMEOUT,

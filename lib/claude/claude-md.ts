@@ -17,6 +17,7 @@ import { retrieve } from '@/lib/memory/retrieval'
 import { getProjects, getProjectById } from '@/lib/store/projects'
 import { getAgents } from '@/lib/store/agents'
 import { logger } from '@/lib/logger'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 
 const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 
@@ -185,12 +186,9 @@ function collectLearningsSummary(projectCwd: string, userId?: string): string {
 
   if (allEntries.length === 0) return ''
 
-  const lines: string[] = [
-    '## 待处理经验（来自 .learnings/）',
-    '',
-    '以下条目尚未处理，在相关场景中请参考：',
-    '',
-  ]
+  const headerTemplate = getPromptTemplate('injectionLearnings')
+  const headerLines = headerTemplate.split('\n')
+  const lines: string[] = [...headerLines, '']
 
   for (const { file, entries } of allEntries) {
     lines.push(`### ${file}`)
@@ -460,8 +458,9 @@ function retrieveRelevantMemory(userId: string, userMessage: string, projectId?:
 
     if (topItems.length === 0) return ''
 
+    const memoryHeader = getPromptTemplate('injectionMemory')
     const lines: string[] = [
-      '## 相关记忆（本次对话可能相关）',
+      memoryHeader,
       '',
     ]
 
@@ -491,8 +490,9 @@ function buildSecretaryProjectSection(projectId: string): string {
 
   if (managedProjects.length === 0) return ''
 
+  const secretaryHeader = getPromptTemplate('injectionSecretary')
   const lines: string[] = [
-    '## 你管理的项目',
+    secretaryHeader,
     '',
   ]
 

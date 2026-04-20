@@ -1,14 +1,19 @@
 import type { ModeDefinition, AgentTemplate } from '@/types/skills'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 
-// ── 4 种预设模式 ──
+// ── 4 种预设模式（协调人提示词从存储层读取） ──
 
-export const MODE_DEFINITIONS: ModeDefinition[] = [
-  {
-    id: 'team',
-    name: '团队模式',
-    description: '软件开发团队，项目经理统筹调度各角色工程师',
-    coordinatorName: '项目经理',
-    coordinatorPrompt: `你是项目经理，负责统筹协调团队中的各个角色。
+/** 获取协调人提示词的 key 映射 */
+const COORDINATOR_PROMPT_KEYS: Record<string, string> = {
+  team: 'coordinatorTeam',
+  government: 'coordinatorGovernment',
+  company: 'coordinatorCompany',
+  classroom: 'coordinatorClassroom',
+}
+
+// 协调人提示词默认值（用于类型安全和降级）
+const COORDINATOR_PROMPT_DEFAULTS: Record<string, string> = {
+  coordinatorTeam: `你是项目经理，负责统筹协调团队中的各个角色。
 
 ## 你的团队成员
 - **前端工程师**：负责前端开发、组件设计、页面交互和用户体验优化
@@ -27,14 +32,7 @@ export const MODE_DEFINITIONS: ModeDefinition[] = [
 - 简单问题直接回答，不需要分配
 - 复杂需求拆解后分配给合适的角色
 - 始终用中文回复用户`,
-    roleTemplates: ['team-frontend', 'team-backend', 'team-qa', 'team-pm'],
-  },
-  {
-    id: 'government',
-    name: '三审六部',
-    description: '仿古代六部制，总管统筹六部处理各类事务',
-    coordinatorName: '总管',
-    coordinatorPrompt: `你是总管，统管六部，协调处理各类事务。
+  coordinatorGovernment: `你是总管，统管六部，协调处理各类事务。
 
 ## 你管辖的六部
 - **审核一部**：负责初步审核，把关质量标准
@@ -54,14 +52,7 @@ export const MODE_DEFINITIONS: ModeDefinition[] = [
 - 明确事务性质，精准派发
 - 涉及多个部门时，由主责部门牵头
 - 始终用中文回复`,
-    roleTemplates: ['gov-audit-1', 'gov-audit-2', 'gov-execution', 'gov-supervision', 'gov-documentation', 'gov-general'],
-  },
-  {
-    id: 'company',
-    name: '公司模式',
-    description: '模拟公司组织架构，CEO统筹各职能部门',
-    coordinatorName: 'CEO',
-    coordinatorPrompt: `你是 CEO，负责公司整体战略和决策。
+  coordinatorCompany: `你是 CEO，负责公司整体战略和决策。
 
 ## 你的管理团队
 - **CFO**：首席财务官，负责财务规划、预算管理和投资分析
@@ -80,14 +71,7 @@ export const MODE_DEFINITIONS: ModeDefinition[] = [
 - 战略性问题综合多部门意见
 - 执行层面的事务直接分配给相关部门
 - 始终用中文回复`,
-    roleTemplates: ['company-cfo', 'company-cto', 'company-marketing', 'company-hr', 'company-legal'],
-  },
-  {
-    id: 'classroom',
-    name: '班级模式',
-    description: '模拟班级教学，班主任协调各科老师',
-    coordinatorName: '班主任',
-    coordinatorPrompt: `你是班主任，负责协调各科老师的教学工作。
+  coordinatorClassroom: `你是班主任，负责协调各科老师的教学工作。
 
 ## 你的教师团队
 - **语文老师**：负责语文教学，包括阅读理解、写作和文学鉴赏
@@ -105,9 +89,54 @@ export const MODE_DEFINITIONS: ModeDefinition[] = [
 - 学科问题精准分配
 - 鼓励学生思考，不只是给出答案
 - 始终用中文回复`,
+}
+
+export const MODE_DEFINITIONS: ModeDefinition[] = [
+  {
+    id: 'team',
+    name: '团队模式',
+    description: '软件开发团队，项目经理统筹调度各角色工程师',
+    coordinatorName: '项目经理',
+    coordinatorPrompt: COORDINATOR_PROMPT_DEFAULTS.coordinatorTeam,
+    roleTemplates: ['team-frontend', 'team-backend', 'team-qa', 'team-pm'],
+  },
+  {
+    id: 'government',
+    name: '三审六部',
+    description: '仿古代六部制，总管统筹六部处理各类事务',
+    coordinatorName: '总管',
+    coordinatorPrompt: COORDINATOR_PROMPT_DEFAULTS.coordinatorGovernment,
+    roleTemplates: ['gov-audit-1', 'gov-audit-2', 'gov-execution', 'gov-supervision', 'gov-documentation', 'gov-general'],
+  },
+  {
+    id: 'company',
+    name: '公司模式',
+    description: '模拟公司组织架构，CEO统筹各职能部门',
+    coordinatorName: 'CEO',
+    coordinatorPrompt: COORDINATOR_PROMPT_DEFAULTS.coordinatorCompany,
+    roleTemplates: ['company-cfo', 'company-cto', 'company-marketing', 'company-hr', 'company-legal'],
+  },
+  {
+    id: 'classroom',
+    name: '班级模式',
+    description: '模拟班级教学，班主任协调各科老师',
+    coordinatorName: '班主任',
+    coordinatorPrompt: COORDINATOR_PROMPT_DEFAULTS.coordinatorClassroom,
     roleTemplates: ['class-chinese', 'class-math', 'class-english', 'class-science'],
   },
 ]
+
+/** 获取协调人提示词（从存储层读取，支持用户自定义） */
+export function getCoordinatorPrompt(modeId: string): string {
+  const key = COORDINATOR_PROMPT_KEYS[modeId]
+  if (!key) return ''
+  return getPromptTemplate(key) || COORDINATOR_PROMPT_DEFAULTS[key] || ''
+}
+
+/** 获取子角色提示词（从存储层读取，支持用户自定义） */
+export function getAgentPrompt(templateId: string): string {
+  return getPromptTemplate(`agent_${templateId}`)
+}
 
 // ── 内置角色模板 ──
 

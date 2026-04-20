@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw } from 'lucide-react'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw, FileText } from 'lucide-react'
 import type { GlobalSettings } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { LogsPanel } from './LogsPanel'
@@ -10,10 +10,11 @@ import { SecurityPanel } from './SecurityPanel'
 import { PreferencesPanel } from './PreferencesPanel'
 import { DefaultSkillsPanel } from './DefaultSkillsPanel'
 import { AboutPanel } from './AboutPanel'
+import { PromptsPanel } from './PromptsPanel'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 
-type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'audit' | 'logs' | 'users' | 'security' | 'about'
+type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'prompts' | 'audit' | 'logs' | 'users' | 'security' | 'about'
 
 interface SettingsPanelProps {
   projectId: string
@@ -133,6 +134,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const tabs: { key: SettingsTab; icon: React.ReactNode; label: string; adminOnly: boolean }[] = [
     { key: 'preferences', icon: <Palette size={14} />, label: '偏好', adminOnly: false },
     { key: 'defaultSkills', icon: <Zap size={14} />, label: '默认技能', adminOnly: true },
+    { key: 'prompts', icon: <FileText size={14} />, label: '提示词', adminOnly: true },
     { key: 'settings', icon: <SettingsIcon size={14} />, label: '设置', adminOnly: true },
     { key: 'audit', icon: <Shield size={14} />, label: '审计日志', adminOnly: true },
     { key: 'logs', icon: <Terminal size={14} />, label: '运行日志', adminOnly: true },
@@ -168,6 +170,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         <PreferencesPanel backgroundImage={backgroundImage} onBackgroundChange={onBackgroundChange} />
       ) : activeTab === 'defaultSkills' ? (
         <DefaultSkillsPanel />
+      ) : activeTab === 'prompts' ? (
+        <PromptsPanel />
       ) : activeTab === 'audit' ? (
         <AuditLogPanel />
       ) : activeTab === 'logs' ? (

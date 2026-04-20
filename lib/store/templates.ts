@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { getPromptTemplate } from '@/lib/store/prompt-templates'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -74,16 +75,23 @@ const DEFAULT_TEMPLATES: ConversationTemplate[] = [
 function readTemplates(): ConversationTemplate[] {
   ensureDataDir()
   try {
+    // 为内置模板注入存储层的自定义提示词
+    const customizedDefaults = DEFAULT_TEMPLATES.map(t => ({
+      ...t,
+      systemPrompt: getPromptTemplate(`tpl_${t.id}_system`) || t.systemPrompt,
+      firstMessage: getPromptTemplate(`tpl_${t.id}_firstMessage`) || t.firstMessage,
+    }))
+
     if (!fs.existsSync(TEMPLATES_FILE)) {
       // 首次初始化默认模板
       fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(DEFAULT_TEMPLATES, null, 2), 'utf-8')
-      return [...DEFAULT_TEMPLATES]
+      return [...customizedDefaults]
     }
     const raw = fs.readFileSync(TEMPLATES_FILE, 'utf-8')
     const data = JSON.parse(raw)
     const templates: ConversationTemplate[] = Array.isArray(data) ? data : []
-    // 合并内置模板（以 id 为准，确保更新）
-    const builtInMap = new Map(DEFAULT_TEMPLATES.map(t => [t.id, t]))
+    // 合并内置模板（以 id 为准，提示词从存储层读取）
+    const builtInMap = new Map(customizedDefaults.map(t => [t.id, t]))
     const result: ConversationTemplate[] = []
     const seenIds = new Set<string>()
     for (const t of templates) {
@@ -95,7 +103,7 @@ function readTemplates(): ConversationTemplate[] {
       seenIds.add(t.id)
     }
     // 添加缺失的内置模板
-    for (const t of DEFAULT_TEMPLATES) {
+    for (const t of customizedDefaults) {
       if (!seenIds.has(t.id)) {
         result.push(t)
       }
