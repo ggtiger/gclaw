@@ -38,7 +38,7 @@ const DEFAULT_OVERVIEW_PROMPT = `你是一个用户画像总结助手。根据�
 **开发环境**: TypeScript strict + Tailwind CSS
 **搜索偏好**: 使用百度技能，不用 websearch
 **回复风格**: 简洁无 emoji
-**兴趣爱好**: 科幻类 AI 短剧、小瑶AI
+**兴趣爱好**: 科幻类 AI 短剧、AI助理AI
 **日程**: 周二周四去亳州技术学院上课`
 
 export interface OverviewOptions {

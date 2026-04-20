@@ -33,8 +33,8 @@ export const PROMPT_DEFAULTS: Record<string, string> = {
 
 2. title 标题规范（极其重要）：
    - 必须是简短的标签式短语，2-8个字，像目录标题
-   - 好的例子："Java开发偏好"、"科幻短剧爱好"、"小瑶AI喜好"、"兼职老师身份"
-   - 坏的例子："用户表达了对小瑶AI的喜好"、"用户喜欢看科幻类AI短剧"（这些是 summary 不是 title）
+   - 好的例子："Java开发偏好"、"科幻短剧爱好"、"AI助理AI喜好"、"兼职老师身份"
+   - 坏的例子："用户表达了对AI助理AI的喜好"、"用户喜欢看科幻类AI短剧"（这些是 summary 不是 title）
    - title 绝对不要以"用户"开头
 
 3. 提取原则：
@@ -72,7 +72,7 @@ export const PROMPT_DEFAULTS: Record<string, string> = {
 **开发环境**: TypeScript strict + Tailwind CSS
 **搜索偏好**: 使用百度技能，不用 websearch
 **回复风格**: 简洁无 emoji
-**兴趣爱好**: 科幻类 AI 短剧、小瑶AI
+**兴趣爱好**: 科幻类 AI 短剧、AI助理AI
 **日程**: 周二周四去亳州技术学院上课`,
 
   promptOptimization: `你是一个提示词优化助手。用户给你一段输入文本，你需要将其优化为更清晰、更具体、更有效的 AI 提示词。

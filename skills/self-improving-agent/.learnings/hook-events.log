@@ -1516,4 +1516,13 @@
 ---[2026-04-19T10:29:28.915Z] PostToolUse
   tool: Bash
   response(500): {"stdout":"admin@test.com|Admin|admin|1","stderr":"","interrupted":false,"isImage":false}
+---[2026-04-20T01:00:27.803Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"{\"success\":true,\"result\":{\"episodic\":[{\"projectId\":\"fadbe066\",\"type\":\"decision\",\"summary\":\"项目需要支持移动端模式。\",\"detail\":\"用户决定当前项目或应用需要支持移动模式，这通常意味着需要引入响应式设计或独立的移动端界面。\",\"tags\":[\"移动端\",\"UI设计\",\"响应式\"],\"source\":\"hook\",\"title\":\"支持移动模式\",\"id\":\"EP-20260418-001\",\"timestamp\":\"2026-04-18T10:26:01.102Z\",\"promotedTo\":\"SEM-20260418-005\"},{\"projectId\":\"fadbe066\",\"type\":\"preference\",\"summary\":\"在进行页面设计或前端开发时，偏好视觉冲击力强、效果炫酷的界面风格。\",\"detail\":\"用户明确要求
+---[2026-04-20T05:22:42.176Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"{\"success\":true,\"entry\":{\"id\":\"SEM-20260420-001\",\"type\":\"preference\",\"title\":\"兼职Java教师\",\"content\":\"用户除了担任企业数字化研发部经理外，还是一名兼职的Java教师，具有Java编程教学经验。\",\"scope\":\"user\",\"confidence\":0.9,\"sources\":[],\"tags\":[\"Java\",\"教师\",\"兼职\",\"编程教学\",\"职业\"],\"status\":\"active\",\"createdAt\":\"2026-04-20T05:22:42.130Z\",\"updatedAt\":\"2026-04-20T05:22:42.130Z\",\"accessCount\":0}}","stderr":"","interrupted":false,"isImage":false}
+---[2026-04-20T10:42:35.159Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"","stderr":"","interrupted":false,"isImage":false}
 ---

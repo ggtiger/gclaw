@@ -483,7 +483,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                 </div>
                 <div className="flex-1 min-w-0 text-sm leading-relaxed">
                   <div className="text-xs font-medium mb-1 text-slate-500 dark:text-slate-400">
-                    小瑶
+                    AI助理
                   </div>
                   <StreamingBlocksRenderer
                     blocks={streamingBlocks}
@@ -505,7 +505,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                 </div>
                 <div className="flex-1">
                   <div className="text-xs font-medium mb-2 text-slate-500 dark:text-slate-400">
-                    小瑶
+                    AI助理
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-purple-500" style={{ animationDelay: '0ms' }} />

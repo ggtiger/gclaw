@@ -103,7 +103,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
       <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
         <div className={`flex items-baseline gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
           <span className={`text-xs font-medium ${isUser ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'}`}>
-            {isUser ? '你' : 'Claude'}
+            {isUser ? '你' : 'AI助理'}
           </span>
           <span className="text-[10px] text-slate-400/50">
             {new Date(message.createdAt).toLocaleTimeString('zh-CN', TIME_FORMAT)}
