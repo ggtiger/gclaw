@@ -10,12 +10,36 @@ import {
 } from '@/lib/store/projects'
 import { addAuditLog } from '@/lib/store/audit-log'
 import { getAuthUser } from '@/lib/auth/helpers'
-import { getDefaultSkills, setEnabledSkills } from '@/lib/store/skills'
+import { getDefaultSkills, getEnabledSkills, setEnabledSkills } from '@/lib/store/skills'
 import { scanAvailableSkills } from '@/lib/claude/skills-dir'
 import type { ProjectMode, ProjectType } from '@/types/skills'
 import { initializeProjectAgents } from '@/lib/modes/template-initializer'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * 补救迁移：为没有启用技能的项目自动启用内置技能
+ * 解决打包后首次创建的默认项目未启用 memory-recall 等技能的问题
+ */
+function ensureProjectSkills(projects: { id: string }[]) {
+  const defaultSkills = getDefaultSkills()
+  const useDefault = defaultSkills.length > 0
+
+  for (const project of projects) {
+    const enabled = getEnabledSkills(project.id)
+    if (enabled.length > 0) continue // 已有技能配置，跳过
+
+    // 无技能配置 → 自动启用
+    if (useDefault) {
+      setEnabledSkills(project.id, defaultSkills)
+    } else {
+      const builtInSkills = scanAvailableSkills().filter(s => s.builtIn).map(s => s.name)
+      if (builtInSkills.length > 0) {
+        setEnabledSkills(project.id, builtInSkills)
+      }
+    }
+  }
+}
 
 export async function GET(request: NextRequest) {
   const user = getAuthUser(request)
@@ -41,6 +65,9 @@ export async function GET(request: NextRequest) {
             return list
           })())
     : getProjects()
+
+  // 补救：为未配置技能的项目自动启用内置技能（解决打包后首次启动问题）
+  ensureProjectSkills(projects)
 
   // admin 视角附加 ownerName
   if (user?.role === 'admin') {

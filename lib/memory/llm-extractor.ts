@@ -83,6 +83,7 @@ export async function extractWithLLM(
       user: userPrompt,
       maxTokens: 512,
       timeoutMs: 8000,
+      projectId,
     })
 
     if (!text) return null

@@ -86,6 +86,7 @@ const GLOBAL_KEYS = new Set<string>(['apiKey', 'apiBaseUrl', 'theme', 'assistant
 
 export function getSettings(projectId: string): AppSettings {
   const global = getGlobalSettings()
+  if (!projectId) return { ...DEFAULT_PROJECT, ...global } as AppSettings
   const project = getProjectSettings(projectId)
   return { ...global, ...project }
 }
