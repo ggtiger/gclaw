@@ -184,6 +184,33 @@ function removeNativeBinaries(dir) {
       rmSync(pattern)
     }
   }
+
+  // 递归查找并移除所有 .node 文件（原生 addon，macOS 公证需要签名但难以逐一处理）
+  const nmDir = path.join(dir, 'node_modules')
+  if (fs.existsSync(nmDir)) {
+    const nodeFiles = findNativeAddons(nmDir)
+    for (const f of nodeFiles) {
+      console.log('[standalone] Removing native addon:', path.relative(dir, f))
+      fs.rmSync(f, { force: true })
+    }
+  }
+}
+
+/**
+ * 递归查找 node_modules 中的 .node 原生 addon 文件
+ */
+function findNativeAddons(dir) {
+  const results = []
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        results.push(...findNativeAddons(path.join(dir, entry.name)))
+      } else if (entry.name.endsWith('.node')) {
+        results.push(path.join(dir, entry.name))
+      }
+    }
+  } catch { /* ignore */ }
+  return results
 }
 
 module.exports = {
