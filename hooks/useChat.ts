@@ -3,6 +3,38 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem, StreamingBlock, ContentBlock } from '@/types/chat'
 
+// ── Tauri 系统通知：窗口隐藏时推送 ──
+let __tauri_notification_shown = false // 避免重复请求权限弹窗
+async function sendDesktopNotification(title: string, body: string) {
+  // 只在 Tauri 环境中生效
+  const ti = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ as
+    | { invoke?: (c: string, a?: unknown) => Promise<unknown> }
+    | undefined
+  if (!ti?.invoke) return
+
+  // 窗口可见时不需要通知
+  try {
+    const visible = await ti.invoke('plugin:window|is_visible', { label: 'main' })
+    if (visible) return
+  } catch {
+    return
+  }
+
+  // 发送通知
+  try {
+    if (!__tauri_notification_shown) {
+      const permitted = await ti.invoke('plugin:notification|is_permission_granted') as boolean
+      if (!permitted) {
+        await ti.invoke('plugin:notification|request_permission')
+      }
+      __tauri_notification_shown = true
+    }
+    await ti.invoke('plugin:notification|notify', {
+      options: { title, body },
+    })
+  } catch {}
+}
+
 // 模块级常量，避免每次渲染重建
 const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
 
@@ -307,6 +339,12 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         const data = JSON.parse(e.data)
         if (data.message) {
           setMessages(prev => [...prev, data.message])
+          const source = data.message.source
+          const sourceName = data.message.sourceName
+          if (source && source !== 'web') {
+            const label = sourceName || source
+            sendDesktopNotification(`${label} 发来消息`, data.message.content?.slice(0, 80) || '')
+          }
         }
       } catch {}
     })
@@ -404,6 +442,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         const data = JSON.parse(e.data)
         if (data.message) {
           setMessages(prev => [...prev, data.message])
+          const preview = data.message.content?.slice(0, 80) || '任务已完成'
+          sendDesktopNotification('AI助理 回复完成', preview)
         }
       } catch {}
       updateState(projectId, b => {
@@ -551,6 +591,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         stats: stats || undefined,
         contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
       }
+      // 窗口隐藏时推送桌面通知
+      const preview = finalContent.slice(0, 80) || '任务已完成'
+      sendDesktopNotification('AI助理 回复完成', preview)
       // 延迟一帧加入 messages，确保流式内容先渲染出来
       requestAnimationFrame(() => {
         if (currentProjectIdRef.current === pid) {

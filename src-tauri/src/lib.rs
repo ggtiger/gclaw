@@ -1325,24 +1325,14 @@ pub fn run() {
                 }
             }
 
-            // macOS: 点击关闭时隐藏到托盘（Dock 图标可恢复）
-            // Windows/Linux: 点击关闭时直接退出应用并杀掉 Node 进程
+            // 所有点击关闭时隐藏到托盘，不退出
             if let Some(main_window) = app.get_webview_window("main") {
                 let app_handle: tauri::AppHandle = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        #[cfg(target_os = "macos")]
-                        {
-                            api.prevent_close();
-                            // 在闭包内通过 app_handle 获取窗口
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.hide();
-                            }
-                        }
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            // Windows/Linux: 允许关闭，触发 RunEvent::Exit 清理进程
-                            let _ = api;
+                        api.prevent_close();
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.hide();
                         }
                     }
                 });
@@ -1412,6 +1402,7 @@ pub fn run() {
             setup_tray(app)?;
             Ok(())
         })
+        .plugin(tauri_plugin_notification::Init::default())
         .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content, retry_startup])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -1454,6 +1445,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     TrayIconBuilder::new()
+        .icon(app.default_window_icon().cloned().unwrap())
         .tooltip("GClaw")
         .menu(&menu)
         .on_menu_event(|app, event| {
