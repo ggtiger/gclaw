@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getAgents, saveAgents } from '@/lib/store/agents'
-import { getProjectById, getProjects } from '@/lib/store/projects'
+import { getProjectById, getProjects, getProjectsForUser } from '@/lib/store/projects'
+import { getAuthUser } from '@/lib/auth/helpers'
 import type { AgentInfo } from '@/types/skills'
 
 export const dynamic = 'force-dynamic'
@@ -17,8 +18,11 @@ export async function GET(request: NextRequest) {
   let subProjects = undefined
   const project = getProjectById(projectId)
   if (project?.type === 'secretary') {
-    const allProjects = getProjects()
-    subProjects = allProjects
+    const user = getAuthUser(request)
+    const visibleProjects = user
+      ? getProjectsForUser(user.userId, user.role === 'admin' ? 'admin' : undefined)
+      : getProjects()
+    subProjects = visibleProjects
       .filter(p => p.id !== projectId && p.type !== 'secretary')
       .map(p => {
         const pAgents = getAgents(p.id).filter(a => a.enabled)
