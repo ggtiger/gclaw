@@ -40,9 +40,10 @@
 ### 渠道集成
 
 - **钉钉** — Stream 模式 WebSocket 长连接，机器人消息实时收发
-- **飞书** — 事件订阅消息接入
+- **飞书** — Stream 模式 WebSocket 长连接，无需公网 IP，支持文本/图片/文件/语音
 - **微信** — 客服消息接入（扫码登录）
 - 统一消息路由，渠道消息自动同步到 Web UI
+- 消息来源追踪：每条消息标注来源渠道与名称，区分 Web / 飞书 / 钉钉 / 微信 / API / 定时任务
 
 ### 技能系统
 
@@ -77,11 +78,19 @@
 - 支持文件、Skill、API 三种数据提供者
 - 可配置数据源管理
 
+### 提示词模板
+
+- 32 个系统提示词集中管理（设置面板统一配置）
+- 6 大分类：AI 系统提示词 / 协调人提示词 / 子角色提示词 / 会话模板 / 注入模板 / 附件模板
+- 独立编辑、即时生效，支持恢复默认值
+
 ### 桌面应用
 
 - 基于 [Tauri v2](https://v2.tauri.app/) 构建，跨平台 macOS / Windows / Linux
 - 首次启动自动下载 Node.js / Python / Git 运行时，零配置开箱即用
 - 智能查找系统已安装的运行时（支持 nvm-windows / fnm / Homebrew 等）
+- 系统托盘：关闭窗口最小化到托盘，新消息时图标闪烁提醒
+- 桌面通知：窗口隐藏时自动推送系统通知（渠道消息 / AI 回复完成）
 - 自动更新检测（GitHub Releases）
 - Next.js standalone 打包为 sidecar 进程
 
@@ -202,7 +211,8 @@ gclaw/
 │   │   ├── channel-service.ts    # 统一消息路由
 │   │   ├── dingtalk-stream.ts    # 钉钉 Stream 长连接
 │   │   ├── dingtalk.ts           # 钉钉 API
-│   │   ├── feishu.ts             # 飞书
+│   │   ├── feishu.ts             # 飞书 API
+│   │   ├── feishu-stream.ts      # 飞书 Stream WebSocket 长连接
 │   │   └── wechat-poller.ts      # 微信长连接
 │   ├── memory/                   # 四层记忆系统
 │   │   ├── store.ts              # 存储层

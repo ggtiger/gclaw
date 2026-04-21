@@ -40,9 +40,10 @@ English | **[中文](./README.md)**
 ### Channel Integration
 
 - **DingTalk** — Stream mode WebSocket long connection, real-time bot messaging
-- **Feishu (Lark)** — Event subscription message integration
+- **Feishu (Lark)** — Stream mode WebSocket long connection, no public IP required, supports text/image/file/audio
 - **WeChat** — Customer service message integration (QR code login)
 - Unified message routing with automatic sync to Web UI
+- Message source tracking: each message labeled with its channel and name, distinguishing Web / Feishu / DingTalk / WeChat / API / Scheduled task
 
 ### Skill System
 
@@ -77,11 +78,19 @@ English | **[中文](./README.md)**
 - Three data providers: File, Skill, and API
 - Configurable data source management
 
+### Prompt Templates
+
+- 32 system prompts centrally managed in the settings panel
+- 6 categories: AI system prompts / coordinator prompts / sub-role prompts / conversation templates / injection templates / attachment templates
+- Individual editing with instant effect, supports restoring defaults
+
 ### Desktop App
 
 - Built with [Tauri v2](https://v2.tauri.app/), cross-platform support for macOS / Windows / Linux
 - Auto-downloads Node.js / Python / Git runtimes on first launch — zero configuration
 - Smart detection of system-installed runtimes (nvm-windows / fnm / Homebrew, etc.)
+- System tray: minimize to tray on window close, tray icon flashes on new messages
+- Desktop notifications: auto-push system notifications when window is hidden (channel messages / AI reply completed)
 - Auto-update detection via GitHub Releases
 - Next.js standalone bundled as a sidecar process
 
@@ -202,7 +211,8 @@ gclaw/
 │   │   ├── channel-service.ts    # Unified message routing
 │   │   ├── dingtalk-stream.ts    # DingTalk Stream long connection
 │   │   ├── dingtalk.ts           # DingTalk API
-│   │   ├── feishu.ts             # Feishu (Lark)
+│   │   ├── feishu.ts             # Feishu (Lark) API
+│   │   ├── feishu-stream.ts      # Feishu Stream WebSocket long connection
 │   │   └── wechat-poller.ts      # WeChat long connection
 │   ├── memory/                   # Four-layer memory system
 │   │   ├── store.ts              # Storage layer
