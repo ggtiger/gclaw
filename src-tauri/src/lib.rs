@@ -1525,31 +1525,7 @@ fn flash_tray_icon(app: tauri::AppHandle, state: tauri::State<'_, FlashState>) {
     });
 }
 
-/// 生成 32x32 橙色圆形通知图标（RGBA）
+/// 生成 32x32 全透明图标（占位但不显示）
 fn create_notify_icon() -> tauri::image::Image<'static> {
-    let size: u32 = 32;
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
-    let center = size as f32 / 2.0;
-    let radius = 14.0;
-    for y in 0..size {
-        for x in 0..size {
-            let dx = x as f32 + 0.5 - center;
-            let dy = y as f32 + 0.5 - center;
-            let dist = (dx * dx + dy * dy).sqrt();
-            let idx = ((y * size + x) * 4) as usize;
-            if dist <= radius {
-                // 边缘抗锯齿
-                let alpha = if dist > radius - 1.0 {
-                    ((radius - dist) * 255.0) as u8
-                } else {
-                    255
-                };
-                rgba[idx] = 255;     // R
-                rgba[idx + 1] = 140; // G
-                rgba[idx + 2] = 0;   // B
-                rgba[idx + 3] = alpha;
-            }
-        }
-    }
-    tauri::image::Image::new_owned(rgba, size, size)
+    tauri::image::Image::new_owned(vec![0u8; 32 * 32 * 4], 32, 32)
 }
