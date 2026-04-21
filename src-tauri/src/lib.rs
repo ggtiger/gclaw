@@ -1402,7 +1402,7 @@ pub fn run() {
             setup_tray(app)?;
             Ok(())
         })
-        .plugin(tauri_plugin_notification::Init::default())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content, retry_startup])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
