@@ -1507,17 +1507,49 @@ fn flash_tray_icon(app: tauri::AppHandle, state: tauri::State<'_, FlashState>) {
         Some(t) => t,
         None => { flashing.store(false, Ordering::Relaxed); return; }
     };
-    // 从嵌入的 PNG 创建静态图标（用于闪烁线程）
-    let normal_icon = tauri::image::Image::new(include_bytes!("../icons/32x32.png"), 32, 32);
-
     std::thread::spawn(move || {
-        let mut visible = true;
+        let mut show_normal = true;
         while flashing.load(Ordering::Relaxed) {
-            visible = !visible;
-            let _ = tray.set_visible(visible);
+            show_normal = !show_normal;
+            if show_normal {
+                let icon = tauri::image::Image::new(include_bytes!("../icons/32x32.png"), 32, 32);
+                let _ = tray.set_icon(Some(icon));
+            } else {
+                let icon = create_notify_icon();
+                let _ = tray.set_icon(Some(icon));
+            }
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
-        let _ = tray.set_visible(true);
-        let _ = tray.set_icon(Some(normal_icon));
+        let icon = tauri::image::Image::new(include_bytes!("../icons/32x32.png"), 32, 32);
+        let _ = tray.set_icon(Some(icon));
     });
+}
+
+/// 生成 32x32 橙色圆形通知图标（RGBA）
+fn create_notify_icon() -> tauri::image::Image<'static> {
+    let size: u32 = 32;
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+    let center = size as f32 / 2.0;
+    let radius = 14.0;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - center;
+            let dy = y as f32 + 0.5 - center;
+            let dist = (dx * dx + dy * dy).sqrt();
+            let idx = ((y * size + x) * 4) as usize;
+            if dist <= radius {
+                // 边缘抗锯齿
+                let alpha = if dist > radius - 1.0 {
+                    ((radius - dist) * 255.0) as u8
+                } else {
+                    255
+                };
+                rgba[idx] = 255;     // R
+                rgba[idx + 1] = 140; // G
+                rgba[idx + 2] = 0;   // B
+                rgba[idx + 3] = alpha;
+            }
+        }
+    }
+    tauri::image::Image::new_owned(rgba, size, size)
 }
