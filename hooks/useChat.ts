@@ -20,7 +20,7 @@ async function sendDesktopNotification(title: string, body: string) {
     return
   }
 
-  // 发送通知
+  // 发送通知 + 托盘图标闪烁
   try {
     if (!__tauri_notification_shown) {
       const permitted = await ti.invoke('plugin:notification|is_permission_granted') as boolean
@@ -32,6 +32,7 @@ async function sendDesktopNotification(title: string, body: string) {
     await ti.invoke('plugin:notification|notify', {
       options: { title, body },
     })
+    ti.invoke('flash_tray_icon').catch(() => {})
   } catch {}
 }
 

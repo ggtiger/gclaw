@@ -1,5 +1,7 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::process::{Child, Command};
 use std::net::TcpListener;
 
@@ -1403,7 +1405,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content, retry_startup])
+        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content, retry_startup, flash_tray_icon])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
@@ -1436,6 +1438,11 @@ pub fn run() {
 
 // ============ 系统托盘 ============
 
+// ============ 系统托盘 ============
+
+// 闪烁状态
+pub struct FlashState(pub Arc<AtomicBool>);
+
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
@@ -1444,13 +1451,21 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "quit", "退出 GClaw", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
-    TrayIconBuilder::new()
+    let flash_state = Arc::new(AtomicBool::new(false));
+    let flash_menu = flash_state.clone();
+    let flash_click = flash_state.clone();
+
+    TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().cloned().unwrap())
         .tooltip("GClaw")
         .menu(&menu)
-        .on_menu_event(|app, event| {
+        .on_menu_event(move |app, event| {
             match event.id.as_ref() {
                 "show" => {
+                    flash_menu.store(false, Ordering::Relaxed);
+                    if let Some(tray) = app.tray_by_id("main-tray") {
+                        let _ = tray.set_icon(app.default_window_icon().cloned());
+                    }
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
@@ -1460,11 +1475,13 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         })
-        .on_tray_icon_event(|tray, event| {
-            // 左键点击：显示窗口；右键由 .menu() 自动弹出菜单
+        .on_tray_icon_event(move |tray, event| {
             if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
                 if button == tauri::tray::MouseButton::Left {
-                    if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    flash_click.store(false, Ordering::Relaxed);
+                    let app = tray.app_handle();
+                    let _ = tray.set_icon(app.default_window_icon().cloned());
+                    if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
@@ -1472,5 +1489,35 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
+
+    app.manage(FlashState(flash_state));
     Ok(())
+}
+
+/// 前端调用：开始托盘图标闪烁
+#[tauri::command]
+fn flash_tray_icon(app: tauri::AppHandle, state: tauri::State<'_, FlashState>) {
+    let flashing = state.0.clone();
+    if flashing.load(Ordering::Relaxed) {
+        return;
+    }
+    flashing.store(true, Ordering::Relaxed);
+
+    let tray = match app.tray_by_id("main-tray") {
+        Some(t) => t,
+        None => { flashing.store(false, Ordering::Relaxed); return; }
+    };
+    // 从嵌入的 PNG 创建静态图标（用于闪烁线程）
+    let normal_icon = tauri::image::Image::new(include_bytes!("../icons/32x32.png"), 32, 32);
+
+    std::thread::spawn(move || {
+        let mut visible = true;
+        while flashing.load(Ordering::Relaxed) {
+            visible = !visible;
+            let _ = tray.set_visible(visible);
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        let _ = tray.set_visible(true);
+        let _ = tray.set_icon(Some(normal_icon));
+    });
 }
