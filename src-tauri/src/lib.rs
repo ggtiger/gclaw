@@ -1503,29 +1503,37 @@ fn flash_tray_icon(app: tauri::AppHandle, state: tauri::State<'_, FlashState>) {
     }
     flashing.store(true, Ordering::Relaxed);
 
-    let tray = match app.tray_by_id("main-tray") {
-        Some(t) => t,
-        None => { flashing.store(false, Ordering::Relaxed); return; }
-    };
+    // 确认托盘图标存在
+    if app.tray_by_id("main-tray").is_none() {
+        flashing.store(false, Ordering::Relaxed);
+        return;
+    }
+
     std::thread::spawn(move || {
         let mut show_normal = true;
         while flashing.load(Ordering::Relaxed) {
             show_normal = !show_normal;
-            if show_normal {
-                let icon = tauri::image::Image::new(include_bytes!("../icons/32x32.png"), 32, 32);
-                let _ = tray.set_icon(Some(icon));
-            } else {
-                let icon = create_notify_icon();
-                let _ = tray.set_icon(Some(icon));
-            }
+            let ah = app.clone();
+            let ah2 = app.clone();
+            let _ = ah.run_on_main_thread(move || {
+                if let Some(tray) = ah2.tray_by_id("main-tray") {
+                    if show_normal {
+                        let _ = tray.set_icon(ah2.default_window_icon().cloned());
+                    } else {
+                        let transparent = tauri::image::Image::new_owned(vec![0u8; 32 * 32 * 4], 32, 32);
+                        let _ = tray.set_icon(Some(transparent));
+                    }
+                }
+            });
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
-        let icon = tauri::image::Image::new(include_bytes!("../icons/32x32.png"), 32, 32);
-        let _ = tray.set_icon(Some(icon));
+        // 停止闪烁，恢复正常图标
+        let ah = app.clone();
+        let ah2 = app.clone();
+        let _ = ah.run_on_main_thread(move || {
+            if let Some(tray) = ah2.tray_by_id("main-tray") {
+                let _ = tray.set_icon(ah2.default_window_icon().cloned());
+            }
+        });
     });
-}
-
-/// 生成 32x32 全透明图标（占位但不显示）
-fn create_notify_icon() -> tauri::image::Image<'static> {
-    tauri::image::Image::new_owned(vec![0u8; 32 * 32 * 4], 32, 32)
 }
