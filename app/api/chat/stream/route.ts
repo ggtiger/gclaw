@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
     content: message,
     messageType: 'text',
     createdAt: new Date().toISOString(),
+    source: 'web',
     attachments: attachments || undefined,
   }
   addMessage(projectId, userMsg)

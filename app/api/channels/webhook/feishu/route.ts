@@ -5,7 +5,7 @@
 
 import { NextRequest } from 'next/server'
 import { findChannelByWebhookKey } from '@/lib/store/channels'
-import { parseFeishuEvent, replyFeishu } from '@/lib/channels/feishu'
+import { parseFeishuEvent, replyFeishu, downloadMessageResource } from '@/lib/channels/feishu'
 import { handleChannelMessage } from '@/lib/channels/channel-service'
 
 export const dynamic = 'force-dynamic'
@@ -44,15 +44,21 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, message: 'ignored' })
   }
 
-  // 构建附件
-  const attachments = event.imageUrl ? [{
-    id: `att_${Date.now()}_img`,
-    filename: 'image.jpg',
-    mimeType: 'image/jpeg',
-    size: 0,
-    url: event.imageUrl,
-    type: 'image' as const,
-  }] : undefined
+  // 构建附件：通过飞书 API 下载图片并保存本地
+  let attachments
+  if (event.imageUrl && event.messageId) {
+    const result = await downloadMessageResource(config, projectId, event.messageId, event.imageUrl, 'image')
+    if (result) {
+      attachments = [{
+        id: `att_${Date.now()}_img`,
+        filename: 'image.jpg',
+        mimeType: 'image/jpeg',
+        size: result.buffer.length,
+        url: result.localUrl,
+        type: 'image' as const,
+      }]
+    }
+  }
 
   console.log(`[Webhook/Feishu] Message: ${event.text.slice(0, 100)}`)
 

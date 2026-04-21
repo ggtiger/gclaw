@@ -6,7 +6,7 @@ export interface ChatAttachment {
   mimeType: string          // MIME 类型
   size: number              // 文件大小（bytes）
   url: string               // 下载/预览 URL
-  type: 'image' | 'document' | 'code' | 'file'  // 分类
+  type: 'image' | 'audio' | 'document' | 'code' | 'file'  // 分类
   aesKey?: string           // 微信媒体解密密钥（可选）
 }
 
@@ -49,12 +49,17 @@ export type ContentBlock = ContentTextBlock | ContentToolBlock
 
 // ── 消息 ──
 
+// 消息来源类型
+export type MessageSource = 'web' | 'feishu' | 'dingtalk' | 'wechat' | 'api' | 'schedule'
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
   messageType: 'text' | 'tool_summary'
   createdAt: string
+  source?: MessageSource          // 消息来源渠道
+  sourceName?: string             // 来源渠道名称（如"我的飞书机器人"）
   isStreaming?: boolean
   toolSummary?: ToolSummary
   contentBlocks?: ContentBlock[]   // 新字段：交错文本/工具块

@@ -1,11 +1,21 @@
 'use client'
 
 import { memo, useState, useCallback } from 'react'
-import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings } from 'lucide-react'
+import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { StreamingBlocksRenderer, adaptContentBlocks } from './StreamingBlocksRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
-import type { ChatMessage, ChatAttachment } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, MessageSource } from '@/types/chat'
+
+// 来源渠道配置：图标 + 标签 + 颜色
+const SOURCE_CONFIG: Record<MessageSource, { icon: LucideIcon; label: string; color: string; bg: string }> = {
+  web: { icon: Monitor, label: 'Web', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/15' },
+  feishu: { icon: Send, label: '飞书', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/15' },
+  dingtalk: { icon: Bell, label: '钉钉', color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/15' },
+  wechat: { icon: MessageCircle, label: '微信', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/15' },
+  api: { icon: Terminal, label: 'API', color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-500/15' },
+  schedule: { icon: Clock, label: '定时', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/15' },
+}
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -24,6 +34,9 @@ const COLLAPSE_THRESHOLD = 2000
 export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
+  const source = message.source || 'web'
+  const sourceConfig = isUser ? SOURCE_CONFIG[source] : null
+  const SourceIcon = sourceConfig?.icon
 
   // 长消息默认折叠，点击展开
   const [expanded, setExpanded] = useState(() => !message.isStreaming && message.content.length <= COLLAPSE_THRESHOLD)
@@ -91,9 +104,11 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
     <div className={`flex gap-3 w-full ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
       {/* Avatar */}
       <div className="shrink-0">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isUser ? 'bg-purple-500/15' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isUser ? (sourceConfig?.bg || 'bg-purple-500/15') : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
           {isUser
-            ? <User size={15} className="text-purple-600 dark:text-purple-400" />
+            ? SourceIcon
+              ? <SourceIcon size={15} className={sourceConfig?.color || 'text-purple-600 dark:text-purple-400'} />
+              : <User size={15} className="text-purple-600 dark:text-purple-400" />
             : <Bot size={15} className="text-purple-600 dark:text-purple-400" />
           }
         </div>
@@ -101,10 +116,15 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
 
       {/* Content */}
       <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
-        <div className={`flex items-baseline gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
-          <span className={`text-xs font-medium ${isUser ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'}`}>
-            {isUser ? '你' : 'AI助理'}
+        <div className={`flex items-center gap-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
+          <span className={`text-xs font-medium ${isUser ? (sourceConfig?.color || 'text-purple-600 dark:text-purple-400') : 'text-slate-500 dark:text-slate-400'}`}>
+            {isUser ? (message.sourceName || sourceConfig?.label || '你') : 'AI助理'}
           </span>
+          {isUser && message.sourceName && sourceConfig && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${sourceConfig.bg} ${sourceConfig.color}`}>
+              {sourceConfig.label}
+            </span>
+          )}
           <span className="text-[10px] text-slate-400/50">
             {new Date(message.createdAt).toLocaleTimeString('zh-CN', TIME_FORMAT)}
           </span>
@@ -252,7 +272,21 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
     )
   }
 
-  // 非图片附件
+  // 音频附件：可播放
+  if (attachment.type === 'audio') {
+    return (
+      <div className="px-3 py-2 rounded-lg bg-white/15 max-w-[300px]">
+        <audio
+          controls
+          preload="auto"
+          src={attachment.url}
+          style={{ width: '100%', height: 40 }}
+        />
+      </div>
+    )
+  }
+
+  // 非图片/音频附件
   return (
     <a
       href={attachment.url}

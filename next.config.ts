@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   serverExternalPackages: [
     '@anthropic-ai/claude-agent-sdk',
+    '@larksuiteoapi/node-sdk',
     'child_process',
   ],
   // 远程部署时启用 CORS（设置环境变量 GCLAW_CORS_ENABLED=true）

@@ -104,7 +104,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
         if (enabled.length === 0) { setActiveChannels([]); return }
 
         // 查询各渠道实际连接状态
-        const results = await Promise.all(enabled.map(async (ch: { id: string; type: string; name: string; wechat?: { botToken: string }; dingtalk?: { appKey: string } }) => {
+        const results = await Promise.all(enabled.map(async (ch: { id: string; type: string; name: string; wechat?: { botToken: string }; dingtalk?: { appKey: string }; feishu?: { appId: string } }) => {
           let connected = false
           if (ch.type === 'wechat' && ch.wechat?.botToken) {
             try {
@@ -136,8 +136,21 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                 }).catch(() => {})
               }
             } catch {}
-          } else if (ch.type === 'feishu') {
-            connected = true // webhook 渠道配置即视为已链接
+          } else if (ch.type === 'feishu' && ch.feishu?.appId) {
+            try {
+              const sr = await fetch(`/api/channels/webhook/feishu/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
+              const sd = await sr.json()
+              connected = sd.status === 'connected'
+
+              // 首次加载时，飞书未连接则自动连接
+              if (firstLoad && !connected) {
+                fetch('/api/channels/webhook/feishu/connect', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ projectId, channelId: ch.id }),
+                }).catch(() => {})
+              }
+            } catch {}
           }
           return { type: ch.type, name: ch.name, connected }
         }))

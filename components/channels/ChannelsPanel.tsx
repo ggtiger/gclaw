@@ -42,6 +42,9 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
   // 钉钉 Stream 连接状态 { channelId -> status }
   const [dingtalkStatus, setDingtalkStatus] = useState<Record<string, { status: string; error?: string }>>({})
 
+  // 飞书 Stream 连接状态 { channelId -> status }
+  const [feishuStatus, setFeishuStatus] = useState<Record<string, { status: string; error?: string }>>({})
+
   // 新建表单
   const [newType, setNewType] = useState<ChannelType>('dingtalk')
   const [newName, setNewName] = useState('')
@@ -131,6 +134,42 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
       setTimeout(fetchDingtalkStatuses, 1000)
     } catch (err) {
       console.error('Dingtalk reconnect failed:', err)
+    }
+  }
+
+  // 轮询飞书 Stream 连接状态
+  const fetchFeishuStatuses = useCallback(async () => {
+    const feishuChannels = channels.filter(c => c.type === 'feishu' && c.feishu?.appId)
+    if (feishuChannels.length === 0) return
+
+    const statuses: Record<string, { status: string; error?: string }> = {}
+    for (const ch of feishuChannels) {
+      try {
+        const res = await fetch(`/api/channels/webhook/feishu/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
+        if (res.ok) {
+          statuses[ch.id] = await res.json()
+        }
+      } catch { /* ignore */ }
+    }
+    setFeishuStatus(statuses)
+  }, [channels, projectId])
+
+  useEffect(() => {
+    fetchFeishuStatuses()
+    const interval = setInterval(fetchFeishuStatuses, 5000)
+    return () => clearInterval(interval)
+  }, [fetchFeishuStatuses])
+
+  const handleFeishuReconnect = async (channelId: string) => {
+    try {
+      await fetch('/api/channels/webhook/feishu/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, channelId }),
+      })
+      setTimeout(fetchFeishuStatuses, 1000)
+    } catch (err) {
+      console.error('Feishu reconnect failed:', err)
     }
   }
 
@@ -683,6 +722,31 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
                       </div>
                       <button
                         onClick={() => handleDingtalkReconnect(ch.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors cursor-pointer"
+                        style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
+                        title="重新连接"
+                      >
+                        <RefreshCw size={10} />
+                        重连
+                      </button>
+                    </div>
+                  )
+                })()}
+
+                {/* 飞书 Stream 连接状态 */}
+                {ch.type === 'feishu' && ch.feishu?.appId && (() => {
+                  const fs = feishuStatus[ch.id]
+                  const statusLabel = fs?.status === 'connected' ? '已连接' : fs?.status === 'connecting' ? '连接中...' : fs?.status === 'error' ? '连接异常' : '未连接'
+                  const statusColor = fs?.status === 'connected' ? 'var(--color-success, #22c55e)' : fs?.status === 'error' ? 'var(--color-error, #ef4444)' : 'var(--color-text-muted)'
+                  return (
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor }} />
+                        <span style={{ color: statusColor }}>{statusLabel}</span>
+                        {fs?.error && <span className="text-[10px]" style={{ color: 'var(--color-error, #ef4444)' }}>({fs.error})</span>}
+                      </div>
+                      <button
+                        onClick={() => handleFeishuReconnect(ch.id)}
                         className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors cursor-pointer"
                         style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
                         title="重新连接"

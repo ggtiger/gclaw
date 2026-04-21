@@ -12,7 +12,7 @@ import http from 'http'
 import { executeChat, type AttachmentData } from '@/lib/claude/process-manager'
 import { addMessage } from '@/lib/store/messages'
 import { channelEventBus } from './channel-events'
-import type { ChatMessage, ChatAttachment } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, MessageSource } from '@/types/chat'
 import type { ChannelConfig } from '@/types/channels'
 import { logger } from '@/lib/logger'
 
@@ -88,7 +88,65 @@ async function downloadChannelAttachment(
   att: ChatAttachment, projectId: string
 ): Promise<DownloadResult | null> {
   try {
-    let buffer = await downloadFile(att.url)
+    let buffer: Buffer
+
+    // 已保存到本地的附件（如飞书 SDK 下载后直接保存），跳过 HTTP 下载
+    if (att.url.startsWith('/api/chat/attachments/')) {
+      const fileName = att.url.split('/').pop()!
+      const localPath = path.join(DATA_DIR, 'projects', projectId, 'attachments', fileName)
+      if (!fs.existsSync(localPath)) {
+        logger.warn(`[ChannelService] 本地附件不存在: ${localPath}`)
+        return null
+      }
+      buffer = fs.readFileSync(localPath)
+
+      if (buffer.length > 10 * 1024 * 1024) {
+        logger.warn(`[ChannelService] 附件太大 (${buffer.length} bytes)，跳过`)
+        return null
+      }
+
+      const absPath = path.resolve(localPath)
+      const localUrl = att.url
+
+      // 检测真实 MIME
+      let ext = fileName.split('.').pop()?.toLowerCase() || 'bin'
+      let mimeType = att.mimeType
+      if (att.type === 'image') {
+        const header = buffer.toString('hex', 0, 4)
+        if (header.startsWith('8950')) { ext = 'png'; mimeType = 'image/png' }
+        else if (header.startsWith('4749')) { ext = 'gif'; mimeType = 'image/gif' }
+        else if (header.startsWith('5249')) { ext = 'webp'; mimeType = 'image/webp' }
+        else { ext = 'jpg'; mimeType = 'image/jpeg' }
+      }
+
+      // 生成 AttachmentData 传给 Agent
+      let attachmentData: AttachmentData | null = null
+      if (att.type === 'image') {
+        attachmentData = {
+          filename: `image.${ext}`,
+          mimeType,
+          content: buffer.toString('base64'),
+          isImage: true,
+          localPath: absPath,
+        }
+      } else {
+        attachmentData = {
+          filename: att.filename || `file.${ext}`,
+          mimeType,
+          content: att.type === 'audio'
+            ? `[Voice message: ${att.filename}, size: ${buffer.length} bytes]`
+            : `[Binary file: ${att.filename}, size: ${buffer.length} bytes]`,
+          isImage: false,
+          localPath: absPath,
+        }
+      }
+
+      logger.info(`[ChannelService] 本地附件直接使用: ${att.type} ${(buffer.length / 1024).toFixed(1)}KB → ${localUrl}`)
+      return { attachmentData, localUrl, actualSize: buffer.length }
+    }
+
+    // 走 HTTP 下载（微信 CDN 等）
+    buffer = await downloadFile(att.url)
 
     if (buffer.length > 10 * 1024 * 1024) {
       logger.warn(`[ChannelService] 附件太大 (${buffer.length} bytes)，跳过`)
@@ -179,10 +237,11 @@ async function downloadChannelAttachment(
  */
 export async function handleChannelMessage(
   projectId: string,
-  _channel: ChannelConfig,
+  channel: ChannelConfig,
   incomingText: string,
   attachments?: ChatAttachment[],
 ): Promise<string> {
+  const source = channel.type as MessageSource
   // 下载所有附件 → 保存本地 → URL 替换为本地路径
   let attachmentData: AttachmentData[] | undefined
   if (attachments && attachments.length > 0) {
@@ -216,6 +275,8 @@ export async function handleChannelMessage(
     content: incomingText,
     messageType: 'text',
     createdAt: new Date().toISOString(),
+    source,
+    sourceName: channel.name,
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
   }
   addMessage(projectId, userMsg)

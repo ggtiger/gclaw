@@ -23,6 +23,12 @@ const CONTENT_TYPES: Record<string, string> = {
   '.md': 'text/markdown',
   '.html': 'text/html',
   '.xml': 'text/xml',
+  '.opus': 'audio/opus',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.bin': 'application/octet-stream',
 }
 
 /**
@@ -33,40 +39,37 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const { path: segments } = await params
-
-  // segments: [projectId, ...filenameParts]
-  if (segments.length < 2) {
-    return new Response('Bad Request', { status: 400 })
-  }
-
-  const projectId = segments[0]
-  const filename = segments.slice(1).join('/')
-
-  // 安全校验
-  if (filename.includes('..') || filename.includes('\0') || projectId.includes('..')) {
-    return new Response('Forbidden', { status: 403 })
-  }
-
-  const attachDir = path.join(DATA_DIR, 'projects', projectId, 'attachments')
-  const fullPath = path.join(attachDir, filename)
-
-  // 验证路径在附件目录内
-  const resolvedPath = path.resolve(fullPath)
-  const resolvedDir = path.resolve(attachDir)
-  if (!resolvedPath.startsWith(resolvedDir)) {
-    return new Response('Forbidden', { status: 403 })
-  }
-
-  if (!fs.existsSync(fullPath)) {
-    return new Response('Not Found', { status: 404 })
-  }
-
-  const ext = path.extname(fullPath).toLowerCase()
-  const contentType = CONTENT_TYPES[ext] || 'application/octet-stream'
-
   try {
-    const file = fs.readFileSync(fullPath)
+    const { path: segments } = await params
+
+    if (segments.length < 2) {
+      return new Response('Bad Request', { status: 400 })
+    }
+
+    const projectId = segments[0]
+    const filename = segments.slice(1).join('/')
+
+    if (filename.includes('..') || filename.includes('\0') || projectId.includes('..')) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    const attachDir = path.join(DATA_DIR, 'projects', projectId, 'attachments')
+    const fullPath = path.join(attachDir, filename)
+
+    const resolvedPath = path.resolve(fullPath)
+    const resolvedDir = path.resolve(attachDir)
+    if (!resolvedPath.startsWith(resolvedDir)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      return new Response('Not Found', { status: 404 })
+    }
+
+    const ext = path.extname(resolvedPath).toLowerCase()
+    const contentType = CONTENT_TYPES[ext] || 'application/octet-stream'
+    const file = fs.readFileSync(resolvedPath)
+
     return new Response(file, {
       headers: {
         'Content-Type': contentType,

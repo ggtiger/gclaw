@@ -53,6 +53,8 @@ executors.set('chat-message', async (task) => {
     content: message,
     messageType: 'text',
     createdAt: new Date().toISOString(),
+    source: 'schedule',
+    sourceName: task.name,
   }
   addMessage(projectId, userMsg)
 
