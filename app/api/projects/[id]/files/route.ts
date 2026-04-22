@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { NextRequest } from 'next/server'
 import { getProjectDir } from '@/lib/store/projects'
+import { getProjectSettings } from '@/lib/store/settings'
 import { getAuthUser } from '@/lib/auth/helpers'
 
 export const dynamic = 'force-dynamic'
@@ -28,13 +29,29 @@ function isPathSafe(subPath: string): boolean {
   return true
 }
 
-function resolveAndValidate(id: string, subPath: string) {
+/**
+ * 获取项目文件根目录：有 cwd 配置时用 cwd，否则用项目数据目录
+ */
+function getFileRoot(id: string): string {
   const projectDir = getProjectDir(id)
-  if (!fs.existsSync(projectDir)) return null
-  const targetPath = subPath ? path.join(projectDir, subPath) : projectDir
+  try {
+    const settings = getProjectSettings(id)
+    if (settings.cwd && fs.existsSync(settings.cwd)) {
+      return settings.cwd
+    }
+  } catch {
+    // ignore
+  }
+  return projectDir
+}
+
+function resolveAndValidate(id: string, subPath: string) {
+  const rootDir = getFileRoot(id)
+  if (!fs.existsSync(rootDir)) return null
+  const targetPath = subPath ? path.join(rootDir, subPath) : rootDir
   const resolvedTarget = path.resolve(targetPath)
-  const resolvedProject = path.resolve(projectDir)
-  if (!resolvedTarget.startsWith(resolvedProject)) return null
+  const resolvedRoot = path.resolve(rootDir)
+  if (!resolvedTarget.startsWith(resolvedRoot)) return null
   return resolvedTarget
 }
 
@@ -138,8 +155,8 @@ export async function GET(
   // action=tree: 返回完整文件树
   if (action === 'tree') {
     try {
-      const projectDir = getProjectDir(id)
-      const tree = buildTree(projectDir, projectDir, 0)
+      const rootDir = getFileRoot(id)
+      const tree = buildTree(rootDir, rootDir, 0)
       return Response.json({ tree })
     } catch (err) {
       console.error('构建文件树失败:', err)
@@ -295,7 +312,7 @@ export async function POST(
     return Response.json({ error: '非法路径' }, { status: 400 })
   }
 
-  const projectDir = getProjectDir(id)
+  const projectDir = getFileRoot(id)
   if (!fs.existsSync(projectDir)) {
     return Response.json({ error: '项目不存在' }, { status: 404 })
   }
@@ -452,7 +469,7 @@ export async function PUT(
     return Response.json({ error: '未授权' }, { status: 401 })
   }
 
-  const projectDir = getProjectDir(id)
+  const projectDir = getFileRoot(id)
   if (!fs.existsSync(projectDir)) {
     return Response.json({ error: '项目不存在' }, { status: 404 })
   }
