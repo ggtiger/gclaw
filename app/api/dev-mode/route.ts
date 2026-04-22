@@ -5,6 +5,7 @@ import {
   disableDevMode,
   initCleanup,
 } from '@/lib/dev-mode/manager'
+import { getAuthUser } from '@/lib/auth/helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest) {
   const action = body.action as string
 
   if (action === 'enable') {
-    const status = await enableDevMode()
+    const user = getAuthUser(request)
+    const status = await enableDevMode(user?.userId)
     return Response.json(status)
   }
 

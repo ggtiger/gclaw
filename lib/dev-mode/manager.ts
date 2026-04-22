@@ -47,7 +47,8 @@ interface DevModeStateInternal {
   devServerInfo: DevServerInfo | null
   mainBranch: string
   error: string | null
-  projectId: string | null  // dev mode 自动创建的项目
+  projectId: string | null
+  ownerId: string | null  // dev mode 自动创建的项目
 }
 
 function getInternalState(): DevModeStateInternal {
@@ -61,6 +62,7 @@ function getInternalState(): DevModeStateInternal {
       mainBranch: 'main',
       error: null,
       projectId: null,
+      ownerId: null,
     }) as DevModeStateInternal)
   )
 }
@@ -77,7 +79,7 @@ export function getDevModeStatus(): DevModeStatus {
     if (!project) {
       logger.warn(`[DevMode] Dev project ${s.projectId} was deleted, recreating...`)
       try {
-        const newProject = createProject('GClaw 开发模式', undefined, 'development')
+        const newProject = createProject('GClaw 开发模式', s.ownerId || undefined, 'development')
         updateProjectSettings(newProject.id, {
           cwd: s.worktreeInfo.path,
           dangerouslySkipPermissions: true,
@@ -105,7 +107,7 @@ export function getDevModeStatus(): DevModeStatus {
   }
 }
 
-export async function enableDevMode(): Promise<DevModeStatus> {
+export async function enableDevMode(userId?: string): Promise<DevModeStatus> {
   const s = getInternalState()
 
   if (s.state !== 'off') {
@@ -137,7 +139,7 @@ export async function enableDevMode(): Promise<DevModeStatus> {
     logger.info(`[DevMode] Dev server started on port ${server.port}`)
 
     // Step 5: 自动创建 dev mode 项目（cwd 指向 worktree）
-    const project = createProject('GClaw 开发模式', undefined, 'development')
+    const project = createProject('GClaw 开发模式', userId, 'development')
     updateProjectSettings(project.id, {
       cwd: worktree.path,
       dangerouslySkipPermissions: true,
@@ -146,6 +148,7 @@ export async function enableDevMode(): Promise<DevModeStatus> {
 修改完成后，用户可以通过部署功能将变更应用到主项目。`,
     })
     s.projectId = project.id
+    s.ownerId = userId || null
     logger.info(`[DevMode] Created dev mode project: ${project.id}`)
 
     s.state = 'active'
