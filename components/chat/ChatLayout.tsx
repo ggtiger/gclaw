@@ -69,9 +69,13 @@ export function ChatLayout() {
 
   // 监听 dev mode 项目切换事件
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const { projectId } = (e as CustomEvent).detail
-      if (projectId) project.switchProject(projectId)
+      if (projectId) {
+        // 先刷新项目列表（dev mode 可能刚创建了新项目）
+        await project.refreshProjects()
+        project.switchProject(projectId)
+      }
     }
     window.addEventListener('gclaw:switch-project', handler)
     return () => window.removeEventListener('gclaw:switch-project', handler)
