@@ -140,6 +140,7 @@ export async function* executeChat(
   const { getProjectDir } = await import('@/lib/store/projects')
   const projectDataDir = getProjectDir(projectId)
   // 安全限制：自定义 cwd 必须在项目数据目录内，防止路径逃逸
+  // 例外：dev mode 的 worktree 路径允许使用
   let sdkCwd = projectDataDir
   if (cwd) {
     const resolvedCwd = path.resolve(cwd)
@@ -147,7 +148,16 @@ export async function* executeChat(
     if (resolvedCwd.startsWith(resolvedProjectDir)) {
       sdkCwd = resolvedCwd
     } else {
-      logger.warn(`[GClaw] Rejected unsafe cwd "${cwd}" for project ${projectId}, falling back to project dir`)
+      // 检查是否为 dev mode 的 worktree 路径
+      const { getDevModeStatus } = await import('@/lib/dev-mode/manager')
+      const devStatus = getDevModeStatus()
+      if (devStatus.state === 'active' && devStatus.worktreePath &&
+          resolvedCwd.startsWith(path.resolve(devStatus.worktreePath))) {
+        sdkCwd = resolvedCwd
+        logger.info(`[GClaw] Dev mode worktree cwd allowed: ${resolvedCwd}`)
+      } else {
+        logger.warn(`[GClaw] Rejected unsafe cwd "${cwd}" for project ${projectId}, falling back to project dir`)
+      }
     }
   }
 

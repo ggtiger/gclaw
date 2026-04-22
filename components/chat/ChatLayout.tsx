@@ -17,6 +17,7 @@ import { ProjectSidebar } from '../projects/ProjectSidebar'
 import FocusPanel from '../panels/FocusPanel'
 import FilesPanel from '../panels/FilesPanel'
 import ActivityPanel from '../panels/ActivityPanel'
+import { PreviewPanel } from '../dev-mode/PreviewPanel'
 import { CommandPalette } from './CommandPalette'
 import { useChat, useActiveProjects } from '@/hooks/useChat'
 import { useProject } from '@/hooks/useProject'
@@ -41,7 +42,8 @@ export function ChatLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [filesFullscreen, setFilesFullscreen] = useState(false)
   const [rightPanelHidden, setRightPanelHidden] = useState(false)
-  const [devPanelTab, setDevPanelTab] = useState<'files' | 'preview'>('files')
+  const [devPanelTab, setDevPanelTab] = useState<'files' | 'preview' | 'devPreview'>('files')
+  const [devModeStatus, setDevModeStatus] = useState<{ state: string; previewUrl?: string; projectId?: string } | null>(null)
   const [filesRefreshKey, setFilesRefreshKey] = useState(0)
   const [diffFilePath, setDiffFilePath] = useState<string | null>(null)
 
@@ -51,6 +53,29 @@ export function ChatLayout() {
       setFilesRefreshKey(k => k + 1)
     }
   }, [chat.activityData.fileChanges.length])
+
+  // 轮询开发模式状态
+  useEffect(() => {
+    const fetchDevMode = () => {
+      fetch('/api/dev-mode')
+        .then(res => res.json())
+        .then(data => setDevModeStatus(data))
+        .catch(() => {})
+    }
+    fetchDevMode()
+    const interval = setInterval(fetchDevMode, 8000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // 监听 dev mode 项目切换事件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { projectId } = (e as CustomEvent).detail
+      if (projectId) project.switchProject(projectId)
+    }
+    window.addEventListener('gclaw:switch-project', handler)
+    return () => window.removeEventListener('gclaw:switch-project', handler)
+  }, [project])
 
   // 右侧面板拖拽调整宽度
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
@@ -444,10 +469,10 @@ export function ChatLayout() {
                     </button>
                   </div>
                   {/* Tab pills */}
-                  <div className="flex items-center gap-0.5 ml-1 p-0.5 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                  <div className="flex items-center gap-0.5 ml-1 p-0.5 rounded-lg overflow-x-auto scrollbar-none" style={{ backgroundColor: 'var(--color-bg-tertiary)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                     <button
                       onClick={() => setDevPanelTab('files')}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
                       style={{
                         backgroundColor: devPanelTab === 'files' ? 'var(--color-surface)' : 'transparent',
                         color: devPanelTab === 'files' ? 'var(--color-text)' : 'var(--color-text-muted)',
@@ -459,7 +484,7 @@ export function ChatLayout() {
                     </button>
                     <button
                       onClick={() => setDevPanelTab('preview')}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
                       style={{
                         backgroundColor: devPanelTab === 'preview' ? 'var(--color-surface)' : 'transparent',
                         color: devPanelTab === 'preview' ? 'var(--color-text)' : 'var(--color-text-muted)',
@@ -474,6 +499,20 @@ export function ChatLayout() {
                         </span>
                       )}
                     </button>
+                    {devModeStatus?.state === 'active' && devModeStatus.previewUrl && (
+                      <button
+                        onClick={() => setDevPanelTab('devPreview')}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
+                        style={{
+                          backgroundColor: devPanelTab === 'devPreview' ? 'var(--color-surface)' : 'transparent',
+                          color: devPanelTab === 'devPreview' ? 'var(--color-text)' : 'var(--color-text-muted)',
+                          boxShadow: devPanelTab === 'devPreview' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                        }}
+                      >
+                        <Monitor size={12} />
+                        预览
+                      </button>
+                    )}
                   </div>
                 </div>
                 {/* Tab 内容 — 使用绝对定位确保 h-full 在 flex 容器中正确解析 */}
@@ -489,6 +528,12 @@ export function ChatLayout() {
                         refreshKey={filesRefreshKey}
                         diffFilePath={diffFilePath}
                         onDiffFileConsumed={() => setDiffFilePath(null)}
+                      />
+                    ) : devPanelTab === 'devPreview' ? (
+                      <PreviewPanel
+                        previewUrl={devModeStatus?.previewUrl}
+                        isFullscreen={filesFullscreen}
+                        onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)}
                       />
                     ) : (
                       <ActivityPanel activityData={chat.activityData} />
