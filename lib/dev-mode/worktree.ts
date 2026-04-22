@@ -29,80 +29,90 @@ export async function isGitRepo(): Promise<boolean> {
   }
 }
 
-/** 检查工作区是否干净（无未提交修改） */
-export async function isWorkingTreeClean(): Promise<boolean> {
-  const status = await execGit(['status', '--porcelain'])
-  return status.length === 0
-}
-
 /** 获取当前分支名 */
 export async function getCurrentBranch(): Promise<string> {
   return execGit(['rev-parse', '--abbrev-ref', 'HEAD'])
 }
 
-/** 获取当前 commit hash */
-export async function getHeadCommit(): Promise<string> {
-  return execGit(['rev-parse', '--short', 'HEAD'])
+/** 获取远程仓库 URL */
+export async function getRemoteUrl(): Promise<string | null> {
+  try {
+    return await execGit(['remote', 'get-url', 'origin'])
+  } catch {
+    return null
+  }
 }
 
 /**
- * 创建 git worktree
- * @returns worktree 信息（路径和分支名）
+ * 创建独立克隆（git clone，非 worktree）
+ * 优先从远程 clone（干净状态），回退到从本地 clone
  */
 export async function createWorktree(): Promise<WorktreeInfo> {
   const timestamp = Date.now().toString(36)
-  const branchName = `gclaw-dev/${timestamp}`
-  // worktree 放在项目根目录的同级目录
-  const worktreePath = path.join(PROJECT_ROOT, '..', `.gclaw-dev-${timestamp}`)
+  const branchName = `main`
+  const clonePath = path.join(PROJECT_ROOT, '..', `gclaw-dev-${timestamp}`)
 
-  logger.info(`[DevMode] Creating worktree: ${worktreePath} on branch ${branchName}`)
+  logger.info(`[DevMode] Creating dev clone: ${clonePath}`)
 
-  // 创建 worktree（基于当前 HEAD 创建新分支）
-  await execGit(['worktree', 'add', worktreePath, '-b', branchName])
+  // 优先从远程 clone，回退到本地 clone
+  const remoteUrl = await getRemoteUrl()
+  let cloned = false
 
-  // 同步未提交的变更（新增文件 + 修改文件）到 worktree
-  await syncWorkingChanges(worktreePath)
+  if (remoteUrl) {
+    try {
+      logger.info(`[DevMode] Cloning from remote: ${remoteUrl}`)
+      await execGit(['clone', '--depth', '1', remoteUrl, clonePath], path.dirname(clonePath))
+      cloned = true
+    } catch (err) {
+      logger.warn(`[DevMode] Remote clone failed, falling back to local:`, err)
+    }
+  }
 
-  // 复制 .env 文件（如果存在）
+  if (!cloned) {
+    logger.info(`[DevMode] Cloning from local repo`)
+    await execGit(['clone', '--depth', '1', PROJECT_ROOT, clonePath], path.dirname(clonePath))
+  }
+
+  // 复制 .env 文件
   const envFile = path.join(PROJECT_ROOT, '.env')
   if (fs.existsSync(envFile)) {
-    fs.copyFileSync(envFile, path.join(worktreePath, '.env'))
+    fs.copyFileSync(envFile, path.join(clonePath, '.env'))
   }
 
-  // symlink node_modules（共享依赖，避免重复安装）
+  // symlink node_modules（共享依赖）
   const nodeModules = path.join(PROJECT_ROOT, 'node_modules')
-  const worktreeNodeModules = path.join(worktreePath, 'node_modules')
-  if (fs.existsSync(nodeModules) && !fs.existsSync(worktreeNodeModules)) {
-    fs.symlinkSync(nodeModules, worktreeNodeModules, 'junction')
+  const cloneNodeModules = path.join(clonePath, 'node_modules')
+  if (fs.existsSync(nodeModules) && !fs.existsSync(cloneNodeModules)) {
+    fs.symlinkSync(nodeModules, cloneNodeModules, 'junction')
   }
-
-  // 注意：不 symlink .next！两个源码树必须各自有独立的构建缓存，
-  // 否则 React Client Manifest 路径不匹配会导致 500 错误
 
   // symlink data 目录（共享数据）
   const dataDir = path.join(PROJECT_ROOT, 'data')
-  const worktreeDataDir = path.join(worktreePath, 'data')
-  if (fs.existsSync(dataDir) && !fs.existsSync(worktreeDataDir)) {
-    fs.symlinkSync(dataDir, worktreeDataDir, 'junction')
+  const cloneDataDir = path.join(clonePath, 'data')
+  if (fs.existsSync(dataDir) && !fs.existsSync(cloneDataDir)) {
+    fs.symlinkSync(dataDir, cloneDataDir, 'junction')
   }
 
-  logger.info(`[DevMode] Worktree created: ${worktreePath}`)
-  return { path: worktreePath, branch: branchName }
+  // 同步未提交的变更到克隆目录（确保开发环境包含最新代码）
+  await syncWorkingChanges(clonePath)
+
+  logger.info(`[DevMode] Dev clone created: ${clonePath}`)
+  return { path: clonePath, branch: branchName }
 }
 
 /**
- * 移除 git worktree
+ * 移除克隆目录
  */
-export async function removeWorktree(worktreePath: string): Promise<void> {
-  if (!fs.existsSync(worktreePath)) {
-    logger.warn(`[DevMode] Worktree path does not exist: ${worktreePath}`)
+export async function removeWorktree(clonePath: string): Promise<void> {
+  if (!fs.existsSync(clonePath)) {
+    logger.warn(`[DevMode] Clone path does not exist: ${clonePath}`)
     return
   }
 
-  // 先移除所有 symlink（避免递归删除主项目数据）
+  // 先移除 symlink（避免 rm -rf 递归删除主项目数据）
   const symlinks = ['data', 'node_modules']
   for (const link of symlinks) {
-    const linkPath = path.join(worktreePath, link)
+    const linkPath = path.join(clonePath, link)
     try {
       if (fs.existsSync(linkPath) && fs.lstatSync(linkPath).isSymbolicLink()) {
         fs.unlinkSync(linkPath)
@@ -112,95 +122,52 @@ export async function removeWorktree(worktreePath: string): Promise<void> {
     }
   }
 
-  // 尝试 git worktree remove，失败则直接 rm -rf
+  // 删除克隆目录（独立的 git repo，直接 rm -rf 即可）
   try {
-    await execGit(['worktree', 'remove', worktreePath, '--force'])
-    logger.info(`[DevMode] Removed worktree via git: ${worktreePath}`)
-  } catch {
-    logger.warn(`[DevMode] git worktree remove failed, force deleting: ${worktreePath}`)
-    try {
-      fs.rmSync(worktreePath, { recursive: true, force: true })
-    } catch (rmErr) {
-      logger.error(`[DevMode] Failed to delete worktree directory:`, rmErr)
-    }
-  }
-
-  // 清理残留的本地分支
-  try {
-    const branches = await execGit(['branch'])
-    const devBranches = branches.split('\n')
-      .map(b => b.trim().replace(/^\*?\s*/, ''))
-      .filter(b => b.startsWith('gclaw-dev/'))
-    for (const branch of devBranches) {
-      try {
-        await execGit(['branch', '-D', branch])
-        logger.info(`[DevMode] Deleted branch: ${branch}`)
-      } catch {
-        // ignore
-      }
-    }
-  } catch {
-    // ignore cleanup errors
+    fs.rmSync(clonePath, { recursive: true, force: true })
+    logger.info(`[DevMode] Removed dev clone: ${clonePath}`)
+  } catch (err) {
+    logger.error(`[DevMode] Failed to delete clone:`, err)
   }
 }
 
 /**
- * 列出所有 worktree
- */
-export async function listWorktrees(): Promise<Array<{ path: string; branch: string; isMain: boolean }>> {
-  const output = await execGit(['worktree', 'list', '--porcelain'])
-  const worktrees: Array<{ path: string; branch: string; isMain: boolean }> = []
-
-  let currentPath = ''
-  let currentBranch = ''
-  let isMain = false
-
-  for (const line of output.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      if (currentPath) {
-        worktrees.push({ path: currentPath, branch: currentBranch, isMain })
-      }
-      currentPath = line.slice('worktree '.length)
-      isMain = false
-    } else if (line.startsWith('branch ')) {
-      currentBranch = line.slice('branch '.length).replace('refs/heads/', '')
-      if (currentBranch === (await getCurrentBranch())) {
-        isMain = true
-      }
-    }
-  }
-  if (currentPath) {
-    worktrees.push({ path: currentPath, branch: currentBranch, isMain })
-  }
-
-  return worktrees
-}
-
-/**
- * 清理残留的 gclaw-dev worktree（启动时调用）
+ * 清理残留的 gclaw-dev 目录（启动时调用）
  */
 export async function cleanupStaleWorktrees(): Promise<void> {
   try {
-    const worktrees = await listWorktrees()
-    for (const wt of worktrees) {
-      if (wt.path.includes('.gclaw-dev-')) {
-        logger.info(`[DevMode] Cleaning up stale worktree: ${wt.path}`)
-        await removeWorktree(wt.path)
+    const parentDir = path.dirname(PROJECT_ROOT)
+    const entries = fs.readdirSync(parentDir)
+    for (const entry of entries) {
+      if (entry.startsWith('gclaw-dev-')) {
+        const fullPath = path.join(parentDir, entry)
+        try {
+          if (fs.lstatSync(fullPath).isDirectory()) {
+            // 先移除 symlink
+            for (const link of ['data', 'node_modules']) {
+              const linkPath = path.join(fullPath, link)
+              if (fs.existsSync(linkPath) && fs.lstatSync(linkPath).isSymbolicLink()) {
+                fs.unlinkSync(linkPath)
+              }
+            }
+            fs.rmSync(fullPath, { recursive: true, force: true })
+            logger.info(`[DevMode] Cleaned up stale clone: ${fullPath}`)
+          }
+        } catch (err) {
+          logger.warn(`[DevMode] Failed to clean up ${fullPath}:`, err)
+        }
       }
     }
   } catch (err) {
-    logger.warn('[DevMode] Failed to cleanup stale worktrees:', err)
+    logger.warn('[DevMode] Failed to cleanup stale clones:', err)
   }
 }
 
 /**
- * 同步工作目录中未提交的变更到 worktree
- * 包括：修改的文件、新增的文件（untracked）
+ * 同步未提交的变更到克隆目录
  */
-async function syncWorkingChanges(worktreePath: string): Promise<void> {
-  // 获取已修改（staged + unstaged）的文件
+async function syncWorkingChanges(clonePath: string): Promise<void> {
   const modified = await execGit(['diff', '--name-only', 'HEAD'])
-  // 获取新增的 untracked 文件
   const untracked = await execGit(['ls-files', '--others', '--exclude-standard'])
 
   const allFiles = [...modified.split('\n'), ...untracked.split('\n')]
@@ -212,24 +179,19 @@ async function syncWorkingChanges(worktreePath: string): Promise<void> {
     return
   }
 
-  logger.info(`[DevMode] Syncing ${allFiles.length} uncommitted files to worktree`)
+  logger.info(`[DevMode] Syncing ${allFiles.length} uncommitted files to clone`)
 
   for (const file of allFiles) {
     const srcPath = path.join(PROJECT_ROOT, file)
-    const destPath = path.join(worktreePath, file)
+    const destPath = path.join(clonePath, file)
 
-    if (!fs.existsSync(srcPath)) {
-      // 文件在 worktree 中已被 git 删除但本地存在的情况——跳过
-      continue
-    }
+    if (!fs.existsSync(srcPath)) continue
 
-    // 确保目标目录存在
     const destDir = path.dirname(destPath)
     if (!fs.existsSync(destDir)) {
       fs.mkdirSync(destDir, { recursive: true })
     }
 
-    // 跳过目录（如 node_modules, data 等）
     const stat = fs.statSync(srcPath)
     if (stat.isDirectory()) continue
 

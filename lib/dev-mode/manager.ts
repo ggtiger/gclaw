@@ -10,7 +10,6 @@ import path from 'path'
 import { logger } from '@/lib/logger'
 import {
   isGitRepo,
-  isWorkingTreeClean,
   getCurrentBranch,
   createWorktree,
   removeWorktree,
