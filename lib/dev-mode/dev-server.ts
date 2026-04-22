@@ -81,7 +81,7 @@ export async function startDevServer(worktreePath: string): Promise<DevServerInf
     GCLAW_DATA_DIR: process.env.GCLAW_DATA_DIR || path.join(process.cwd(), 'data'),
   }
 
-  const child = spawn('npx', ['next', 'dev', '-p', String(port)], {
+  const child = spawn('npx', ['next', 'dev', '--no-turbopack', '-p', String(port)], {
     cwd: worktreePath,
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
