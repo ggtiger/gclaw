@@ -9,7 +9,7 @@ import { ChildProcess } from 'child_process'
 import path from 'path'
 import { logger } from '@/lib/logger'
 import {
-  isGitRepo,
+  isGitAvailable,
   getCurrentBranch,
   createWorktree,
   removeWorktree,
@@ -118,9 +118,9 @@ export async function enableDevMode(userId?: string): Promise<DevModeStatus> {
   logger.info('[DevMode] Enabling dev mode...')
 
   try {
-    // Step 1: 检查 git 环境
-    if (!(await isGitRepo())) {
-      throw new Error('当前目录不是 git 仓库，无法启用开发模式')
+    // Step 1: 检查 git 是否可用
+    if (!(await isGitAvailable())) {
+      throw new Error('git 未安装或不在 PATH 中，无法启用开发模式')
     }
 
     // Step 2: 保存当前分支

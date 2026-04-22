@@ -5,6 +5,9 @@ import { logger } from '@/lib/logger'
 
 const PROJECT_ROOT = process.cwd()
 
+// 默认远程仓库地址（可被设置覆盖）
+const DEFAULT_REPO_URL = 'https://github.com/ggtiger/gclaw.git'
+
 export interface WorktreeInfo {
   path: string
   branch: string
@@ -19,22 +22,26 @@ function execGit(args: string[], cwd?: string): Promise<string> {
   })
 }
 
-/** 检查当前目录是否在 git 仓库中 */
-export async function isGitRepo(): Promise<boolean> {
+/** 检查 git 是否可用 */
+export async function isGitAvailable(): Promise<boolean> {
   try {
-    await execGit(['rev-parse', '--is-inside-work-tree'])
+    await execGit(['--version'], '/')
     return true
   } catch {
     return false
   }
 }
 
-/** 获取当前分支名 */
+/** 获取当前分支名（本地开发时） */
 export async function getCurrentBranch(): Promise<string> {
-  return execGit(['rev-parse', '--abbrev-ref', 'HEAD'])
+  try {
+    return await execGit(['rev-parse', '--abbrev-ref', 'HEAD'])
+  } catch {
+    return 'main'
+  }
 }
 
-/** 获取远程仓库 URL */
+/** 获取远程仓库 URL（本地开发时） */
 export async function getRemoteUrl(): Promise<string | null> {
   try {
     return await execGit(['remote', 'get-url', 'origin'])
@@ -44,34 +51,32 @@ export async function getRemoteUrl(): Promise<string | null> {
 }
 
 /**
- * 创建独立克隆（git clone，非 worktree）
- * 优先从远程 clone（干净状态），回退到从本地 clone
+ * 获取仓库 URL：优先从设置读取，其次从本地 git 获取，最后用默认值
  */
-export async function createWorktree(): Promise<WorktreeInfo> {
+export function getRepoUrl(settings?: { devRepoUrl?: string }): string {
+  if (settings?.devRepoUrl) return settings.devRepoUrl
+  // 同步获取 remoteUrl 不方便，直接用默认值
+  return DEFAULT_REPO_URL
+}
+
+/**
+ * 创建独立克隆（git clone）
+ * 始终从远程 clone，不依赖本地 git 仓库
+ */
+export async function createWorktree(repoUrl?: string): Promise<WorktreeInfo> {
   const timestamp = Date.now().toString(36)
-  const branchName = `main`
   const clonePath = path.join(PROJECT_ROOT, '..', `gclaw-dev-${timestamp}`)
+  const url = repoUrl || DEFAULT_REPO_URL
 
-  logger.info(`[DevMode] Creating dev clone: ${clonePath}`)
-
-  // 优先从远程 clone，回退到本地 clone
-  const remoteUrl = await getRemoteUrl()
-  let cloned = false
-
-  if (remoteUrl) {
-    try {
-      logger.info(`[DevMode] Cloning from remote: ${remoteUrl}`)
-      await execGit(['clone', '--depth', '1', remoteUrl, clonePath], path.dirname(clonePath))
-      cloned = true
-    } catch (err) {
-      logger.warn(`[DevMode] Remote clone failed, falling back to local:`, err)
-    }
+  // 检查 git 可用
+  if (!(await isGitAvailable())) {
+    throw new Error('git 未安装或不在 PATH 中，无法使用开发模式')
   }
 
-  if (!cloned) {
-    logger.info(`[DevMode] Cloning from local repo`)
-    await execGit(['clone', '--depth', '1', PROJECT_ROOT, clonePath], path.dirname(clonePath))
-  }
+  logger.info(`[DevMode] Cloning from ${url} to ${clonePath}`)
+
+  // 从远程 clone（shallow clone，速度快）
+  await execGit(['clone', '--depth', '1', url, clonePath], path.dirname(clonePath))
 
   // 复制 .env 文件
   const envFile = path.join(PROJECT_ROOT, '.env')
@@ -79,7 +84,7 @@ export async function createWorktree(): Promise<WorktreeInfo> {
     fs.copyFileSync(envFile, path.join(clonePath, '.env'))
   }
 
-  // symlink node_modules（共享依赖）
+  // symlink node_modules（共享依赖，避免重复安装）
   const nodeModules = path.join(PROJECT_ROOT, 'node_modules')
   const cloneNodeModules = path.join(clonePath, 'node_modules')
   if (fs.existsSync(nodeModules) && !fs.existsSync(cloneNodeModules)) {
@@ -93,11 +98,13 @@ export async function createWorktree(): Promise<WorktreeInfo> {
     fs.symlinkSync(dataDir, cloneDataDir, 'junction')
   }
 
-  // 同步未提交的变更到克隆目录（确保开发环境包含最新代码）
-  await syncWorkingChanges(clonePath)
+  // 如果是本地开发（有 .git），同步未提交的变更
+  if (fs.existsSync(path.join(PROJECT_ROOT, '.git'))) {
+    await syncWorkingChanges(clonePath)
+  }
 
   logger.info(`[DevMode] Dev clone created: ${clonePath}`)
-  return { path: clonePath, branch: branchName }
+  return { path: clonePath, branch: 'main' }
 }
 
 /**
@@ -122,7 +129,6 @@ export async function removeWorktree(clonePath: string): Promise<void> {
     }
   }
 
-  // 删除克隆目录（独立的 git repo，直接 rm -rf 即可）
   try {
     fs.rmSync(clonePath, { recursive: true, force: true })
     logger.info(`[DevMode] Removed dev clone: ${clonePath}`)
@@ -143,7 +149,6 @@ export async function cleanupStaleWorktrees(): Promise<void> {
         const fullPath = path.join(parentDir, entry)
         try {
           if (fs.lstatSync(fullPath).isDirectory()) {
-            // 先移除 symlink
             for (const link of ['data', 'node_modules']) {
               const linkPath = path.join(fullPath, link)
               if (fs.existsSync(linkPath) && fs.lstatSync(linkPath).isSymbolicLink()) {
@@ -164,7 +169,7 @@ export async function cleanupStaleWorktrees(): Promise<void> {
 }
 
 /**
- * 同步未提交的变更到克隆目录
+ * 同步未提交的变更到克隆目录（仅本地开发模式）
  */
 async function syncWorkingChanges(clonePath: string): Promise<void> {
   const modified = await execGit(['diff', '--name-only', 'HEAD'])
