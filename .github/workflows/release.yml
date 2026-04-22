@@ -138,34 +138,51 @@ jobs:
 
           # 2. 在 Gitee 创建 Release
           echo "--- Creating Gitee release ---"
-          RELEASE_ID=$(curl -sf --max-time 30 \
+          RELEASE_ID=$(curl -s --max-time 30 \
             "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" \
             | jq -r '.id // empty' 2>/dev/null || true)
 
           if [ -z "$RELEASE_ID" ]; then
-            RELEASE_ID=$(curl -sf --max-time 30 -X POST \
+            echo "Creating new release..."
+            RESP=$(curl -s --max-time 30 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
               -F "access_token=${GITEE_TOKEN}" \
               -F "tag_name=${TAG}" \
               -F "name=GClaw ${TAG}" \
               -F "body=增量更新文件，完整安装包请到 GitHub 下载" \
-              -F "target=main" | jq -r '.id')
-            echo "Created Gitee release: ${RELEASE_ID}"
+              -F "target=main")
+            HTTP_CODE=$(echo "$RESP" | tail -1)
+            BODY=$(echo "$RESP" | sed '$d')
+            echo "HTTP ${HTTP_CODE}: ${BODY}" | head -c 500
+            RELEASE_ID=$(echo "$BODY" | jq -r '.id // empty' 2>/dev/null || true)
+            echo "Release ID: ${RELEASE_ID}"
           else
             echo "Gitee release already exists: ${RELEASE_ID}"
           fi
 
+          if [ -z "$RELEASE_ID" ]; then
+            echo "ERROR: Failed to create Gitee release"
+            exit 1
+          fi
+
           # 3. 上传到 Gitee（带超时）
           echo "--- Uploading to Gitee ---"
-          for file in *.tar.gz *.tar.gz.sig latest.json; do
+          for file in *.tar.gz *.tar.gz.sig; do
             [ -f "$file" ] || continue
-            [ "$file" = "latest.json" ] && continue  # latest.json 单独处理
             SIZE=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
             echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
-            curl -sf --max-time 300 -X POST \
+            RESP=$(curl -s --max-time 300 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@${file}" | jq -r '.file_name // .message // "ok"'
+              -F "file=@${file}")
+            HTTP_CODE=$(echo "$RESP" | tail -1)
+            BODY=$(echo "$RESP" | sed '$d')
+            FNAME=$(echo "$BODY" | jq -r '.file_name // empty' 2>/dev/null || true)
+            if [ -n "$FNAME" ]; then
+              echo "    OK: ${FNAME}"
+            else
+              echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
+            fi
           done
 
           # 4. 重写 latest.json URL（GitHub → Gitee）
@@ -184,10 +201,18 @@ jobs:
             ' latest.json > latest-gitee.json
 
             echo "  Uploading: latest-gitee.json"
-            curl -sf --max-time 30 -X POST \
+            RESP=$(curl -s --max-time 30 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@latest-gitee.json;filename=latest.json" | jq -r '.file_name // .message // "ok"'
+              -F "file=@latest-gitee.json;filename=latest.json")
+            HTTP_CODE=$(echo "$RESP" | tail -1)
+            BODY=$(echo "$RESP" | sed '$d')
+            FNAME=$(echo "$BODY" | jq -r '.file_name // empty' 2>/dev/null || true)
+            if [ -n "$FNAME" ]; then
+              echo "    OK: ${FNAME}"
+            else
+              echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
+            fi
           fi
 
           echo "=== Gitee sync complete ==="
