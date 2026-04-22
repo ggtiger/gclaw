@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process'
+import fs from 'fs'
 import http from 'http'
 import path from 'path'
 import { logger } from '@/lib/logger'
@@ -72,6 +73,11 @@ export async function startDevServer(worktreePath: string): Promise<DevServerInf
   const url = `http://localhost:${port}`
 
   logger.info(`[DevMode] Starting dev server on port ${port} in ${worktreePath}`)
+
+  // 预创建 .next 缓存目录，避免 webpack 缓存 ENOENT 警告
+  const cacheDir = path.join(worktreePath, '.next', 'cache', 'webpack')
+  fs.mkdirSync(path.join(cacheDir, 'client-development'), { recursive: true })
+  fs.mkdirSync(path.join(cacheDir, 'server-development'), { recursive: true })
 
   const env = {
     ...process.env,
