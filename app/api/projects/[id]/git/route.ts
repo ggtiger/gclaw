@@ -4,12 +4,30 @@ import fs from 'fs'
 import path from 'path'
 import { NextRequest, NextResponse } from 'next/server'
 import { getProjectDir } from '@/lib/store/projects'
+import { getProjectSettings } from '@/lib/store/settings'
 import { getAuthUser } from '@/lib/auth/helpers'
 import type { GitStatusCode, GitFileStatus, GitStatusResponse, GitScanResponse } from '@/types/git'
 
 export const dynamic = 'force-dynamic'
 
 const execFileAsync = promisify(execFile)
+
+/**
+ * 获取项目文件根目录：有 cwd 配置时用 cwd，否则用项目数据目录
+ */
+function getFileRoot(id: string): string {
+  const projectDir = getProjectDir(id)
+  try {
+    const settings = getProjectSettings(id)
+    if (settings.cwd) {
+      const resolvedCwd = path.resolve(settings.cwd)
+      if (fs.existsSync(resolvedCwd)) {
+        return resolvedCwd
+      }
+    }
+  } catch { /* ignore */ }
+  return projectDir
+}
 
 function git(workingDir: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync('git', args, { cwd: workingDir, maxBuffer: 10 * 1024 * 1024 })
@@ -19,7 +37,6 @@ function git(workingDir: string, args: string[]): Promise<{ stdout: string; stde
 async function scanGitDirs(projectDir: string): Promise<{ path: string; branch: string }[]> {
   const result: { path: string; branch: string }[] = []
 
-  // 只扫描直接子目录，不扫描项目根目录（它是 GClaw 数据目录，不是代码仓库）
   try {
     const entries = fs.readdirSync(projectDir, { withFileTypes: true })
     for (const entry of entries) {
@@ -44,14 +61,15 @@ async function getBranch(dir: string): Promise<string> {
 }
 
 /** 根据 dir 参数解析 git 工作目录的绝对路径 */
-function resolveGitDir(projectDir: string, dir?: string | null): string | null {
+function resolveGitDir(fileRoot: string, dir?: string | null): string | null {
+  // 项目根目录本身就是 git repo（如 dev mode 项目 cwd 指向 clone 目录）
   if (!dir) {
-    // 不使用项目根目录（它是 GClaw 数据目录，不是代码仓库）
+    if (fs.existsSync(path.join(fileRoot, '.git'))) return fileRoot
     return null
   }
-  const target = path.join(projectDir, dir)
+  const target = path.join(fileRoot, dir)
   // 安全检查：不能逃逸出项目目录
-  if (!path.resolve(target).startsWith(path.resolve(projectDir))) return null
+  if (!path.resolve(target).startsWith(path.resolve(fileRoot))) return null
   if (fs.existsSync(path.join(target, '.git'))) return target
   return null
 }
@@ -82,7 +100,7 @@ function cleanPath(p: string): string {
   return p
 }
 
-function parsePorcelain(output: string): { staged: GitFileStatus[]; unstaged: GitFileStatus[]; untracked: GitFileStatus[] } {
+function parsePorcelain(output: string, gitDir: string): { staged: GitFileStatus[]; unstaged: GitFileStatus[]; untracked: GitFileStatus[] } {
   const staged: GitFileStatus[] = []
   const unstaged: GitFileStatus[] = []
   const untracked: GitFileStatus[] = []
@@ -100,6 +118,24 @@ function parsePorcelain(output: string): { staged: GitFileStatus[]; unstaged: Gi
     }
 
     filePath = cleanPath(filePath)
+
+    // 过滤隐藏文件/目录（以 . 开头）和 node_modules
+    const topLevel = filePath.split('/')[0]
+    if (topLevel.startsWith('.') || topLevel === 'node_modules') continue
+
+    // 过滤目录条目（如 symlink 目录、子目录），只保留文件
+    if (!filePath.endsWith('/')) {
+      try {
+        const fullPath = path.join(gitDir, filePath)
+        const stat = fs.statSync(fullPath)
+        if (stat.isDirectory()) continue
+      } catch {
+        // 文件不存在（可能已删除），保留条目
+      }
+    } else {
+      // 路径以 / 结尾，明确是目录
+      continue
+    }
 
     if (x === '?' && y === '?') {
       untracked.push({ path: filePath, statusCode: '?' })
@@ -122,17 +158,25 @@ function parsePorcelain(output: string): { staged: GitFileStatus[]; unstaged: Gi
 
 // GET — 扫描 git 目录 或 获取指定目录的 git status
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getAuthUser(request)
+  const user = getAuthUser(request)
   if (!user) return NextResponse.json({ error: '未授权' }, { status: 401 })
 
   const { id } = await params
-  const projectDir = getProjectDir(id)
+  const fileRoot = getFileRoot(id)
   const url = new URL(request.url)
   const dirParam = url.searchParams.get('dir') // 相对路径，如 'my-project'
 
   // scan 模式：返回所有 git 目录 + 分支
   if (url.searchParams.has('scan')) {
-    const gitDirs = await scanGitDirs(projectDir)
+    const gitDirs: { path: string; branch: string }[] = []
+    // 根目录本身是 git repo
+    if (fs.existsSync(path.join(fileRoot, '.git'))) {
+      const branch = await getBranch(fileRoot)
+      gitDirs.push({ path: '', branch })
+    }
+    // 子目录中的 git repo
+    const subDirs = await scanGitDirs(fileRoot)
+    gitDirs.push(...subDirs)
     return NextResponse.json<GitScanResponse>({ gitDirs })
   }
 
@@ -144,7 +188,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: '缺少文件路径' }, { status: 400 })
     }
     try {
-      const gitDir = resolveGitDir(projectDir, dirParam)
+      const gitDir = resolveGitDir(fileRoot, dirParam)
       if (!gitDir) {
         return NextResponse.json({ error: '不是 Git 仓库' }, { status: 400 })
       }
@@ -178,7 +222,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   // status 模式：获取指定目录的 git 状态
   try {
-    const gitDir = resolveGitDir(projectDir, dirParam)
+    const gitDir = resolveGitDir(fileRoot, dirParam)
     if (!gitDir) {
       return NextResponse.json<GitStatusResponse>({ isGitRepo: false, branches: [], staged: [], unstaged: [], untracked: [] })
     }
@@ -190,7 +234,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       git(gitDir, ['remote']).catch(() => ({ stdout: '', stderr: '' })),
     ])
 
-    const { staged, unstaged, untracked } = parsePorcelain(statusResult.stdout)
+    const { staged, unstaged, untracked } = parsePorcelain(statusResult.stdout, gitDir)
     const currentBranch = branchResult.stdout.trim()
     const branches = branchesResult.stdout
       .split('\n')
@@ -214,16 +258,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 // POST — Git 操作（dir 字段指定 git 子目录）
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getAuthUser(request)
+  const user = getAuthUser(request)
   if (!user) return NextResponse.json({ error: '未授权' }, { status: 401 })
 
   const { id } = await params
-  const projectDir = getProjectDir(id)
+  const fileRoot = getFileRoot(id)
   const body = await request.json()
   const { action, path: filePath, message, dir } = body as { action: string; path?: string; message?: string; dir?: string }
 
   try {
-    const gitDir = resolveGitDir(projectDir, dir || null)
+    const gitDir = resolveGitDir(fileRoot, dir || null)
     if (!gitDir) {
       return NextResponse.json({ success: false, error: '不是 Git 仓库' }, { status: 400 })
     }

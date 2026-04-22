@@ -1,8 +1,15 @@
 import { execFile } from 'child_process'
 import path from 'path'
 import { logger } from '@/lib/logger'
+import { getGlobalSettings } from '@/lib/store/settings'
 
 const PROJECT_ROOT = process.cwd()
+
+// OTA 检查更新用的镜像源（与 worktree.ts 保持一致）
+const REPO_URLS = [
+  'https://github.com/ggtiger/gclaw.git',
+  'https://gitee.com/laohu2022/gclaw.git',
+]
 
 function exec(cmd: string, args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -14,6 +21,13 @@ function exec(cmd: string, args: string[], cwd?: string): Promise<string> {
       }
     })
   })
+}
+
+/** 获取所有可用的远程源 URL */
+function getRemoteUrls(): string[] {
+  const custom = getGlobalSettings().devRepoUrl?.trim()
+  if (custom) return [custom]
+  return REPO_URLS
 }
 
 export interface OTAStatus {
@@ -31,17 +45,52 @@ export interface OTAResult {
 }
 
 /**
+ * 尝试用多个远程源 fetch，返回成功用的 remote URL
+ */
+async function tryFetchRemotes(): Promise<string | null> {
+  const urls = getRemoteUrls()
+
+  // 确保 origin 指向第一个 URL
+  try {
+    const currentUrl = await exec('git', ['remote', 'get-url', 'origin']).catch(() => '')
+    if (currentUrl !== urls[0]) {
+      await exec('git', ['remote', 'set-url', 'origin', urls[0]])
+    }
+  } catch {
+    await exec('git', ['remote', 'add', 'origin', urls[0]]).catch(() => {})
+  }
+
+  // 依次尝试 fetch
+  for (const url of urls) {
+    try {
+      if (url !== urls[0]) {
+        await exec('git', ['remote', 'set-url', 'origin', url])
+      }
+      await exec('git', ['fetch', 'origin'])
+      return url
+    } catch (err) {
+      logger.warn(`[OTA] Fetch from ${url} failed: ${(err as Error).message}`)
+    }
+  }
+  return null
+}
+
+/**
  * 检查远程是否有更新
  */
 export async function checkForUpdate(): Promise<OTAStatus> {
   try {
-    // 获取当前 commit
     const currentCommit = await exec('git', ['rev-parse', '--short', 'HEAD'])
 
-    // fetch 远程
-    await exec('git', ['fetch', 'origin'])
+    const fetchUrl = await tryFetchRemotes()
+    if (!fetchUrl) {
+      return {
+        hasUpdate: false,
+        currentVersion: currentCommit,
+        error: '所有源均无法连接，请检查网络或配置镜像地址',
+      }
+    }
 
-    // 比较本地和远程 HEAD
     const remoteHead = await exec('git', ['rev-parse', '--short', 'origin/main'])
     const localHead = await exec('git', ['rev-parse', '--short', 'HEAD'])
 
@@ -75,13 +124,18 @@ export async function pullAndUpdate(): Promise<OTAResult> {
     // 检查工作区是否干净
     const status = await exec('git', ['status', '--porcelain'])
     if (status) {
-      // 有未提交的修改，先 stash
       logger.info('[OTA] Stashing local changes before pull')
       await exec('git', ['stash'])
     }
 
+    // 先 fetch 确定可用源
+    const fetchUrl = await tryFetchRemotes()
+    if (!fetchUrl) {
+      return { success: false, error: '所有源均无法连接，请检查网络或配置镜像地址' }
+    }
+
     // 拉取更新
-    logger.info('[OTA] Pulling updates from origin')
+    logger.info(`[OTA] Pulling updates from ${fetchUrl}`)
     const pullOutput = await exec('git', ['pull', 'origin', 'main'])
 
     // 检查 package.json 是否有变更

@@ -31,16 +31,22 @@ function isPathSafe(subPath: string): boolean {
 
 /**
  * 获取项目文件根目录：有 cwd 配置时用 cwd，否则用项目数据目录
+ * 增加日志便于排查文件列表为空问题
  */
 function getFileRoot(id: string): string {
   const projectDir = getProjectDir(id)
   try {
     const settings = getProjectSettings(id)
-    if (settings.cwd && fs.existsSync(settings.cwd)) {
-      return settings.cwd
+    if (settings.cwd) {
+      const resolvedCwd = path.resolve(settings.cwd)
+      if (fs.existsSync(resolvedCwd)) {
+        return resolvedCwd
+      }
+      // cwd 配置了但路径不存在——可能是 clone 目录被清理了
+      console.warn(`[FilesAPI] cwd "${resolvedCwd}" does not exist for project ${id}, using project dir`)
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.warn(`[FilesAPI] Failed to read cwd for project ${id}:`, err)
   }
   return projectDir
 }

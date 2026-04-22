@@ -46,7 +46,7 @@ import { ContextMenu, TreeView } from './files/FileTree'
 import { FileIconSm } from './files/FileTree'
 import { ImagePreview, PDFPreview, WordPreview, ExcelPreview, PPTPreview } from './files/previews'
 import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor, DiffEditor } from './files/editors'
-import { isTauri, openWithSystemApp, revealInFinder } from '@/lib/tauri'
+import { isTauri, openWithSystemApp, revealInFinder, selectDirectory } from '@/lib/tauri'
 
 // ─── Git 状态标记字母 ───
 
@@ -283,6 +283,7 @@ export default function FilesPanel({
   const [generatingCommit, setGeneratingCommit] = useState(false)
   const [gitError, setGitError] = useState<string | null>(null)
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
+  const [gitDirDropdownOpen, setGitDirDropdownOpen] = useState(false)
   const [switchingBranch, setSwitchingBranch] = useState(false)
   const [gitViewMode, setGitViewMode] = useState<'flat' | 'tree'>('flat')
   const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set(['']))
@@ -293,6 +294,11 @@ export default function FilesPanel({
   const [activeGitStatus, setActiveGitStatus] = useState<GitStatusResponse | null>(null)
   const gitDirsMap = new Map(gitDirs.map(d => [d.path, d.branch]))
 
+  // 工作目录（cwd）
+  const [projectCwd, setProjectCwd] = useState<string>('')
+  const [cwdDropdownOpen, setCwdDropdownOpen] = useState(false)
+  const [cwdRefreshKey, setCwdRefreshKey] = useState(0)
+
   // 全屏切换时自动调整树宽度
   useEffect(() => {
     if (isFullscreen) {
@@ -301,6 +307,41 @@ export default function FilesPanel({
       setTreeWidth(180)
     }
   }, [isFullscreen])
+
+  // ─── 加载当前工作目录（cwd）───
+  useEffect(() => {
+    async function loadCwd() {
+      try {
+        const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
+        const data = await res.json()
+        setProjectCwd(data.cwd || '')
+      } catch { /* ignore */ }
+    }
+    loadCwd()
+  }, [projectId])
+
+  // 切换工作目录
+  const handleChangeCwd = useCallback(async (newCwd: string) => {
+    try {
+      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: newCwd }),
+      })
+      setProjectCwd(newCwd)
+      setCwdDropdownOpen(false)
+      // 触发文件树和 git 状态刷新
+      setCwdRefreshKey(k => k + 1)
+    } catch { /* ignore */ }
+  }, [projectId])
+
+  // 打开系统目录选择器
+  const handleSelectDirectory = useCallback(async () => {
+    const selected = await selectDirectory()
+    if (selected) {
+      await handleChangeCwd(selected)
+    }
+  }, [handleChangeCwd])
 
   // ─── 加载文件树 ───
   const fetchTree = useCallback(async () => {
@@ -319,6 +360,17 @@ export default function FilesPanel({
   }, [projectId])
 
   useEffect(() => { fetchTree() }, [fetchTree])
+
+  // ─── cwd 切换后刷新文件树和 git 状态 ───
+  useEffect(() => {
+    if (cwdRefreshKey > 0) {
+      fetchTree()
+      // 重置 git 状态，让 scan 重新检测
+      setGitDirs([])
+      setActiveGitDir(null)
+      setActiveGitStatus(null)
+    }
+  }, [cwdRefreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 外部刷新信号（AI 工具操作完成后触发）───
   useEffect(() => {
@@ -1000,38 +1052,6 @@ export default function FilesPanel({
           )}
           <Code2 size={16} style={{ color: 'var(--color-primary)' }} />
           <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>文件</span>
-          {isGitRepo && activeGitStatus?.branch && (
-            <div className="relative">
-              <button
-                onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
-                className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors"
-                style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}
-                title="切换分支"
-              >
-                {switchingBranch ? <Loader2 size={9} className="animate-spin" /> : <GitBranch size={9} />}
-                {activeGitStatus.branch}
-                <ChevronDown size={8} />
-              </button>
-              {branchDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setBranchDropdownOpen(false)} />
-                  <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[120px] max-h-40 overflow-y-auto"
-                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                    {activeGitStatus.branches.map(b => (
-                      <button key={b.name}
-                        onClick={() => { if (!b.isCurrent) handleCheckout(b.name) }}
-                        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
-                        style={{ color: b.isCurrent ? 'var(--color-primary)' : 'var(--color-text)' }}
-                      >
-                        {b.isCurrent ? <Check size={10} /> : <GitBranch size={10} />}
-                        {b.name}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
         <div className="fp-toolbar flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button onClick={() => startCreate('file', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件">
@@ -1102,6 +1122,162 @@ export default function FilesPanel({
             )}
           </div>
         </div>
+      </div>
+
+      {/* 工作目录 + Git 信息条 */}
+      <div className="px-2 py-1 border-b shrink-0 flex items-center gap-1.5 min-w-0" style={{ borderColor: 'var(--panel-border)' }}>
+        <FolderOpen size={11} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+        <div className="relative flex-1 min-w-0">
+          <button
+            onClick={() => setCwdDropdownOpen(!cwdDropdownOpen)}
+            className="w-full text-[11px] text-left truncate cursor-pointer hover:underline"
+            style={{ color: projectCwd ? 'var(--color-text-secondary)' : 'var(--color-text-muted)' }}
+            title={projectCwd || '默认目录'}
+          >
+            {projectCwd ? (
+              <>
+                <span className="opacity-60">~/</span>
+                {projectCwd.split('/').slice(-2).join('/')}
+              </>
+            ) : '项目默认目录'}
+          </button>
+          {cwdDropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setCwdDropdownOpen(false)} />
+              <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[220px]"
+                style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                <button
+                  onClick={() => handleChangeCwd('')}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                  style={{ color: !projectCwd ? 'var(--color-primary)' : 'var(--color-text)' }}
+                >
+                  {!projectCwd ? <Check size={10} /> : <Folder size={10} />}
+                  项目默认目录
+                </button>
+                {projectCwd && (
+                  <button
+                    onClick={() => handleChangeCwd('')}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    <Folder size={10} />
+                    <span className="truncate">{projectCwd}</span>
+                    <span className="ml-auto text-red-400 hover:text-red-500 shrink-0">移除</span>
+                  </button>
+                )}
+                {isTauri() && (
+                  <button
+                    onClick={handleSelectDirectory}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                    style={{ color: 'var(--color-primary)' }}
+                  >
+                    <FolderPlus size={10} />
+                    选择本地目录...
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        {projectCwd && (
+          <button
+            onClick={() => handleChangeCwd('')}
+            className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+            style={{ color: 'var(--color-text-muted)' }}
+            title="重置为默认目录"
+          >
+            <X size={10} />
+          </button>
+        )}
+
+        {/* 分隔 */}
+        <span className="shrink-0 w-px h-3" style={{ backgroundColor: 'var(--color-border)' }} />
+
+        {/* Git 分支 */}
+        {isGitRepo && activeGitStatus?.branch && (
+          <div className="relative">
+            <button
+              onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
+              className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors shrink-0"
+              style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}
+              title="切换分支"
+            >
+              {switchingBranch ? <Loader2 size={9} className="animate-spin" /> : <GitBranch size={9} />}
+              {activeGitStatus.branch}
+              <ChevronDown size={8} />
+            </button>
+            {branchDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setBranchDropdownOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[120px] max-h-40 overflow-y-auto"
+                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                  {activeGitStatus.branches.map(b => (
+                    <button key={b.name}
+                      onClick={() => { if (!b.isCurrent) handleCheckout(b.name) }}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                      style={{ color: b.isCurrent ? 'var(--color-primary)' : 'var(--color-text)' }}
+                    >
+                      {b.isCurrent ? <Check size={10} /> : <GitBranch size={10} />}
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Git 目录切换 */}
+        {gitDirs.length > 1 && isGitRepo && (
+          <div className="relative">
+            <button
+              onClick={() => setGitDirDropdownOpen(!gitDirDropdownOpen)}
+              className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors shrink-0"
+              style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)' }}
+              title="切换 Git 目录"
+            >
+              <Folder size={9} />
+              {activeGitDir === '' ? '根目录' : activeGitDir || '根目录'}
+              <ChevronDown size={8} />
+            </button>
+            {gitDirDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setGitDirDropdownOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[140px] max-h-40 overflow-y-auto"
+                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                  {gitDirs.map(d => (
+                    <button key={d.path || '__root__'}
+                      onClick={() => { setActiveGitDir(d.path); setGitDirDropdownOpen(false) }}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                      style={{ color: (activeGitDir ?? '') === d.path ? 'var(--color-primary)' : 'var(--color-text)' }}
+                    >
+                      {((activeGitDir ?? '') === d.path) ? <Check size={10} /> : <Folder size={10} />}
+                      {d.path === '' ? '根目录' : d.path}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{d.branch}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 打开目录所在位置 */}
+        {isTauri() && (
+          <button
+            onClick={async () => {
+              const dirPath = projectCwd || `/api/projects/${encodeURIComponent(projectId)}/files?action=tree`
+              if (projectCwd) {
+                try { await revealInFinder(projectCwd) } catch { /* ignore */ }
+              }
+            }}
+            className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+            style={{ color: 'var(--color-text-muted)' }}
+            title="打开目录所在位置"
+          >
+            <ExternalLink size={11} />
+          </button>
+        )}
       </div>
 
       {/* 错误 */}

@@ -2,11 +2,15 @@ import { execFile } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { logger } from '@/lib/logger'
+import { getGlobalSettings } from '@/lib/store/settings'
 
 const PROJECT_ROOT = process.cwd()
 
-// 默认远程仓库地址（可被设置覆盖）
-const DEFAULT_REPO_URL = 'https://github.com/ggtiger/gclaw.git'
+// 默认远程仓库地址 + 镜像（GitHub 不稳定时自动 fallback）
+const REPO_URLS = [
+  'https://github.com/ggtiger/gclaw.git',
+  'https://gitee.com/laohu2022/gclaw.git',
+]
 
 export interface WorktreeInfo {
   path: string
@@ -51,32 +55,48 @@ export async function getRemoteUrl(): Promise<string | null> {
 }
 
 /**
- * 获取仓库 URL：优先从设置读取，其次从本地 git 获取，最后用默认值
+ * 获取仓库 URL 列表：用户自定义 > 主仓库 + 镜像
  */
-export function getRepoUrl(settings?: { devRepoUrl?: string }): string {
-  if (settings?.devRepoUrl) return settings.devRepoUrl
-  // 同步获取 remoteUrl 不方便，直接用默认值
-  return DEFAULT_REPO_URL
+export function getRepoUrls(): string[] {
+  const custom = getGlobalSettings().devRepoUrl?.trim()
+  if (custom) return [custom]
+  return REPO_URLS
 }
 
 /**
  * 创建独立克隆（git clone）
- * 始终从远程 clone，不依赖本地 git 仓库
+ * 依次尝试主仓库和镜像源，直到成功
  */
-export async function createWorktree(repoUrl?: string): Promise<WorktreeInfo> {
+export async function createWorktree(): Promise<WorktreeInfo> {
   const timestamp = Date.now().toString(36)
   const clonePath = path.join(PROJECT_ROOT, '..', `gclaw-dev-${timestamp}`)
-  const url = repoUrl || DEFAULT_REPO_URL
+  const urls = getRepoUrls()
 
   // 检查 git 可用
   if (!(await isGitAvailable())) {
     throw new Error('git 未安装或不在 PATH 中，无法使用开发模式')
   }
 
-  logger.info(`[DevMode] Cloning from ${url} to ${clonePath}`)
+  let lastError: Error | null = null
+  for (const url of urls) {
+    try {
+      logger.info(`[DevMode] Cloning from ${url} to ${clonePath}`)
+      await execGit(['clone', '--depth', '1', url, clonePath], path.dirname(clonePath))
+      lastError = null
+      break
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      logger.warn(`[DevMode] Clone from ${url} failed: ${lastError.message}`)
+      // 清理可能创建的空目录
+      if (fs.existsSync(clonePath)) {
+        try { fs.rmSync(clonePath, { recursive: true, force: true }) } catch { /* ignore */ }
+      }
+    }
+  }
 
-  // 从远程 clone（shallow clone，速度快）
-  await execGit(['clone', '--depth', '1', url, clonePath], path.dirname(clonePath))
+  if (lastError) {
+    throw new Error(`克隆失败（已尝试 ${urls.length} 个源）: ${lastError.message}`)
+  }
 
   // 复制 .env 文件
   const envFile = path.join(PROJECT_ROOT, '.env')
@@ -141,12 +161,27 @@ export async function removeWorktree(clonePath: string): Promise<void> {
  * 清理残留的 gclaw-dev 目录（启动时调用）
  */
 export async function cleanupStaleWorktrees(): Promise<void> {
+  // 获取当前活跃的克隆路径，避免误删
+  const { getDevModeStatus } = await import('./manager')
+  const activeStatus = getDevModeStatus()
+  const activeWorktreePath = activeStatus.state === 'active' && activeStatus.worktreePath
+    ? path.resolve(activeStatus.worktreePath)
+    : null
+
   try {
     const parentDir = path.dirname(PROJECT_ROOT)
     const entries = fs.readdirSync(parentDir)
     for (const entry of entries) {
-      if (entry.startsWith('gclaw-dev-')) {
+      if (entry.startsWith('gclaw-dev-') || entry.startsWith('.gclaw-dev-')) {
         const fullPath = path.join(parentDir, entry)
+        const resolvedPath = path.resolve(fullPath)
+
+        // 跳过当前活跃的克隆目录
+        if (activeWorktreePath && resolvedPath === activeWorktreePath) {
+          logger.info(`[DevMode] Skipping active clone: ${fullPath}`)
+          continue
+        }
+
         try {
           if (fs.lstatSync(fullPath).isDirectory()) {
             for (const link of ['data', 'node_modules']) {

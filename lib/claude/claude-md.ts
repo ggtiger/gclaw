@@ -81,28 +81,54 @@ export function syncProjectClaudeMd(
     }
   }
 
-  // 写入或清理 CLAUDE.md
+  // GClaw 注入内容的边界标记
+  const GCLAW_BEGIN = '<!-- GCLAW-INJECTION-BEGIN -->'
+  const GCLAW_END = '<!-- GCLAW-INJECTION-END -->'
+
+  // 写入或清理 GClaw 注入区域（保留第三方原有的 CLAUDE.md 内容）
   if (sections.length > 0) {
-    const content = sections.join('\n\n---\n\n') + '\n'
+    const gclawContent = sections.join('\n\n---\n\n') + '\n'
+    const injectedBlock = `${GCLAW_BEGIN}\n${gclawContent}${GCLAW_END}`
     try {
       if (!fs.existsSync(projectCwd)) {
         fs.mkdirSync(projectCwd, { recursive: true })
       }
-      // 仅在内容变化时写入（避免不必要的磁盘 IO）
+      // 读取现有文件，分离第三方内容和 GClaw 注入区域
       const existing = fs.existsSync(claudeMdPath)
         ? fs.readFileSync(claudeMdPath, 'utf-8')
         : ''
-      if (existing !== content) {
-        fs.writeFileSync(claudeMdPath, content, 'utf-8')
+      // 提取第三方原有的内容（去掉旧的 GClaw 注入区域）
+      const originalContent = existing
+        .replace(new RegExp(`${GCLAW_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n.*?${GCLAW_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 's'), '')
+        .trim()
+      // 组合：第三方内容在前，GClaw 注入在后
+      const finalContent = originalContent
+        ? `${originalContent}\n\n${injectedBlock}\n`
+        : `${injectedBlock}\n`
+      // 仅在内容变化时写入
+      if (existing !== finalContent) {
+        fs.writeFileSync(claudeMdPath, finalContent, 'utf-8')
       }
     } catch (err) {
       logger.error('[GClaw] Failed to write CLAUDE.md:', err)
     }
   } else {
-    // 无内容时删除 CLAUDE.md（避免残留旧指令）
+    // 无 GClaw 内容时：仅清除注入区域，保留第三方内容
     try {
       if (fs.existsSync(claudeMdPath)) {
-        fs.unlinkSync(claudeMdPath)
+        const existing = fs.readFileSync(claudeMdPath, 'utf-8')
+        const cleaned = existing
+          .replace(new RegExp(`${GCLAW_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n.*?${GCLAW_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 's'), '')
+          .trim()
+        if (cleaned) {
+          // 还有第三方内容，保留文件
+          if (existing.trim() !== cleaned) {
+            fs.writeFileSync(claudeMdPath, cleaned + '\n', 'utf-8')
+          }
+        } else {
+          // 文件全空了，删除
+          fs.unlinkSync(claudeMdPath)
+        }
       }
     } catch {
       // 忽略

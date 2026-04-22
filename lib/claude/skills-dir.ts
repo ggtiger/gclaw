@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import type { SkillInfo } from '@/types/skills'
 import { getProjectDir } from '@/lib/store/projects'
+import { getProjectSettings } from '@/lib/store/settings'
 import { logger } from '@/lib/logger'
 
 const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
@@ -22,6 +23,63 @@ function cleanDir(dir: string): void {
       }
     } catch {
       // 忽略
+    }
+  }
+}
+
+/**
+ * 只清理指向 GClaw SKILLS_DIR 的 symlink，保留第三方已有的 skills
+ */
+function cleanGclawLinksOnly(dir: string): void {
+  if (!fs.existsSync(dir)) return
+  const resolvedSkillsDir = path.resolve(SKILLS_DIR)
+  for (const file of fs.readdirSync(dir)) {
+    const fullPath = path.join(dir, file)
+    try {
+      const stat = fs.lstatSync(fullPath)
+      if (stat.isSymbolicLink()) {
+        const linkTarget = fs.readlinkSync(fullPath)
+        // 只删除指向 GClaw skills 目录的 symlink
+        if (path.resolve(dir, linkTarget).startsWith(resolvedSkillsDir)) {
+          fs.unlinkSync(fullPath)
+        }
+      }
+    } catch {
+      // 忽略
+    }
+  }
+}
+
+/**
+ * 为启用的技能创建 symlink 到目标目录
+ */
+function createSkillLinks(enabledSkillNames: string[], targetDir: string): void {
+  for (const name of enabledSkillNames) {
+    try {
+      const destPath = path.join(targetDir, name)
+      // 跳过已存在的条目（可能是第三方的 skill）
+      if (fs.existsSync(destPath)) continue
+
+      // 目录型技能：skills/xxx/ -> .claude/skills/xxx
+      const dirPath = path.join(SKILLS_DIR, name)
+      const dirSkillMd = path.join(dirPath, 'SKILL.md')
+      if (fs.existsSync(dirSkillMd)) {
+        if (process.platform === 'win32') {
+          fs.symlinkSync(dirPath, destPath, 'junction')
+        } else {
+          fs.symlinkSync(dirPath, destPath)
+        }
+        continue
+      }
+
+      // 单文件技能：skills/xxx.md -> .claude/skills/xxx.md
+      const mdPath = path.join(SKILLS_DIR, `${name}.md`)
+      const mdDestPath = path.join(targetDir, `${name}.md`)
+      if (fs.existsSync(mdPath) && !fs.existsSync(mdDestPath)) {
+        fs.symlinkSync(mdPath, mdDestPath)
+      }
+    } catch (err) {
+      logger.error(`Failed to link skill ${name}:`, err)
     }
   }
 }
@@ -132,40 +190,25 @@ function parseSkillMeta(content: string, fallbackName: string): { displayName: s
  */
 export function syncProjectSkillsDir(enabledSkillNames: string[], projectId: string): void {
   const projectDir = getProjectDir(projectId)
+
+  // 确定两个目标目录：项目数据目录（兜底）和 cwd（用户的工作目录）
+  const settings = getProjectSettings(projectId)
+  const cwd = settings.cwd ? path.resolve(settings.cwd) : null
+  const cwdIsExternal = cwd && cwd !== path.resolve(projectDir) && fs.existsSync(cwd)
+
+  // 总是在项目数据目录创建 skills（兜底）
   const projectSkillsDir = path.join(projectDir, '.claude', 'skills')
   fs.mkdirSync(projectSkillsDir, { recursive: true })
-
-  // 清理旧条目
   cleanDir(projectSkillsDir)
+  createSkillLinks(enabledSkillNames, projectSkillsDir)
 
-  // Windows 上用 junction（不需要管理员权限），其他平台用默认 symlink
-  const linkDir = (target: string, link: string) => {
-    if (process.platform === 'win32') {
-      fs.symlinkSync(target, link, 'junction')
-    } else {
-      fs.symlinkSync(target, link)
-    }
-  }
-
-  // 为启用的技能创建 symlink
-  for (const name of enabledSkillNames) {
-    try {
-      // 目录型技能：skills/xxx/ -> data/projects/{id}/.claude/skills/xxx
-      const dirPath = path.join(SKILLS_DIR, name)
-      const dirSkillMd = path.join(dirPath, 'SKILL.md')
-      if (fs.existsSync(dirSkillMd)) {
-        linkDir(dirPath, path.join(projectSkillsDir, name))
-        continue
-      }
-
-      // 单文件技能：skills/xxx.md -> data/projects/{id}/.claude/skills/xxx.md
-      const mdPath = path.join(SKILLS_DIR, `${name}.md`)
-      if (fs.existsSync(mdPath)) {
-        fs.symlinkSync(mdPath, path.join(projectSkillsDir, `${name}.md`))
-      }
-    } catch (err) {
-      logger.error(`Failed to link skill ${name}:`, err)
-    }
+  // 当 cwd 是外部目录时，也在 cwd 下创建 skills（让 SDK 能看到）
+  if (cwdIsExternal) {
+    const cwdSkillsDir = path.join(cwd, '.claude', 'skills')
+    fs.mkdirSync(cwdSkillsDir, { recursive: true })
+    // 只清理 GClaw 创建的 symlink（指向 SKILLS_DIR 的），保留第三方已有的 skills
+    cleanGclawLinksOnly(cwdSkillsDir)
+    createSkillLinks(enabledSkillNames, cwdSkillsDir)
   }
 }
 

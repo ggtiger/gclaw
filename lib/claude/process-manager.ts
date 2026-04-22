@@ -7,7 +7,7 @@ import { convertSDKMessage, createConvertContext } from './stream-parser'
 import { syncProjectSkillsDir, loadSkillEnvVars } from './skills-dir'
 import { syncProjectClaudeMd } from './claude-md'
 import { loadSkillHooks, buildSkillHookMatchers } from './skill-hooks'
-import { getSettings, updateProjectSettings } from '@/lib/store/settings'
+import { getSettings, updateProjectSettings, getGlobalSettings } from '@/lib/store/settings'
 import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
@@ -117,7 +117,8 @@ export async function* executeChat(
 
   // 读取配置
   const settings = getSettings(projectId)
-  const model = options.model || settings.model || undefined
+  const globalSettings = getGlobalSettings()
+  const model = options.model || settings.model || globalSettings.defaultModel || undefined
   const sessionId = options.sessionId || settings.sessionId || undefined
   const cwd = options.cwd || settings.cwd || undefined
   const skipPermissions =
@@ -139,25 +140,14 @@ export async function* executeChat(
   // SDK cwd：优先用户配置的 cwd，否则用项目数据目录（避免在根目录产生 .claude）
   const { getProjectDir } = await import('@/lib/store/projects')
   const projectDataDir = getProjectDir(projectId)
-  // 安全限制：自定义 cwd 必须在项目数据目录内，防止路径逃逸
-  // 例外：dev mode 的 worktree 路径允许使用
   let sdkCwd = projectDataDir
   if (cwd) {
     const resolvedCwd = path.resolve(cwd)
-    const resolvedProjectDir = path.resolve(projectDataDir)
-    if (resolvedCwd.startsWith(resolvedProjectDir)) {
+    // cwd 是项目在 settings.json 中持久化的配置，只要目录存在就信任使用
+    if (fs.existsSync(resolvedCwd)) {
       sdkCwd = resolvedCwd
     } else {
-      // 检查是否为 dev mode 的 worktree 路径
-      const { getDevModeStatus } = await import('@/lib/dev-mode/manager')
-      const devStatus = getDevModeStatus()
-      if (devStatus.state === 'active' && devStatus.worktreePath &&
-          resolvedCwd.startsWith(path.resolve(devStatus.worktreePath))) {
-        sdkCwd = resolvedCwd
-        logger.info(`[GClaw] Dev mode worktree cwd allowed: ${resolvedCwd}`)
-      } else {
-        logger.warn(`[GClaw] Rejected unsafe cwd "${cwd}" for project ${projectId}, falling back to project dir`)
-      }
+      logger.warn(`[GClaw] Configured cwd "${resolvedCwd}" does not exist, falling back to project dir`)
     }
   }
 

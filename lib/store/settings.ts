@@ -82,7 +82,7 @@ export function updateProjectSettings(projectId: string, partial: Partial<Projec
 
 // ── 合并接口（向后兼容）──
 
-const GLOBAL_KEYS = new Set<string>(['apiKey', 'apiBaseUrl', 'theme', 'assistantModel'])
+const GLOBAL_KEYS = new Set<string>(['apiKey', 'apiBaseUrl', 'theme', 'assistantModel', 'defaultModel', 'devRepoUrl'])
 
 export function getSettings(projectId: string): AppSettings {
   const global = getGlobalSettings()

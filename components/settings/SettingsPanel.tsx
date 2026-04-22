@@ -54,6 +54,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         theme: data.theme || 'system',
         security: data.security || { sensitiveWords: [], retentionDays: 0 },
         assistantModel: data.assistantModel || '',
+        defaultModel: data.defaultModel || 'claude-sonnet-4-20250514',
+        devRepoUrl: data.devRepoUrl || '',
       })
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -100,6 +102,14 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
 
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
+    if (!settings.assistantModel?.trim()) {
+      toast('辅助模型不能为空，请选择或填写模型名称', 'error')
+      return
+    }
+    if (!settings.defaultModel?.trim()) {
+      toast('默认项目模型不能为空，请选择或填写模型名称', 'error')
+      return
+    }
     setSaving(true)
     try {
       const toSave = { ...settings }
@@ -235,6 +245,48 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
             </div>
           </div>
 
+          {/* 默认项目模型 */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs text-gray-500 dark:text-gray-400">
+                默认项目模型 <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={fetchModels}
+                disabled={loadingModels}
+                className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
+                {models.length > 0 ? '刷新模型' : '获取模型列表'}
+              </button>
+            </div>
+            {models.length > 0 ? (
+              <select
+                value={settings.defaultModel || ''}
+                onChange={e => updateField('defaultModel', e.target.value)}
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+              >
+                <option value="" disabled>请选择模型</option>
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={settings.defaultModel || ''}
+                onChange={e => updateField('defaultModel', e.target.value)}
+                placeholder="先填写 API Key 后获取模型列表"
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+              />
+            )}
+            <div className="text-xs mt-1 text-gray-400">
+              新建项目时自动使用此模型，项目模型留空时也会回退到此值
+            </div>
+          </div>
+
+          {/* 辅助模型 */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs text-gray-500 dark:text-gray-400">
@@ -272,6 +324,23 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
             )}
             <div className="text-xs mt-1 text-gray-400">
               用于记忆提取、总纲生成、提示词优化等轻量任务
+            </div>
+          </div>
+
+          {/* 仓库镜像地址 */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+              仓库镜像地址
+            </label>
+            <input
+              type="text"
+              value={settings.devRepoUrl || ''}
+              onChange={e => updateField('devRepoUrl', e.target.value)}
+              placeholder="https://gitee.com/ggtiger/gclaw.git"
+              className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+            />
+            <div className="text-xs mt-1 text-gray-400">
+              留空自动使用 GitHub + Gitee 镜像切换，自定义后仅使用指定地址
             </div>
           </div>
 

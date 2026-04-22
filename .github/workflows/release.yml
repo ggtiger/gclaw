@@ -101,3 +101,94 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           gh release edit "$TAG" --draft=false
+
+  # 同步 Release 到 Gitee（安装包 + latest.json）
+  sync-gitee:
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Sync release to Gitee
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_OWNER: laohu2022
+          GITEE_REPO: gclaw
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "GITEE_TOKEN not set, skipping Gitee sync"
+            exit 0
+          fi
+
+          TAG="${TAG}"
+          echo "=== Syncing release ${TAG} to Gitee ==="
+
+          # 创建临时目录
+          TMPDIR=$(mktemp -d)
+          trap "rm -rf $TMPDIR" EXIT
+
+          # 1. 从 GitHub 下载所有 release assets
+          echo "--- Downloading assets from GitHub ---"
+          cd "$TMPDIR"
+          gh release download "$TAG" --repo ggtiger/gclaw --clobber
+
+          # 2. 在 Gitee 创建 Release
+          echo "--- Creating Gitee release ---"
+          # 检查 release 是否已存在
+          RELEASE_ID=$(curl -sf \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}" \
+            -d "access_token=${GITEE_TOKEN}" | jq -r '.id // empty' || true)
+
+          if [ -z "$RELEASE_ID" ]; then
+            RELEASE_ID=$(curl -sf -X POST \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
+              -d "access_token=${GITEE_TOKEN}" \
+              -d "tag_name=${TAG}" \
+              -d "name=GClaw ${TAG}" \
+              -d "body=See the assets to download this version and install." \
+              -d "target=main" | jq -r '.id')
+            echo "Created Gitee release: ${RELEASE_ID}"
+          else
+            echo "Gitee release already exists: ${RELEASE_ID}"
+          fi
+
+          # 3. 上传所有 assets 到 Gitee
+          echo "--- Uploading assets to Gitee ---"
+          for file in *; do
+            [ -f "$file" ] || continue
+            echo "  Uploading: ${file}"
+            curl -sf -X POST \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "file=@${file}" | jq -r '.file_name // .message // "ok"'
+          done
+
+          # 4. 重写 latest.json 中的下载 URL（GitHub → Gitee）
+          if [ -f "latest.json" ]; then
+            echo "--- Rewriting latest.json for Gitee ---"
+            GITEE_BASE="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${TAG}"
+            GH_BASE="https://github.com/ggtiger/gclaw/releases/download/${TAG}"
+
+            # 用 jq 重写所有 url 字段
+            jq --arg gb "$GH_BASE" --arg gitee "$GITEE_BASE" '
+              walk(
+                if type == "object" and has("url") then
+                  .url = (.url | sub($gb; $gitee))
+                else .
+                end
+              )
+            ' latest.json > latest-gitee.json
+
+            echo "Gitee latest.json:"
+            cat latest-gitee.json
+
+            # 上传 Gitee 版本的 latest.json
+            curl -sf -X POST \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "file=@latest-gitee.json;filename=latest.json" | jq -r '.file_name // .message // "ok"'
+          fi
+
+          echo "=== Gitee sync complete ==="

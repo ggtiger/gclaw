@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader } from 'lucide-react'
+import { Loader, RefreshCw, FolderOpen } from 'lucide-react'
 import type { ProjectSettings } from '@/types/skills'
 import { useToast } from '@/components/ui/Toast'
+import { isTauri, selectDirectory, revealInFinder } from '@/lib/tauri'
 
 interface ProjectSettingsPanelProps {
   projectId: string
@@ -15,6 +16,8 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [models, setModels] = useState<{ id: string; name: string }[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
 
   const { toast } = useToast()
 
@@ -48,6 +51,30 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     setSettings({ ...settings, [key]: value })
     setDirty(true)
   }
+
+  const fetchModels = useCallback(async () => {
+    setLoadingModels(true)
+    try {
+      const res = await fetch('/api/settings/models')
+      const data = await res.json()
+      if (data.models) {
+        setModels(data.models)
+      } else {
+        toast(data.error || '获取模型列表失败', 'error')
+      }
+    } catch {
+      toast('获取模型列表失败', 'error')
+    } finally {
+      setLoadingModels(false)
+    }
+  }, [toast])
+
+  const handleSelectDirectory = useCallback(async () => {
+    const selected = await selectDirectory()
+    if (selected) {
+      updateField('cwd', selected)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
@@ -83,18 +110,42 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     <div className="p-4 flex flex-col gap-3">
       {/* Model */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-          模型
-        </label>
-        <input
-          type="text"
-          value={settings.model}
-          onChange={e => updateField('model', e.target.value)}
-          placeholder="默认 (claude-sonnet-4-20250514)"
-          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-        />
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-xs text-gray-500 dark:text-gray-400">
+            模型
+          </label>
+          <button
+            type="button"
+            onClick={fetchModels}
+            disabled={loadingModels}
+            className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
+            {models.length > 0 ? '刷新模型' : '获取模型列表'}
+          </button>
+        </div>
+        {models.length > 0 ? (
+          <select
+            value={settings.model || ''}
+            onChange={e => updateField('model', e.target.value)}
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          >
+            <option value="">使用全局默认模型</option>
+            {models.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={settings.model}
+            onChange={e => updateField('model', e.target.value)}
+            placeholder="使用全局默认模型"
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          />
+        )}
         <div className="text-xs mt-1 text-gray-400">
-          留空使用默认模型
+          留空使用全局默认项目模型
         </div>
       </div>
 
@@ -125,13 +176,37 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
           工作目录
         </label>
-        <input
-          type="text"
-          value={settings.cwd}
-          onChange={e => updateField('cwd', e.target.value)}
-          placeholder="默认当前目录"
-          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-        />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            value={settings.cwd}
+            onChange={e => updateField('cwd', e.target.value)}
+            placeholder="默认当前目录"
+            className="flex-1 min-w-0 text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          />
+          {isTauri() && (
+            <>
+              <button
+                type="button"
+                onClick={handleSelectDirectory}
+                className="shrink-0 p-1.5 rounded-lg bg-gray-100 dark:bg-white/10 cursor-pointer hover:bg-gray-200 dark:hover:bg-white/20 transition-colors"
+                title="选择本地目录"
+              >
+                <FolderOpen size={14} className="text-gray-500 dark:text-gray-400" />
+              </button>
+              {settings.cwd && (
+                <button
+                  type="button"
+                  onClick={() => revealInFinder(settings.cwd).catch(() => {})}
+                  className="shrink-0 p-1.5 rounded-lg bg-gray-100 dark:bg-white/10 cursor-pointer hover:bg-gray-200 dark:hover:bg-white/20 transition-colors"
+                  title="打开目录所在位置"
+                >
+                  <RefreshCw size={14} className="text-gray-500 dark:text-gray-400" style={{ transform: 'rotate(-45deg)' }} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
         <div className="text-xs mt-1 text-gray-400">
           Claude 工作目录，默认为项目目录
         </div>
