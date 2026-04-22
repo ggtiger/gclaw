@@ -99,7 +99,7 @@ export async function removeWorktree(worktreePath: string): Promise<void> {
     return
   }
 
-  // 先移除所有 symlink（避免 git worktree remove 递归删除主项目数据）
+  // 先移除所有 symlink（避免递归删除主项目数据）
   const symlinks = ['data', 'node_modules']
   for (const link of symlinks) {
     const linkPath = path.join(worktreePath, link)
@@ -112,18 +112,32 @@ export async function removeWorktree(worktreePath: string): Promise<void> {
     }
   }
 
-  logger.info(`[DevMode] Removing worktree: ${worktreePath}`)
-  await execGit(['worktree', 'remove', worktreePath, '--force'])
-
-  // 清理已合并的本地分支
+  // 尝试 git worktree remove，失败则直接 rm -rf
   try {
-    const branches = await execGit(['branch', '--merged', 'HEAD'])
-    const mergedBranches = branches.split('\n')
-      .map(b => b.trim())
+    await execGit(['worktree', 'remove', worktreePath, '--force'])
+    logger.info(`[DevMode] Removed worktree via git: ${worktreePath}`)
+  } catch {
+    logger.warn(`[DevMode] git worktree remove failed, force deleting: ${worktreePath}`)
+    try {
+      fs.rmSync(worktreePath, { recursive: true, force: true })
+    } catch (rmErr) {
+      logger.error(`[DevMode] Failed to delete worktree directory:`, rmErr)
+    }
+  }
+
+  // 清理残留的本地分支
+  try {
+    const branches = await execGit(['branch'])
+    const devBranches = branches.split('\n')
+      .map(b => b.trim().replace(/^\*?\s*/, ''))
       .filter(b => b.startsWith('gclaw-dev/'))
-    for (const branch of mergedBranches) {
-      await execGit(['branch', '-d', branch])
-      logger.info(`[DevMode] Deleted merged branch: ${branch}`)
+    for (const branch of devBranches) {
+      try {
+        await execGit(['branch', '-D', branch])
+        logger.info(`[DevMode] Deleted branch: ${branch}`)
+      } catch {
+        // ignore
+      }
     }
   } catch {
     // ignore cleanup errors
