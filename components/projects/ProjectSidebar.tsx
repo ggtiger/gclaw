@@ -289,7 +289,7 @@ export function ProjectSidebar({
                       onClick={e => { e.stopPropagation(); setEditingId(project.id); setEditName(project.name) }}
                       className="p-0.5 rounded-lg cursor-pointer text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all duration-200" title="重命名"
                     ><Pencil size={11} /></button>
-                    {projects.length > 1 && (
+                    {project.type !== 'secretary' && (
                       <button
                         onClick={e => { e.stopPropagation(); setConfirmDeleteId(project.id) }}
                         className="p-0.5 rounded-lg cursor-pointer text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-all duration-200" title="删除"

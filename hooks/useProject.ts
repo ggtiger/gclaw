@@ -65,7 +65,12 @@ export function useProject() {
   // 删除项目
   const deleteProject = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/projects?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const res = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || '删除失败')
+        return
+      }
       setProjects(prev => {
         const updated = prev.filter(p => p.id !== id)
         // 如果删除的是当前项目，切换到第一个

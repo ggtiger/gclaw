@@ -160,11 +160,17 @@ export async function* executeChat(
   const skillEnv = loadSkillEnvVars(enabledSkills)
   // 注入 GClaw 平台地址，供技能通过 $GCLAW_API_BASE 调用 API
   const port = process.env.PORT || '3000'
-  const gclawEnv = {
+  const gclawEnv: Record<string, string | undefined> = {
     GCLAW_API_BASE: `http://localhost:${port}`,
     GCLAW_PROJECT_ID: projectId,
     GCLAW_USER_ID: userId || '',
     GCLAW_INTERNAL_API_KEY: process.env.INTERNAL_API_KEY || 'gclaw-internal-api-key',
+  }
+  // Windows 强制 UTF-8 编码，防止 curl 等工具传中文时出现乱码
+  if (process.platform === 'win32') {
+    gclawEnv.PYTHONIOENCODING = 'utf-8'
+    gclawEnv.CHCP = '65001'
+    gclawEnv.LANG = 'en_US.UTF-8'
   }
   const sdkEnv: Record<string, string | undefined> = { ...process.env, ...skillEnv, ...gclawEnv }
 

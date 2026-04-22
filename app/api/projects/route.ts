@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import {
   getProjects,
   getProjectsForUser,
+  getProjectById,
   createProject,
   deleteProject,
   renameProject,
@@ -140,6 +141,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   const user = getAuthUser(request)
+  const project = getProjectById(id)
+
+  // 秘书类型项目不允许删除
+  if (!project || project.type === 'secretary') {
+    return Response.json({ error: '秘书项目不允许删除' }, { status: 403 })
+  }
+
   deleteProject(id)
   addAuditLog('project:delete', user?.username || 'system', { projectId: id })
   return Response.json({ success: true })
