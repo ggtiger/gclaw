@@ -69,6 +69,30 @@ function getInternalState(): DevModeStateInternal {
 
 export function getDevModeStatus(): DevModeStatus {
   const s = getInternalState()
+
+  // 健壮性检查：如果 dev mode 活跃但项目被删，自动重建
+  if (s.state === 'active' && s.projectId && s.worktreeInfo) {
+    const { getProjectById } = require('@/lib/store/projects')
+    const project = getProjectById(s.projectId)
+    if (!project) {
+      logger.warn(`[DevMode] Dev project ${s.projectId} was deleted, recreating...`)
+      try {
+        const newProject = createProject('GClaw 开发模式', undefined, 'development')
+        updateProjectSettings(newProject.id, {
+          cwd: s.worktreeInfo.path,
+          dangerouslySkipPermissions: true,
+          systemPrompt: `你是 GClaw 的开发助手。当前处于开发模式，工作目录是 GClaw 源代码的 Git worktree。
+你可以直接修改源代码文件，修改会实时反映在预览面板中。
+修改完成后，用户可以通过部署功能将变更应用到主项目。`,
+        })
+        s.projectId = newProject.id
+        logger.info(`[DevMode] Recreated dev project: ${newProject.id}`)
+      } catch (err) {
+        logger.error('[DevMode] Failed to recreate dev project:', err)
+      }
+    }
+  }
+
   return {
     state: s.state,
     worktreePath: s.worktreeInfo?.path,
