@@ -150,7 +150,7 @@ jobs:
               -F "tag_name=${TAG}" \
               -F "name=GClaw ${TAG}" \
               -F "body=增量更新文件，完整安装包请到 GitHub 下载" \
-              -F "target=main")
+              -F "target_commitish=main")
             HTTP_CODE=$(echo "$RESP" | tail -1)
             BODY=$(echo "$RESP" | sed '$d')
             echo "HTTP ${HTTP_CODE}: ${BODY}" | head -c 500
