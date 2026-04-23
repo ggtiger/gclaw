@@ -106,6 +106,7 @@ jobs:
   sync-gitee:
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     if: github.event_name == 'push'
     steps:
       - name: Sync release to Gitee
@@ -175,7 +176,7 @@ jobs:
             [ "$file" = "latest.json" ] && continue  # last.json 最后处理
             SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
             echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
-            RESP=$(curl -s --max-time 600 -w "\n%{http_code}" -X POST \
+            RESP=$(curl -s --max-time 3600 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" \
               -F "file=@${file}")
