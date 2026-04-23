@@ -102,7 +102,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           gh release edit "$TAG" --draft=false
 
-  # 同步 Release 到 Gitee（仅 updater 增量包 + latest.json）
+  # 同步 Release 到 Gitee（全部文件）
   sync-gitee:
     needs: release
     runs-on: ubuntu-latest
@@ -129,11 +129,12 @@ jobs:
           trap "rm -rf $TMPDIR" EXIT
           cd "$TMPDIR"
 
-          # 1. 只下载 updater 增量文件（.tar.gz + .sig + latest.json）
-          echo "--- Downloading updater assets from GitHub ---"
-          gh release download "$TAG" --repo ggtiger/gclaw --clobber \
-            --pattern '*.tar.gz' --pattern '*.tar.gz.sig' --pattern 'latest.json'
+          # 1. 从 GitHub 下载所有 release assets
+          echo "--- Downloading all assets from GitHub ---"
+          gh release download "$TAG" --repo ggtiger/gclaw --clobber
 
+          TOTAL_SIZE=$(du -sh . | cut -f1)
+          echo "Total: ${TOTAL_SIZE}"
           ls -lh
 
           # 2. 在 Gitee 创建 Release
@@ -149,7 +150,7 @@ jobs:
               -F "access_token=${GITEE_TOKEN}" \
               -F "tag_name=${TAG}" \
               -F "name=GClaw ${TAG}" \
-              -F "body=增量更新文件，完整安装包请到 GitHub 下载" \
+              -F "body=See the assets to download this version and install." \
               -F "target_commitish=main")
             HTTP_CODE=$(echo "$RESP" | tail -1)
             BODY=$(echo "$RESP" | sed '$d')
@@ -165,13 +166,16 @@ jobs:
             exit 1
           fi
 
-          # 3. 上传到 Gitee（带超时）
+          # 3. 上传所有文件到 Gitee（latest.json 最后单独处理）
           echo "--- Uploading to Gitee ---"
-          for file in *.tar.gz *.tar.gz.sig; do
+          SUCCESS=0
+          FAIL=0
+          for file in *; do
             [ -f "$file" ] || continue
-            SIZE=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
+            [ "$file" = "latest.json" ] && continue  # last.json 最后处理
+            SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
             echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
-            RESP=$(curl -s --max-time 300 -w "\n%{http_code}" -X POST \
+            RESP=$(curl -s --max-time 600 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" \
               -F "file=@${file}")
@@ -180,10 +184,13 @@ jobs:
             FNAME=$(echo "$BODY" | jq -r '.file_name // empty' 2>/dev/null || true)
             if [ -n "$FNAME" ]; then
               echo "    OK: ${FNAME}"
+              SUCCESS=$((SUCCESS + 1))
             else
               echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
+              FAIL=$((FAIL + 1))
             fi
           done
+          echo "Uploaded: ${SUCCESS} OK, ${FAIL} FAIL"
 
           # 4. 重写 latest.json URL（GitHub → Gitee）
           if [ -f "latest.json" ]; then
@@ -200,7 +207,7 @@ jobs:
               )
             ' latest.json > latest-gitee.json
 
-            echo "  Uploading: latest-gitee.json"
+            echo "  Uploading: latest.json (rewritten)"
             RESP=$(curl -s --max-time 30 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" \
