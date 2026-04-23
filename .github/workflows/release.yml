@@ -181,7 +181,7 @@ jobs:
               -F "file=@${file}")
             HTTP_CODE=$(echo "$RESP" | tail -1)
             BODY=$(echo "$RESP" | sed '$d')
-            FNAME=$(echo "$BODY" | jq -r '.file_name // empty' 2>/dev/null || true)
+            FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
             if [ -n "$FNAME" ]; then
               echo "    OK: ${FNAME}"
               SUCCESS=$((SUCCESS + 1))
@@ -214,7 +214,7 @@ jobs:
               -F "file=@latest-gitee.json;filename=latest.json")
             HTTP_CODE=$(echo "$RESP" | tail -1)
             BODY=$(echo "$RESP" | sed '$d')
-            FNAME=$(echo "$BODY" | jq -r '.file_name // empty' 2>/dev/null || true)
+            FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
             if [ -n "$FNAME" ]; then
               echo "    OK: ${FNAME}"
             else
