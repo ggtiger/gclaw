@@ -7,7 +7,7 @@ import { convertSDKMessage, createConvertContext } from './stream-parser'
 import { syncProjectSkillsDir, loadSkillEnvVars } from './skills-dir'
 import { syncProjectClaudeMd } from './claude-md'
 import { loadSkillHooks, buildSkillHookMatchers } from './skill-hooks'
-import { getSettings, updateProjectSettings, getGlobalSettings } from '@/lib/store/settings'
+import { getSettings, updateProjectSettings, getProjectSettings, getGlobalSettings, resolveProviderConfig } from '@/lib/store/settings'
 import { getEnabledSkills } from '@/lib/store/skills'
 import { getEnabledAgentDefinitions } from '@/lib/store/agents'
 import { sanitizeForLog } from '@/lib/crypto'
@@ -118,7 +118,16 @@ export async function* executeChat(
   // 读取配置
   const settings = getSettings(projectId)
   const globalSettings = getGlobalSettings()
-  const model = options.model || settings.model || globalSettings.defaultModel || undefined
+  const providerConfig = resolveProviderConfig(projectId)
+
+  // openai-compatible 供应商优先使用 provider 配置的模型名
+  let model = options.model || settings.model || globalSettings.defaultModel || undefined
+  if (providerConfig.providerType === 'openai-compatible' && providerConfig.providerId) {
+    const provider = (globalSettings.providers || []).find(p => p.id === providerConfig.providerId)
+    if (provider?.model) {
+      model = provider.model
+    }
+  }
   const sessionId = options.sessionId || settings.sessionId || undefined
   const cwd = options.cwd || settings.cwd || undefined
   const skipPermissions =
@@ -126,12 +135,25 @@ export async function* executeChat(
 
   // 通过环境变量传递 API Key 和 Base URL（SDK 从环境变量读取）
   // 不在日志中输出完整 API Key
-  if (settings.apiKey) {
-    process.env.ANTHROPIC_API_KEY = settings.apiKey
+
+  // openai-compatible 供应商：通过内置协议代理转换（SDK 只支持 Anthropic 协议）
+  // 将 ANTHROPIC_BASE_URL 指向本地代理路由，SDK 发出的 /v1/messages 请求自动走代理
+  if (providerConfig.providerType === 'openai-compatible') {
+    const port = process.env.PORT || '3000'
+    const providerId = providerConfig.providerId || ''
+    process.env.ANTHROPIC_BASE_URL = `http://localhost:${port}/api/proxy/${providerId}`
+    // 代理路由从 provider 配置中读取 apiKey 转发，SDK 发送的 x-api-key 不做校验
+    process.env.ANTHROPIC_API_KEY = 'proxy-placeholder'
+    logger.info(`[GClaw] OpenAI-compatible 供应商走本地代理: ${process.env.ANTHROPIC_BASE_URL}`)
+  } else {
+    if (providerConfig.apiKey) {
+      process.env.ANTHROPIC_API_KEY = providerConfig.apiKey
+    }
+    if (providerConfig.baseUrl) {
+      process.env.ANTHROPIC_BASE_URL = providerConfig.baseUrl
+    }
   }
-  if (settings.apiBaseUrl) {
-    process.env.ANTHROPIC_BASE_URL = settings.apiBaseUrl
-  }
+  logger.info(`[GClaw] 执行查询: projectId=${projectId || '(无)'} | model=${model || '(SDK默认)'} | baseUrl=${process.env.ANTHROPIC_BASE_URL || '(Anthropic默认)'} | sessionId=${sessionId || '(新建)'}`)
 
   // 同步启用技能到项目独立的 .claude/skills/（不碰根目录）
   const enabledSkills = getEnabledSkills(projectId)

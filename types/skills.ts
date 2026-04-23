@@ -1,3 +1,13 @@
+// ── 模型供应商 ──
+export interface ModelProvider {
+  id: string       // UUID
+  name: string     // 显示名称，如 "Anthropic"、"本地 LiteLLM"
+  type: 'anthropic' | 'openai-compatible'
+  baseUrl: string
+  apiKey: string   // 加密存储
+  model?: string   // 上游模型名（openai-compatible 供应商必填，用于替换 SDK 发送的 Claude 模型名）
+}
+
 export interface SkillInfo {
   name: string
   displayName: string
@@ -25,6 +35,10 @@ export interface GlobalSettings {
   defaultModel: string
   /** 代码仓库镜像地址（开发模式 clone 和 OTA 更新用） */
   devRepoUrl: string
+  /** 供应商列表 */
+  providers: ModelProvider[]
+  /** 当前活跃供应商 ID */
+  activeProviderId: string
 }
 
 export const DEFAULT_GLOBAL: GlobalSettings = {
@@ -38,6 +52,8 @@ export const DEFAULT_GLOBAL: GlobalSettings = {
   assistantModel: '',
   defaultModel: 'claude-sonnet-4-20250514',
   devRepoUrl: '',
+  providers: [],
+  activeProviderId: '',
 }
 
 // ── 项目级设置（每个项目独立）──
@@ -48,6 +64,8 @@ export interface ProjectSettings {
   cwd: string
   dangerouslySkipPermissions: boolean
   systemPrompt: string                // 项目级系统提示词（Soul），写入 CLAUDE.md
+  /** 项目级覆盖供应商 ID，空则跟随全局 */
+  providerId: string
 }
 
 export const DEFAULT_PROJECT: ProjectSettings = {
@@ -57,6 +75,7 @@ export const DEFAULT_PROJECT: ProjectSettings = {
   cwd: '',
   dangerouslySkipPermissions: true,
   systemPrompt: '',
+  providerId: '',
 }
 
 // 合并类型，向后兼容

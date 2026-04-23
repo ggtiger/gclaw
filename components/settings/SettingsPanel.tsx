@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw, FileText, Code2 } from 'lucide-react'
-import type { GlobalSettings } from '@/types/skills'
+import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw, FileText, Code2, Plus, Trash2, Check, Server } from 'lucide-react'
+import type { GlobalSettings, ModelProvider } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { LogsPanel } from './LogsPanel'
 import { UsersPanel } from './UsersPanel'
@@ -56,6 +56,8 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         assistantModel: data.assistantModel || '',
         defaultModel: data.defaultModel || 'claude-sonnet-4-20250514',
         devRepoUrl: data.devRepoUrl || '',
+        providers: data.providers || [],
+        activeProviderId: data.activeProviderId || '',
       })
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -74,18 +76,21 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     setDirty(true)
   }
 
-  const fetchModels = useCallback(async () => {
+  const fetchModels = useCallback(async (providerId?: string) => {
     if (!settings) return
     setLoadingModels(true)
     try {
-      // 把当前表单值（含未保存的）传给后端
+      const body: Record<string, string> = {}
+      if (providerId) {
+        body.providerId = providerId
+      } else {
+        if (apiKeyRawValue) body.apiKey = apiKeyRawValue
+        if (settings.apiBaseUrl) body.apiBaseUrl = settings.apiBaseUrl
+      }
       const res = await fetch('/api/settings/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: apiKeyRawValue || undefined,
-          apiBaseUrl: settings.apiBaseUrl || undefined,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (data.models) {
@@ -197,12 +202,272 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
       ) : activeTab === 'devMode' ? (
         <DevModePanel />
       ) : activeTab === 'settings' ? (
-        <div className="p-4 flex flex-col gap-3">
-          {/* API Key */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-              API Key
-            </label>
+        <SettingsTabContent
+          settings={settings}
+          apiKeyRawValue={apiKeyRawValue}
+          showApiKey={showApiKey}
+          models={models}
+          loadingModels={loadingModels}
+          dirty={dirty}
+          saving={saving}
+          setApiKeyRawValue={setApiKeyRawValue}
+          setShowApiKey={setShowApiKey}
+          updateField={updateField}
+          fetchModels={fetchModels}
+          saveSettings={saveSettings}
+          setActiveTab={setActiveTab}
+          toast={toast}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+// ── 设置 Tab 内容（含供应商管理） ──
+
+interface SettingsTabContentProps {
+  settings: GlobalSettings
+  apiKeyRawValue: string
+  showApiKey: boolean
+  models: { id: string; name: string }[]
+  loadingModels: boolean
+  dirty: boolean
+  saving: boolean
+  setApiKeyRawValue: (v: string) => void
+  setShowApiKey: (v: boolean) => void
+  updateField: <K extends keyof GlobalSettings>(key: K, value: GlobalSettings[K]) => void
+  fetchModels: (providerId?: string) => void
+  saveSettings: () => void
+  setActiveTab: (tab: SettingsTab) => void
+  toast: (msg: string, type: 'success' | 'error') => void
+}
+
+function SettingsTabContent({
+  settings,
+  apiKeyRawValue,
+  showApiKey,
+  models,
+  loadingModels,
+  dirty,
+  saving,
+  setApiKeyRawValue,
+  setShowApiKey,
+  updateField,
+  fetchModels,
+  saveSettings,
+  setActiveTab,
+  toast,
+}: SettingsTabContentProps) {
+  const [showAddProvider, setShowAddProvider] = useState(false)
+  const [newProvider, setNewProvider] = useState({
+    name: '',
+    type: 'anthropic' as 'anthropic' | 'openai-compatible',
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+  })
+  const [showProviderApiKey, setShowProviderApiKey] = useState<Record<string, boolean>>({})
+
+  const hasActiveProvider = !!settings.activeProviderId
+
+  const providers = settings.providers || []
+
+  const handleAddProvider = () => {
+    if (!newProvider.name.trim()) {
+      toast('请填写供应商名称', 'error')
+      return
+    }
+    if (!newProvider.baseUrl.trim()) {
+      toast('请填写 Base URL', 'error')
+      return
+    }
+    const id = crypto.randomUUID()
+    const updated = [
+      ...providers,
+      { id, name: newProvider.name.trim(), type: newProvider.type, baseUrl: newProvider.baseUrl.trim(), apiKey: newProvider.apiKey.trim(), model: newProvider.model.trim() },
+    ]
+    updateField('providers', updated)
+    setShowAddProvider(false)
+    setNewProvider({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '' })
+  }
+
+  const handleDeleteProvider = (id: string) => {
+    const updated = providers.filter(p => p.id !== id)
+    updateField('providers', updated)
+    if (settings.activeProviderId === id) {
+      updateField('activeProviderId', '')
+    }
+  }
+
+  const handleSetActive = (id: string) => {
+    updateField('activeProviderId', settings.activeProviderId === id ? '' : id)
+    // 切换活跃供应商后刷新模型列表
+    fetchModels(id)
+  }
+
+  return (
+    <div className="p-4 flex flex-col gap-3">
+      {/* ── 模型供应商 ── */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <Server size={12} />
+            模型供应商
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowAddProvider(true)}
+            className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+          >
+            <Plus size={12} />
+            添加供应商
+          </button>
+        </div>
+
+        {/* 供应商列表 */}
+        {providers.length > 0 ? (
+          <div className="flex flex-col gap-2 mb-2">
+            {providers.map(p => (
+              <div
+                key={p.id}
+                className={`flex items-center gap-2 p-2 rounded-lg border ${
+                  settings.activeProviderId === p.id
+                    ? 'border-purple-400 dark:border-purple-500 bg-purple-50 dark:bg-purple-500/10'
+                    : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-white/5'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                      {p.name}
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                      p.type === 'openai-compatible'
+                        ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
+                        : 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
+                    }`}>
+                      {p.type === 'openai-compatible' ? 'OpenAI' : 'Anthropic'}
+                    </span>
+                    {settings.activeProviderId === p.id && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400">
+                        活跃
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate mt-0.5">{p.baseUrl}{p.model ? ` · ${p.model}` : ''}</div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleSetActive(p.id)}
+                    className={`p-1 rounded cursor-pointer transition-colors ${
+                      settings.activeProviderId === p.id
+                        ? 'text-purple-500'
+                        : 'text-gray-400 hover:text-purple-500'
+                    }`}
+                    title={settings.activeProviderId === p.id ? '取消活跃' : '设为活跃'}
+                  >
+                    <Check size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProvider(p.id)}
+                    className="p-1 rounded cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
+                    title="删除"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-gray-400 mb-2">
+            暂无供应商，添加供应商可快速切换 API 配置
+          </div>
+        )}
+
+        {/* 添加供应商表单 */}
+        {showAddProvider && (
+          <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 space-y-2">
+            <input
+              type="text"
+              value={newProvider.name}
+              onChange={e => setNewProvider({ ...newProvider, name: e.target.value })}
+              placeholder="名称，如 Anthropic、本地 LiteLLM"
+              className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+            />
+            <select
+              value={newProvider.type}
+              onChange={e => setNewProvider({ ...newProvider, type: e.target.value as 'anthropic' | 'openai-compatible' })}
+              className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+            >
+              <option value="anthropic">Anthropic 兼容</option>
+              <option value="openai-compatible">OpenAI 兼容</option>
+            </select>
+            <input
+              type="text"
+              value={newProvider.baseUrl}
+              onChange={e => setNewProvider({ ...newProvider, baseUrl: e.target.value })}
+              placeholder="Base URL，如 https://api.anthropic.com"
+              className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+            />
+            <div className="relative">
+              <input
+                type={showProviderApiKey['new'] ? 'text' : 'password'}
+                value={newProvider.apiKey}
+                onChange={e => setNewProvider({ ...newProvider, apiKey: e.target.value })}
+                placeholder="API Key"
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 pr-8 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowProviderApiKey({ ...showProviderApiKey, new: !showProviderApiKey['new'] })}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded cursor-pointer text-gray-400"
+              >
+                {showProviderApiKey['new'] ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+            </div>
+            {newProvider.type === 'openai-compatible' && (
+              <input
+                type="text"
+                value={newProvider.model}
+                onChange={e => setNewProvider({ ...newProvider, model: e.target.value })}
+                placeholder="模型名，如 qwen-plus、deepseek-chat（必填）"
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+              />
+            )}
+            <div className="flex justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={() => { setShowAddProvider(false); setNewProvider({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '' }) }}
+                className="text-xs px-2.5 py-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleAddProvider}
+                className="text-xs px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 cursor-pointer"
+              >
+                添加
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* API Key */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+          API Key
+        </label>
+        {hasActiveProvider ? (
+          <div className="text-xs text-gray-400 py-1">
+            由活跃供应商配置管理
+          </div>
+        ) : (
+          <>
             <div className="relative">
               <input
                 type={showApiKey ? 'text' : 'password'}
@@ -226,13 +491,21 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
             <div className="text-xs mt-1 text-gray-400">
               留空则使用环境变量 ANTHROPIC_API_KEY
             </div>
-          </div>
+          </>
+        )}
+      </div>
 
-          {/* API Base URL */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-              API 地址
-            </label>
+      {/* API Base URL */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+          API 地址
+        </label>
+        {hasActiveProvider ? (
+          <div className="text-xs text-gray-400 py-1">
+            由活跃供应商配置管理
+          </div>
+        ) : (
+          <>
             <input
               type="text"
               value={settings.apiBaseUrl}
@@ -243,125 +516,125 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
             <div className="text-xs mt-1 text-gray-400">
               留空使用默认地址，可填写代理地址
             </div>
-          </div>
+          </>
+        )}
+      </div>
 
-          {/* 默认项目模型 */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs text-gray-500 dark:text-gray-400">
-                默认项目模型 <span className="text-red-500">*</span>
-              </label>
-              <button
-                type="button"
-                onClick={fetchModels}
-                disabled={loadingModels}
-                className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
-                {models.length > 0 ? '刷新模型' : '获取模型列表'}
-              </button>
-            </div>
-            {models.length > 0 ? (
-              <select
-                value={settings.defaultModel || ''}
-                onChange={e => updateField('defaultModel', e.target.value)}
-                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-              >
-                <option value="" disabled>请选择模型</option>
-                {models.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={settings.defaultModel || ''}
-                onChange={e => updateField('defaultModel', e.target.value)}
-                placeholder="先填写 API Key 后获取模型列表"
-                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-              />
-            )}
-            <div className="text-xs mt-1 text-gray-400">
-              新建项目时自动使用此模型，项目模型留空时也会回退到此值
-            </div>
-          </div>
-
-          {/* 辅助模型 */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs text-gray-500 dark:text-gray-400">
-                辅助模型 <span className="text-red-500">*</span>
-              </label>
-              <button
-                type="button"
-                onClick={fetchModels}
-                disabled={loadingModels}
-                className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
-                {models.length > 0 ? '刷新模型' : '获取模型列表'}
-              </button>
-            </div>
-            {models.length > 0 ? (
-              <select
-                value={settings.assistantModel || ''}
-                onChange={e => updateField('assistantModel', e.target.value)}
-                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-              >
-                <option value="" disabled>请选择模型</option>
-                {models.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={settings.assistantModel || ''}
-                onChange={e => updateField('assistantModel', e.target.value)}
-                placeholder="先填写 API Key 后获取模型列表"
-                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-              />
-            )}
-            <div className="text-xs mt-1 text-gray-400">
-              用于记忆提取、总纲生成、提示词优化等轻量任务
-            </div>
-          </div>
-
-          {/* 仓库镜像地址 */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-              仓库镜像地址
-            </label>
-            <input
-              type="text"
-              value={settings.devRepoUrl || ''}
-              onChange={e => updateField('devRepoUrl', e.target.value)}
-              placeholder="https://gitee.com/ggtiger/gclaw.git"
-              className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-            />
-            <div className="text-xs mt-1 text-gray-400">
-              留空自动使用 GitHub + Gitee 镜像切换，自定义后仅使用指定地址
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              onClick={() => setActiveTab('preferences')}
-              className="text-xs px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              onClick={saveSettings}
-              disabled={!dirty || saving}
-              className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {saving ? '保存中...' : '保存'}
-            </button>
-          </div>
+      {/* 默认项目模型 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-xs text-gray-500 dark:text-gray-400">
+            默认项目模型 <span className="text-red-500">*</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => fetchModels()}
+            disabled={loadingModels}
+            className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
+            {models.length > 0 ? '刷新模型' : '获取模型列表'}
+          </button>
         </div>
-      ) : null}
+        {models.length > 0 ? (
+          <select
+            value={settings.defaultModel || ''}
+            onChange={e => updateField('defaultModel', e.target.value)}
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          >
+            <option value="" disabled>请选择模型</option>
+            {models.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={settings.defaultModel || ''}
+            onChange={e => updateField('defaultModel', e.target.value)}
+            placeholder="先填写 API Key 后获取模型列表"
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          />
+        )}
+        <div className="text-xs mt-1 text-gray-400">
+          新建项目时自动使用此模型，项目模型留空时也会回退到此值
+        </div>
+      </div>
+
+      {/* 辅助模型 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-xs text-gray-500 dark:text-gray-400">
+            辅助模型 <span className="text-red-500">*</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => fetchModels()}
+            disabled={loadingModels}
+            className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loadingModels ? 'animate-spin' : ''} />
+            {models.length > 0 ? '刷新模型' : '获取模型列表'}
+          </button>
+        </div>
+        {models.length > 0 ? (
+          <select
+            value={settings.assistantModel || ''}
+            onChange={e => updateField('assistantModel', e.target.value)}
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          >
+            <option value="" disabled>请选择模型</option>
+            {models.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={settings.assistantModel || ''}
+            onChange={e => updateField('assistantModel', e.target.value)}
+            placeholder="先填写 API Key 后获取模型列表"
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          />
+        )}
+        <div className="text-xs mt-1 text-gray-400">
+          用于记忆提取、总纲生成、提示词优化等轻量任务
+        </div>
+      </div>
+
+      {/* 仓库镜像地址 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+          仓库镜像地址
+        </label>
+        <input
+          type="text"
+          value={settings.devRepoUrl || ''}
+          onChange={e => updateField('devRepoUrl', e.target.value)}
+          placeholder="https://gitee.com/ggtiger/gclaw.git"
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+        />
+        <div className="text-xs mt-1 text-gray-400">
+          留空自动使用 GitHub + Gitee 镜像切换，自定义后仅使用指定地址
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex justify-end gap-2 pt-2">
+        <button
+          onClick={() => setActiveTab('preferences')}
+          className="text-xs px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+        >
+          取消
+        </button>
+        <button
+          onClick={saveSettings}
+          disabled={!dirty || saving}
+          className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saving ? '保存中...' : '保存'}
+        </button>
+      </div>
     </div>
   )
 }

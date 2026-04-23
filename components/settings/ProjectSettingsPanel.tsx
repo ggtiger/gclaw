@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Loader, RefreshCw, FolderOpen } from 'lucide-react'
-import type { ProjectSettings } from '@/types/skills'
+import type { ProjectSettings, GlobalSettings, ModelProvider } from '@/types/skills'
 import { useToast } from '@/components/ui/Toast'
 import { isTauri, selectDirectory, revealInFinder } from '@/lib/tauri'
 
@@ -13,6 +13,7 @@ interface ProjectSettingsPanelProps {
 
 export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPanelProps) {
   const [settings, setSettings] = useState<ProjectSettings | null>(null)
+  const [globalProviders, setGlobalProviders] = useState<ModelProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -33,7 +34,9 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         cwd: data.cwd || '',
         dangerouslySkipPermissions: data.dangerouslySkipPermissions ?? true,
         systemPrompt: data.systemPrompt || '',
+        providerId: data.providerId || '',
       })
+      setGlobalProviders(data.providers || [])
     } catch (err) {
       console.error('Failed to load project settings:', err)
       toast('加载项目设置失败', 'error')
@@ -52,10 +55,16 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     setDirty(true)
   }
 
-  const fetchModels = useCallback(async () => {
+  const fetchModels = useCallback(async (providerId?: string) => {
     setLoadingModels(true)
     try {
-      const res = await fetch('/api/settings/models')
+      const body: Record<string, string> = {}
+      if (providerId) body.providerId = providerId
+      const res = await fetch('/api/settings/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       const data = await res.json()
       if (data.models) {
         setModels(data.models)
@@ -108,6 +117,34 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
 
   return (
     <div className="p-4 flex flex-col gap-3">
+      {/* Provider */}
+      {globalProviders.length > 0 && (
+        <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+            供应商
+          </label>
+          <select
+            value={settings.providerId || ''}
+            onChange={e => {
+              updateField('providerId', e.target.value)
+              // 切换供应商后重新获取模型列表
+              if (e.target.value) {
+                fetchModels(e.target.value)
+              }
+            }}
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          >
+            <option value="">跟随全局</option>
+            {globalProviders.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <div className="text-xs mt-1 text-gray-400">
+            留空跟随全局活跃供应商
+          </div>
+        </div>
+      )}
+
       {/* Model */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
         <div className="flex items-center justify-between mb-1.5">
@@ -116,7 +153,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           </label>
           <button
             type="button"
-            onClick={fetchModels}
+            onClick={() => fetchModels(settings.providerId || undefined)}
             disabled={loadingModels}
             className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
           >
