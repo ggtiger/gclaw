@@ -103,7 +103,8 @@ function extractActivityFromTool(
   input: Record<string, unknown>,
   toolUseId: string,
   buf: StreamBuffer,
-  startLine?: number
+  startLine?: number,
+  extra?: { fileExists?: boolean; oldContent?: string },
 ) {
   // ExitPlanMode -> planContent
   if (toolName === 'ExitPlanMode' && input.plan) {
@@ -117,8 +118,16 @@ function extractActivityFromTool(
       let content: string | undefined
       let oldString: string | undefined
       let newString: string | undefined
+      let changeType: 'write' | 'edit' | 'multiedit' = toolName.toLowerCase() as 'write' | 'edit' | 'multiedit'
       if (toolName === 'Write') {
         content = input.content as string
+        // 文件已存在时，显示为"编辑"并展示 diff
+        if (extra?.fileExists) {
+          changeType = 'edit'
+          oldString = extra.oldContent || ''
+          newString = content
+          content = undefined
+        }
       } else if (toolName === 'MultiEdit' && Array.isArray(input.edits)) {
         const edits = input.edits as Array<Record<string, string>>
         oldString = edits.map(e => e.old_string).filter(Boolean).join('\n---\n')
@@ -129,7 +138,7 @@ function extractActivityFromTool(
       }
       buf.fileChanges.push({
         filePath,
-        type: toolName.toLowerCase() as 'write' | 'edit' | 'multiedit',
+        type: changeType,
         content,
         oldString,
         newString,
@@ -407,7 +416,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
             data.input as Record<string, unknown>,
             toolUseId,
             b,
-            data.startLine as number | undefined
+            data.startLine as number | undefined,
+            data.fileExists != null ? { fileExists: data.fileExists as boolean, oldContent: data.oldContent as string | undefined } : undefined,
           )
         })
       } catch {}
@@ -507,7 +517,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           status: 'pending',
         })
       }
-      extractActivityFromTool(toolName, input, toolUseId, b, data.startLine as number | undefined)
+      extractActivityFromTool(toolName, input, toolUseId, b, data.startLine as number | undefined,
+        data.fileExists != null ? { fileExists: data.fileExists as boolean, oldContent: data.oldContent as string | undefined } : undefined)
     })
   }
 

@@ -591,6 +591,7 @@ export async function* executeChat(
           case 'tool_use': {
             // 对于 Edit/MultiEdit/Write 工具，计算 old_string 在原文件中的起始行号
             let startLine: number | undefined
+            let writeOverwrite: { fileExists: boolean; oldContent?: string } | undefined
             const toolInput = parsed.input || {}
             const toolNames = ['Edit', 'MultiEdit', 'Write']
             if (toolNames.includes(parsed.toolName)) {
@@ -600,6 +601,9 @@ export async function* executeChat(
                 try {
                   if (parsed.toolName === 'Write') {
                     startLine = 1
+                    if (fs.existsSync(absPath)) {
+                      writeOverwrite = { fileExists: true, oldContent: fs.readFileSync(absPath, 'utf-8') }
+                    }
                   } else {
                     const fileContent = fs.readFileSync(absPath, 'utf-8')
                     const searchStr = parsed.toolName === 'MultiEdit'
@@ -622,6 +626,7 @@ export async function* executeChat(
                 toolName: parsed.toolName,
                 input: parsed.input,
                 startLine,
+                ...(writeOverwrite || {}),
               },
             }
             break
