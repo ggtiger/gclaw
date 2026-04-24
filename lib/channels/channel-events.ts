@@ -18,11 +18,13 @@ export interface ChannelEvent {
   data: Record<string, unknown>
 }
 
-type ChannelEventListener = (event: ChannelEvent) => void
+type ChannelEventListener = (event: ChannelEvent & { projectId: string }) => void
 
 class ChannelEventBus {
   /** key = projectId, value = listeners */
   private subscribers = new Map<string, Set<ChannelEventListener>>()
+  /** 全局监听器（接收所有项目事件） */
+  private globalListeners = new Set<ChannelEventListener>()
 
   /**
    * 订阅某个项目的渠道事件
@@ -45,16 +47,35 @@ class ChannelEventBus {
   }
 
   /**
+   * 订阅所有项目的渠道事件
+   * 返回取消订阅函数
+   */
+  subscribeGlobal(listener: ChannelEventListener): () => void {
+    this.globalListeners.add(listener)
+    return () => {
+      this.globalListeners.delete(listener)
+    }
+  }
+
+  /**
    * 向某个项目的所有订阅者推送事件
    */
   emit(projectId: string, event: ChannelEvent): void {
     const listeners = this.subscribers.get(projectId)
-    if (!listeners) return
-    for (const listener of listeners) {
+    if (listeners) {
+      for (const listener of listeners) {
+        try {
+          listener({ ...event, projectId })
+        } catch (err) {
+          console.error('[ChannelEventBus] listener error:', err)
+        }
+      }
+    }
+    for (const listener of this.globalListeners) {
       try {
-        listener(event)
+        listener({ ...event, projectId })
       } catch (err) {
-        console.error('[ChannelEventBus] listener error:', err)
+        console.error('[ChannelEventBus] global listener error:', err)
       }
     }
   }

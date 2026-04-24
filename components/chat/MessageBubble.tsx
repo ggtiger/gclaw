@@ -2,6 +2,7 @@
 
 import { memo, useState, useCallback } from 'react'
 import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
+import { CornerLeftUp } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { StreamingBlocksRenderer, adaptContentBlocks } from './StreamingBlocksRenderer'
 import { ToolCallSummary } from './ToolCallSummary'
@@ -22,6 +23,7 @@ interface MessageBubbleProps {
   projectId: string
   onMessageUpdate?: (message: ChatMessage) => void
   onOpenSettings?: () => void
+  replyToMessage?: ChatMessage  // assistant 消息回复的 user 消息
 }
 
 // 模块级常量，避免每次渲染重建
@@ -31,7 +33,7 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-di
 // 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量
 const COLLAPSE_THRESHOLD = 2000
 
-export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings, replyToMessage }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const source = message.source || 'web'
@@ -143,6 +145,35 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             )}
           </div>
         ) : (
+          <>
+          {/* 回复引用条：显示回复的 user 消息摘要 */}
+          {replyToMessage && (() => {
+            const src = replyToMessage.source || 'web'
+            const cfg = SOURCE_CONFIG[src]
+            const borderColors: Record<string, string> = {
+              web: '#9333ea', feishu: '#2563eb', dingtalk: '#0284c7',
+              wechat: '#16a34a', api: '#ea580c', schedule: '#d97706',
+            }
+            return (
+              <button
+                onClick={() => {
+                  const el = document.getElementById(`msg-${replyToMessage.id}`)
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    el.classList.add('ring-2')
+                    el.style.setProperty('--tw-ring-color', 'var(--color-primary)')
+                    setTimeout(() => el.classList.remove('ring-2'), 1500)
+                  }
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 mb-0.5 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-slate-500/10 dark:hover:bg-slate-400/10 border-l-2 max-w-full"
+                style={{ borderLeftColor: borderColors[src] || '#9333ea', color: 'var(--color-text-muted)' }}
+              >
+                <CornerLeftUp size={11} className="flex-shrink-0 opacity-50" />
+                {cfg && <span className={`flex-shrink-0 ${cfg.color}`} style={{ fontSize: 10 }}>{cfg.label}</span>}
+                <span className="truncate opacity-70">{replyToMessage.content.slice(0, 50) || '(附件)'}</span>
+              </button>
+            )
+          })()}
           <div className="p-4 text-sm leading-relaxed break-words max-w-full rounded-lg rounded-tl-sm border text-[var(--color-text)] shadow-sm glass-card">
             {message.contentBlocks && message.contentBlocks.length > 0 ? (
               // 新模式：交错渲染文本和工具调用
@@ -169,6 +200,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
               </>
             )}
           </div>
+          </>
         )}
 
         {/* 旧消息 toolSummary（仅无 contentBlocks 时显示） */}

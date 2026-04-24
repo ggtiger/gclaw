@@ -5,7 +5,7 @@
 
 import { spawn } from 'child_process'
 import type { ScheduledTask } from '@/types/schedules'
-import { executeChat } from '@/lib/claude/process-manager'
+import { executeChat, isProjectRunning } from '@/lib/claude/process-manager'
 import { addMessage } from '@/lib/store/messages'
 import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { channelEventBus } from '@/lib/channels/channel-events'
@@ -44,6 +44,11 @@ executors.set('chat-message', async (task) => {
   const projectId = task.projectId
   if (!projectId || !message) {
     return { success: false, error: 'Missing projectId or message' }
+  }
+
+  // 检查是否有执行中的会话
+  if (isProjectRunning(projectId)) {
+    return { success: false, error: '当前有会话正在执行，请稍后再试。' }
   }
 
   // 持久化用户消息

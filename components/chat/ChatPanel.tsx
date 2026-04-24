@@ -86,15 +86,14 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  // ─── 渠道连接状态 ───
+  // ─── 渠道连接状态（仅查询显示，连接由全局 Providers 管理） ───
   const [activeChannels, setActiveChannels] = useState<{ type: string; name: string; connected: boolean }[] | null>(null)
 
   useEffect(() => {
     if (!projectId) { setActiveChannels([]); return }
 
     let cancelled = false
-    let firstLoad = true
-    const loadChannels = async () => {
+    const loadStatus = async () => {
       try {
         const res = await fetch(`/api/channels?projectId=${encodeURIComponent(projectId)}`)
         const data = await res.json()
@@ -103,66 +102,29 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
         const enabled = (data.channels || []).filter((c: { enabled: boolean }) => c.enabled)
         if (enabled.length === 0) { setActiveChannels([]); return }
 
-        // 查询各渠道实际连接状态
         const results = await Promise.all(enabled.map(async (ch: { id: string; type: string; name: string; wechat?: { botToken: string }; dingtalk?: { appKey: string }; feishu?: { appId: string } }) => {
           let connected = false
-          if (ch.type === 'wechat' && ch.wechat?.botToken) {
+          let statusUrl = ''
+          if (ch.type === 'wechat' && ch.wechat?.botToken) statusUrl = `/api/channels/webhook/wechat/connect`
+          else if (ch.type === 'dingtalk' && ch.dingtalk?.appKey) statusUrl = `/api/channels/webhook/dingtalk/connect`
+          else if (ch.type === 'feishu' && ch.feishu?.appId) statusUrl = `/api/channels/webhook/feishu/connect`
+
+          if (statusUrl) {
             try {
-              const sr = await fetch(`/api/channels/webhook/wechat/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
+              const sr = await fetch(`${statusUrl}?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
               const sd = await sr.json()
               connected = sd.status === 'connected'
-
-              // 首次加载时，微信未连接则自动连接
-              if (firstLoad && !connected) {
-                fetch('/api/channels/webhook/wechat/connect', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ projectId, channelId: ch.id }),
-                }).catch(() => {})
-              }
-            } catch {}
-          } else if (ch.type === 'dingtalk' && ch.dingtalk?.appKey) {
-            try {
-              const sr = await fetch(`/api/channels/webhook/dingtalk/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
-              const sd = await sr.json()
-              connected = sd.status === 'connected'
-
-              // 首次加载时，钉钉未连接则自动连接
-              if (firstLoad && !connected) {
-                fetch('/api/channels/webhook/dingtalk/connect', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ projectId, channelId: ch.id }),
-                }).catch(() => {})
-              }
-            } catch {}
-          } else if (ch.type === 'feishu' && ch.feishu?.appId) {
-            try {
-              const sr = await fetch(`/api/channels/webhook/feishu/connect?projectId=${encodeURIComponent(projectId)}&channelId=${ch.id}`)
-              const sd = await sr.json()
-              connected = sd.status === 'connected'
-
-              // 首次加载时，飞书未连接则自动连接
-              if (firstLoad && !connected) {
-                fetch('/api/channels/webhook/feishu/connect', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ projectId, channelId: ch.id }),
-                }).catch(() => {})
-              }
             } catch {}
           }
           return { type: ch.type, name: ch.name, connected }
         }))
 
         if (!cancelled) setActiveChannels(results)
-        firstLoad = false
       } catch {}
     }
 
-    loadChannels()
-    // 每 30 秒刷新微信连接状态
-    const interval = setInterval(loadChannels, 30000)
+    loadStatus()
+    const interval = setInterval(loadStatus, 30000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [projectId])
 
@@ -444,17 +406,34 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               </div>
             )}
 
-            {/* 消息列表 */}
-            {messages.map(msg => (
-              <div key={msg.id} id={`msg-${msg.id}`}>
-                <MessageBubble
-                  message={msg}
-                  projectId={projectId}
-                  onMessageUpdate={handleMessageUpdate}
-                  onOpenSettings={onOpenSettings}
-                />
-              </div>
-            ))}
+            {/* 消息列表：预计算 replyTo 映射，避免连续 user 消息时错配 */}
+            {(() => {
+              const replyToMap = new Map<string, ChatMessage>()
+              const claimed = new Set<string>()
+              for (const msg of messages) {
+                if (msg.role === 'assistant') {
+                  const idx = messages.indexOf(msg)
+                  for (let i = idx - 1; i >= 0; i--) {
+                    if (messages[i].role === 'user' && !claimed.has(messages[i].id)) {
+                      replyToMap.set(msg.id, messages[i])
+                      claimed.add(messages[i].id)
+                      break
+                    }
+                  }
+                }
+              }
+              return messages.map(msg => (
+                <div key={msg.id} id={`msg-${msg.id}`}>
+                  <MessageBubble
+                    message={msg}
+                    projectId={projectId}
+                    onMessageUpdate={handleMessageUpdate}
+                    onOpenSettings={onOpenSettings}
+                    replyToMessage={replyToMap.get(msg.id)}
+                  />
+                </div>
+              ))
+            })()}
 
             {/* 压缩状态指示器 */}
             {statusText && (
@@ -559,6 +538,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           onOpenAgents={onOpenAgents}
           onOpenSchedules={onOpenSchedules}
           onScheduleSend={onScheduleSend}
+          onOpenSettings={onOpenSettings}
         />
       </div>
 

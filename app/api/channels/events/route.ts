@@ -9,7 +9,9 @@ import { channelEventBus } from '@/lib/channels/channel-events'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const projectId = new URL(request.url).searchParams.get('projectId') || ''
+  const url = new URL(request.url)
+  const projectId = url.searchParams.get('projectId') || ''
+  const global = url.searchParams.get('global') === '1'
 
   const encoder = new TextEncoder()
 
@@ -27,10 +29,14 @@ export async function GET(request: NextRequest) {
         }
       }, 30_000)
 
-      // 订阅渠道事件
-      const unsubscribe = channelEventBus.subscribe(projectId, (event) => {
+      // 订阅渠道事件：全局模式接收所有项目，否则只订阅指定项目
+      const subscribe = global
+        ? channelEventBus.subscribeGlobal.bind(channelEventBus)
+        : (listener: Parameters<typeof channelEventBus.subscribe>[1]) => channelEventBus.subscribe(projectId, listener)
+
+      const unsubscribe = subscribe((event) => {
         try {
-          const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`
+          const sseData = `event: ${event.type}\ndata: ${JSON.stringify({ ...event.data, _projectId: event.projectId })}\n\n`
           controller.enqueue(encoder.encode(sseData))
         } catch {
           // 连接已关闭

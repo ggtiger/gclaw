@@ -302,10 +302,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       const pendingMsgs = buf.pendingMessages
       buf.pendingMessages = []
 
-      // 重新加载历史，加载完成后合并 pendingMessages
+      // 重新加载历史，加载完成后合并 pendingMessages（去重，避免磁盘已持久化的消息重复）
       loadHistory().then(() => {
         if (pendingMsgs.length > 0) {
-          setMessages(prev => [...prev, ...pendingMsgs])
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id))
+            const deduped = pendingMsgs.filter(m => !existingIds.has(m.id))
+            return deduped.length > 0 ? [...prev, ...deduped] : prev
+          })
         }
       })
     }
@@ -336,19 +340,18 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     }
   }, [])
 
-  // ---- 订阅渠道消息 SSE（微信等渠道的消息实时推送到对话框） ----
+  // ---- 订阅渠道消息 SSE（全局，接收所有项目的渠道事件） ----
   useEffect(() => {
-    if (!projectId) return
-
-    const channelEvtSource = new EventSource(
-      `/api/channels/events?projectId=${encodeURIComponent(projectId)}`
-    )
+    const channelEvtSource = new EventSource('/api/channels/events?global=1')
 
     channelEvtSource.addEventListener('channel_user_message', (e) => {
       try {
         const data = JSON.parse(e.data)
+        const pid = data._projectId as string
         if (data.message) {
-          setMessages(prev => [...prev, data.message])
+          if (pid === projectId) {
+            setMessages(prev => [...prev, data.message])
+          }
           const source = data.message.source
           const sourceName = data.message.sourceName
           if (source && source !== 'web') {
@@ -359,21 +362,26 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       } catch {}
     })
 
-    channelEvtSource.addEventListener('channel_start', () => {
-      updateState(projectId, b => {
-        b.sending = true
-        b.streamingBlocks = []
-        b.textBlockCounter = 0
-      })
-      setActive(projectId, true)
+    channelEvtSource.addEventListener('channel_start', (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        const pid = (data._projectId as string) || projectId
+        updateState(pid, b => {
+          b.sending = true
+          b.streamingBlocks = []
+          b.textBlockCounter = 0
+        })
+        setActive(pid, true)
+      } catch {}
     })
 
     channelEvtSource.addEventListener('channel_delta', (e) => {
       try {
         const data = JSON.parse(e.data)
+        const pid = (data._projectId as string) || projectId
         const content = data.content || ''
         if (!content) return
-        updateState(projectId, b => {
+        updateState(pid, b => {
           const last = b.streamingBlocks[b.streamingBlocks.length - 1]
           if (last?.type === 'text') {
             last.content += content
@@ -391,8 +399,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     channelEvtSource.addEventListener('channel_tool_use', (e) => {
       try {
         const data = JSON.parse(e.data)
+        const pid = (data._projectId as string) || projectId
         const toolUseId = data.toolUseId as string
-        updateState(projectId, b => {
+        updateState(pid, b => {
           const idx = b.streamingBlocks.findIndex(
             bl => bl.type === 'tool' && bl.toolUseId === toolUseId
           )
@@ -426,8 +435,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     channelEvtSource.addEventListener('channel_tool_result', (e) => {
       try {
         const data = JSON.parse(e.data)
+        const pid = (data._projectId as string) || projectId
         const resultId = data.toolUseId as string
-        updateState(projectId, b => {
+        updateState(pid, b => {
           const idx = b.streamingBlocks.findIndex(
             bl => bl.type === 'tool' && bl.toolUseId === resultId
           )
@@ -451,18 +461,23 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     channelEvtSource.addEventListener('channel_done', (e) => {
       try {
         const data = JSON.parse(e.data)
+        const pid = (data._projectId as string) || projectId
         if (data.message) {
-          setMessages(prev => [...prev, data.message])
+          if (pid === projectId) {
+            setMessages(prev => [...prev, data.message])
+          }
           const preview = data.message.content?.slice(0, 80) || '任务已完成'
           sendDesktopNotification('AI助理 回复完成', preview)
         }
       } catch {}
-      updateState(projectId, b => {
+      const data2 = JSON.parse((e as MessageEvent).data)
+      const pid2 = (data2._projectId as string) || projectId
+      updateState(pid2, b => {
         b.sending = false
         b.streamingBlocks = []
         b.textBlockCounter = 0
       })
-      setActive(projectId, false)
+      setActive(pid2, false)
     })
 
     channelEvtSource.addEventListener('channel_error', (e) => {
@@ -593,6 +608,13 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     let finalContent = fullContent || accContent || (data.fullContent as string) || ''
     if (NOISE_PATTERN.test(finalContent)) finalContent = ''
 
+    // 立即清理 buffer（同步），防止切换项目时读到旧状态
+    buf.streamingBlocks = []
+    buf.textBlockCounter = 0
+    buf.lastStats = stats
+    buf.sending = false
+    setActive(pid, false)
+
     if (contentBlocks.length > 0 || (finalContent.trim() && !NOISE_PATTERN.test(finalContent))) {
       const assistantMsg: ChatMessage = {
         id: `msg_${Date.now()}_assistant`,
@@ -606,25 +628,24 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       // 窗口隐藏时推送桌面通知
       const preview = finalContent.slice(0, 80) || '任务已完成'
       sendDesktopNotification('AI助理 回复完成', preview)
-      // 延迟一帧加入 messages，确保流式内容先渲染出来
+      // 不再推入 pendingMessages：后端已持久化，切换回来时 loadHistory 会取到
+      // 延迟一帧更新 React state，确保流式内容先渲染出来
       requestAnimationFrame(() => {
         if (currentProjectIdRef.current === pid) {
           setMessages(prev => [...prev, assistantMsg])
-        } else {
-          getBuffer(pid).pendingMessages.push(assistantMsg)
+          // 同步 React 状态
+          setStreamingBlocks([])
+          setSending(false)
+          setLastStats(stats)
         }
-        updateState(pid, b => {
-          b.streamingBlocks = []
-          b.textBlockCounter = 0
-          b.lastStats = stats
-        })
       })
     } else {
-      updateState(pid, b => {
-        b.streamingBlocks = []
-        b.textBlockCounter = 0
-        b.lastStats = stats
-      })
+      // 无内容，直接同步 React state
+      if (currentProjectIdRef.current === pid) {
+        setStreamingBlocks([])
+        setSending(false)
+        setLastStats(stats)
+      }
     }
   }
 
@@ -858,16 +879,19 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         }
       }
     } finally {
-      // 延迟清除 sending 状态，确保流式内容有至少一帧的渲染机会
-      requestAnimationFrame(() => {
-        updateState(sendProjectId, b => {
-          b.sending = false
-          b.streamingBlocks = []
-        })
-        setActive(sendProjectId, false)
-      })
+      // 同步清理 buffer（防止切换项目时读到旧状态）
       const b = getBuffer(sendProjectId)
+      b.sending = false
+      b.streamingBlocks = []
       delete (b as StreamBuffer & { _controller?: AbortController })._controller
+      setActive(sendProjectId, false)
+      // 延迟一帧同步 React state，确保流式内容先渲染出来
+      requestAnimationFrame(() => {
+        if (currentProjectIdRef.current === sendProjectId) {
+          setSending(false)
+          setStreamingBlocks([])
+        }
+      })
     }
   }, [updateState])
 
@@ -1083,14 +1107,17 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         console.error('[Relay] Error:', err)
       }
     } finally {
+      const b = getBuffer(targetProjectId)
+      b.sending = false
+      b.streamingBlocks = []
+      delete (b as StreamBuffer & { _controller?: AbortController })._controller
+      setActive(targetProjectId, false)
       requestAnimationFrame(() => {
-        updateState(targetProjectId, b => {
-          b.sending = false
-          b.streamingBlocks = []
-        })
-        setActive(targetProjectId, false)
+        if (currentProjectIdRef.current === targetProjectId) {
+          setSending(false)
+          setStreamingBlocks([])
+        }
       })
-      delete (getBuffer(targetProjectId) as StreamBuffer & { _controller?: AbortController })._controller
     }
   }, [updateState])
 

@@ -120,12 +120,14 @@ export async function* executeChat(
   const globalSettings = getGlobalSettings()
   const providerConfig = resolveProviderConfig(projectId)
 
-  // openai-compatible 供应商优先使用 provider 配置的模型名
+  // 模型优先级：options > 项目设置 > 全局默认模型
   let model = options.model || settings.model || globalSettings.defaultModel || undefined
+  // openai-compatible 供应商：SDK 发的模型名会被代理替换为供应商配置的模型名
+  // 因此这里不需要覆盖 model，但记录日志方便排查
   if (providerConfig.providerType === 'openai-compatible' && providerConfig.providerId) {
     const provider = (globalSettings.providers || []).find(p => p.id === providerConfig.providerId)
     if (provider?.model) {
-      model = provider.model
+      logger.info(`[GClaw] OpenAI-compatible 代理将替换模型: ${model} → ${provider.model}`)
     }
   }
   const sessionId = options.sessionId || settings.sessionId || undefined

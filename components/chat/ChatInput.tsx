@@ -1,11 +1,20 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen, Clock } from 'lucide-react'
+import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen, Clock, ChevronDown, Check } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
 import { SchedulePicker } from './SchedulePicker'
 import type { ChatAttachment } from '@/types/chat'
 import type { AgentInfo } from '@/types/skills'
+
+/** 模型 ID → 短名称（按钮显示） */
+function shortModelName(id: string): string {
+  if (!id) return ''
+  const m = id.match(/^claude-(sonnet|opus|haiku)-(\d+(?:-\d+)*)/)
+  if (m) return m[1][0].toUpperCase() + m[1].slice(1) + ' ' + m[2].replace(/-/g, '.')
+  if (id.toLowerCase().startsWith('deepseek')) return 'DeepSeek'
+  return id.length > 16 ? id.slice(0, 14) + '..' : id
+}
 
 interface Template {
   id: string
@@ -37,14 +46,20 @@ interface ChatInputProps {
   onOpenAgents?: () => void
   onScheduleSend?: (message: string, schedule: { mode: 'once' | 'interval'; runAt?: string; intervalMs?: number; label: string }) => void
   onOpenSchedules?: () => void
+  onOpenSettings?: () => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [optimizing, setOptimizing] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  const [currentModel, setCurrentModel] = useState('')
+  const [modelList, setModelList] = useState<{ id: string; name: string }[]>([])
+  const [showModelPicker, setShowModelPicker] = useState(false)
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [projectProviderId, setProjectProviderId] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
@@ -89,6 +104,49 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
         setMentionItems(items)
       })
       .catch(() => {})
+  }, [projectId])
+
+  // ── 模型选择器：加载当前模型 + 供应商 ──
+  useEffect(() => {
+    if (!projectId) return
+    fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
+      .then(r => r.json())
+      .then(data => {
+        setCurrentModel(data.model || data.defaultModel || '')
+        setProjectProviderId(data.providerId || data.activeProviderId || '')
+        setModelList([]) // 切换项目时清空缓存，重新拉取
+      })
+      .catch(() => {})
+  }, [projectId])
+
+  const handleToggleModelPicker = useCallback(async () => {
+    if (showModelPicker) { setShowModelPicker(false); return }
+    setShowModelPicker(true)
+    if (modelList.length > 0) return
+    setLoadingModels(true)
+    try {
+      const body: Record<string, string> = {}
+      if (projectProviderId) body.providerId = projectProviderId
+      const res = await fetch('/api/settings/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.models) setModelList(data.models)
+    } catch {} finally { setLoadingModels(false) }
+  }, [showModelPicker, modelList.length, projectProviderId])
+
+  const handleSelectModel = useCallback(async (modelId: string) => {
+    setCurrentModel(modelId)
+    setShowModelPicker(false)
+    if (projectId) {
+      fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId }),
+      }).catch(() => {})
+    }
   }, [projectId])
 
   // 过滤匹配的 mention items
@@ -489,8 +547,63 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
             )}
           </div>
 
-          {/* 发送 / 停止按钮 */}
-          {sending ? (
+          {/* 模型选择器 + 发送/停止按钮 */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {projectId && (
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    if (!currentModel && onOpenSettings) { onOpenSettings(); return }
+                    handleToggleModelPicker()
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1.5 text-[11px] rounded-md transition-colors max-w-[140px] ${
+                    currentModel
+                      ? 'bg-slate-100 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      : 'bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/25'
+                  }`}
+                  title={currentModel || '点击设置模型'}
+                  type="button"
+                >
+                  <span className="truncate">{currentModel ? shortModelName(currentModel) : '设置模型'}</span>
+                  {currentModel && <ChevronDown size={11} className={`flex-shrink-0 transition-transform ${showModelPicker ? 'rotate-180' : ''}`} />}
+                </button>
+                {showModelPicker && currentModel && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowModelPicker(false)} />
+                    <div className="absolute bottom-full right-0 mb-2 z-50 w-56 max-h-64 overflow-y-auto bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-lg border border-gray-200/60 dark:border-white/10 shadow-lg py-1">
+                      {loadingModels ? (
+                        <div className="px-3 py-4 text-center text-xs text-slate-400 animate-pulse">加载模型列表...</div>
+                      ) : modelList.length === 0 ? (
+                        <button
+                          onClick={() => { setShowModelPicker(false); onOpenSettings?.() }}
+                          className="w-full px-3 py-3 text-center text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer"
+                          type="button"
+                        >
+                          暂无可用模型，前往设置 &rarr;
+                        </button>
+                      ) : (
+                        modelList.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => handleSelectModel(m.id)}
+                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                              m.id === currentModel
+                                ? 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                                : 'text-[var(--color-text)] hover:bg-gray-50 dark:hover:bg-white/5'
+                            }`}
+                            type="button"
+                          >
+                            <Check size={12} className={m.id === currentModel ? 'text-purple-600 dark:text-purple-400 flex-shrink-0' : 'text-transparent flex-shrink-0'} />
+                            <span className="truncate">{m.name || m.id}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {sending ? (
             <button
               onClick={onAbort}
               className="w-9 h-9 bg-red-500 hover:bg-red-600 text-white rounded-lg flex items-center justify-center transition-colors shadow-sm"
@@ -510,6 +623,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
               <Send size={16} />
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

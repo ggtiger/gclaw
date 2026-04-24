@@ -9,7 +9,7 @@ import path from 'path'
 import crypto from 'crypto'
 import https from 'https'
 import http from 'http'
-import { executeChat, type AttachmentData } from '@/lib/claude/process-manager'
+import { executeChat, isProjectRunning, type AttachmentData } from '@/lib/claude/process-manager'
 import { addMessage } from '@/lib/store/messages'
 import { channelEventBus } from './channel-events'
 import type { ChatMessage, ChatAttachment, MessageSource } from '@/types/chat'
@@ -235,6 +235,38 @@ async function downloadChannelAttachment(
  * 处理来自渠道的消息，调用 Agent 获取回复
  * 同时通过 channelEventBus 实时推送事件到 Web UI
  */
+/** 返回忙碌回复（持久化消息 + SSE 推送） */
+function replyBusy(projectId: string, source: MessageSource, channelName: string, incomingText: string): string {
+  const busyReply = '当前有会话正在执行，请稍后再试。'
+  logger.info(`[ChannelService] 项目 ${projectId} 有执行中的会话，返回忙碌提示`)
+
+  // 持久化用户消息
+  const userMsg: ChatMessage = {
+    id: `msg_${Date.now()}_channel_user`,
+    role: 'user',
+    content: incomingText,
+    messageType: 'text',
+    createdAt: new Date().toISOString(),
+    source,
+    sourceName: channelName,
+  }
+  addMessage(projectId, userMsg)
+  channelEventBus.emit(projectId, { type: 'channel_user_message', data: { message: userMsg } })
+
+  // 持久化忙碌回复
+  const assistantMsg: ChatMessage = {
+    id: `msg_${Date.now()}_channel_busy`,
+    role: 'assistant',
+    content: busyReply,
+    messageType: 'text',
+    createdAt: new Date().toISOString(),
+  }
+  addMessage(projectId, assistantMsg)
+  channelEventBus.emit(projectId, { type: 'channel_done', data: { message: assistantMsg } })
+
+  return busyReply
+}
+
 export async function handleChannelMessage(
   projectId: string,
   channel: ChannelConfig,
@@ -242,6 +274,11 @@ export async function handleChannelMessage(
   attachments?: ChatAttachment[],
 ): Promise<string> {
   const source = channel.type as MessageSource
+
+  // 快速检查：项目有执行中的会话，直接返回忙碌
+  if (isProjectRunning(projectId)) {
+    return replyBusy(projectId, source, channel.name, incomingText)
+  }
   // 下载所有附件 → 保存本地 → URL 替换为本地路径
   let attachmentData: AttachmentData[] | undefined
   if (attachments && attachments.length > 0) {
@@ -286,6 +323,22 @@ export async function handleChannelMessage(
     type: 'channel_user_message',
     data: { message: userMsg },
   })
+
+  // 附件下载后再次检查（防止下载期间新会话启动）
+  if (isProjectRunning(projectId)) {
+    const busyReply = '当前有会话正在执行，请稍后再试。'
+    logger.info(`[ChannelService] 项目 ${projectId} 下载附件后发现会话执行中，返回忙碌提示`)
+    const assistantMsg: ChatMessage = {
+      id: `msg_${Date.now()}_channel_busy`,
+      role: 'assistant',
+      content: busyReply,
+      messageType: 'text',
+      createdAt: new Date().toISOString(),
+    }
+    addMessage(projectId, assistantMsg)
+    channelEventBus.emit(projectId, { type: 'channel_done', data: { message: assistantMsg } })
+    return busyReply
+  }
 
   // 调用 Agent，收集完整回复，同时流式推送到前端
   let fullContent = ''

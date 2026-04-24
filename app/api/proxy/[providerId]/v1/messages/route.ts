@@ -640,9 +640,9 @@ export async function POST(
   // 转换为 OpenAI 格式
   const openaiBody = convertAnthropicToOpenAI(body)
 
-  // 模型名映射：SDK 发送 Claude 模型名（claude-haiku-*、claude-sonnet-*），
-  // 需替换为 provider 配置的上游模型名
-  const upstreamModel = provider.model || getGlobalSettings().defaultModel || body.model
+  // 模型名映射：供应商配了 model 则替换（SDK 发 Claude 模型名需转为上游模型名），
+  // 否则保持请求原样（项目级 model 直接透传）
+  const upstreamModel = provider.model || body.model
   openaiBody.model = upstreamModel
 
   const baseUrl = provider.baseUrl.replace(/\/+$/, '')
