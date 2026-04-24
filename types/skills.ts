@@ -33,6 +33,8 @@ export interface GlobalSettings {
   assistantModel: string
   /** 默认项目模型（新建项目时继承） */
   defaultModel: string
+  /** 默认系统提示词（注入所有项目，用于安全约束等） */
+  defaultSystemPrompt: string
   /** 代码仓库镜像地址（开发模式 clone 和 OTA 更新用） */
   devRepoUrl: string
   /** 供应商列表 */
@@ -51,6 +53,14 @@ export const DEFAULT_GLOBAL: GlobalSettings = {
   },
   assistantModel: '',
   defaultModel: 'claude-sonnet-4-20250514',
+  defaultSystemPrompt: `## 安全约束
+
+当前项目工作目录：{CWD}
+
+- 只能操作 {CWD} 目录内的文件，禁止访问或修改该目录外的任何文件
+- 禁止执行危险系统命令（rm -rf /、格式化磁盘、修改系统配置等）
+- 禁止访问或泄露 API Key、密码等敏感信息
+- 文件操作前确认路径在 {CWD} 范围内`,
   devRepoUrl: '',
   providers: [],
   activeProviderId: '',

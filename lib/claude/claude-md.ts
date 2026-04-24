@@ -37,7 +37,8 @@ export function syncProjectClaudeMd(
   enabledSkills: string[],
   userId?: string,
   projectId?: string,
-  userMessage?: string
+  userMessage?: string,
+  defaultSystemPrompt?: string
 ): void {
   // ── 初始化项目的 .learnings/ 目录（从技能模板复制）──
   initProjectLearnings(projectCwd, enabledSkills)
@@ -45,6 +46,11 @@ export function syncProjectClaudeMd(
   const claudeMdPath = path.join(projectCwd, 'CLAUDE.md')
 
   const sections: string[] = []
+
+  // ── 全局默认提示词（安全约束等，所有项目共享）──
+  if (defaultSystemPrompt?.trim()) {
+    sections.push(defaultSystemPrompt.trim().replace(/\{CWD\}/g, projectCwd))
+  }
 
   // ── 系统提示词（Soul）──
   if (systemPrompt.trim()) {
@@ -81,31 +87,39 @@ export function syncProjectClaudeMd(
     }
   }
 
-  // GClaw 注入内容的边界标记
-  const GCLAW_BEGIN = '<!-- GCLAW-INJECTION-BEGIN -->'
-  const GCLAW_END = '<!-- GCLAW-INJECTION-END -->'
-
-  // 写入或清理 GClaw 注入区域（保留第三方原有的 CLAUDE.md 内容）
+  // 写入或清理 CLAUDE.md
   if (sections.length > 0) {
     const gclawContent = sections.join('\n\n---\n\n') + '\n'
-    const injectedBlock = `${GCLAW_BEGIN}\n${gclawContent}${GCLAW_END}`
+    const GCLAW_BEGIN = '<!-- GCLAW-INJECTION-BEGIN -->'
+    const GCLAW_END = '<!-- GCLAW-INJECTION-END -->'
+    const markerRegex = new RegExp(`${GCLAW_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n.*?${GCLAW_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 's')
+
     try {
       if (!fs.existsSync(projectCwd)) {
         fs.mkdirSync(projectCwd, { recursive: true })
       }
-      // 读取现有文件，分离第三方内容和 GClaw 注入区域
       const existing = fs.existsSync(claudeMdPath)
         ? fs.readFileSync(claudeMdPath, 'utf-8')
         : ''
-      // 提取第三方原有的内容（去掉旧的 GClaw 注入区域）
-      const originalContent = existing
-        .replace(new RegExp(`${GCLAW_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n.*?${GCLAW_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 's'), '')
-        .trim()
-      // 组合：第三方内容在前，GClaw 注入在后
-      const finalContent = originalContent
-        ? `${originalContent}\n\n${injectedBlock}\n`
-        : `${injectedBlock}\n`
-      // 仅在内容变化时写入
+      // 去掉旧的标记区域
+      const stripped = existing.replace(markerRegex, '').trim()
+
+      // 检测旧版无标记的 GClaw 内容（包含已知 section 签名）
+      const GCLAW_SIGNATURES = ['## 用户记忆总纲', '## 你管理的项目', '## 相关记忆']
+      const isOldGclawContent = stripped.length > 0 && GCLAW_SIGNATURES.some(s => stripped.includes(s))
+
+      let finalContent: string
+      if (isOldGclawContent) {
+        // 旧版 GClaw 生成的无标记内容 → 整体替换
+        finalContent = `${GCLAW_BEGIN}\n${gclawContent}${GCLAW_END}\n`
+      } else if (stripped) {
+        // 真正的用户自写内容 → 保留 + 追加标记区域
+        finalContent = `${stripped}\n\n${GCLAW_BEGIN}\n${gclawContent}${GCLAW_END}\n`
+      } else {
+        // 全新文件 → 直接写标记区域
+        finalContent = `${GCLAW_BEGIN}\n${gclawContent}${GCLAW_END}\n`
+      }
+
       if (existing !== finalContent) {
         fs.writeFileSync(claudeMdPath, finalContent, 'utf-8')
       }
@@ -114,14 +128,15 @@ export function syncProjectClaudeMd(
     }
   } else {
     // 无 GClaw 内容时：仅清除注入区域，保留第三方内容
+    const GCLAW_BEGIN = '<!-- GCLAW-INJECTION-BEGIN -->'
+    const GCLAW_END = '<!-- GCLAW-INJECTION-END -->'
+    const markerRegex = new RegExp(`${GCLAW_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n.*?${GCLAW_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 's')
     try {
       if (fs.existsSync(claudeMdPath)) {
         const existing = fs.readFileSync(claudeMdPath, 'utf-8')
-        const cleaned = existing
-          .replace(new RegExp(`${GCLAW_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n.*?${GCLAW_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 's'), '')
-          .trim()
+        const cleaned = existing.replace(markerRegex, '').trim()
         if (cleaned) {
-          // 还有第三方内容，保留文件
+          // 还有第三方内容，保留文件（去掉标记，纯用户内容）
           if (existing.trim() !== cleaned) {
             fs.writeFileSync(claudeMdPath, cleaned + '\n', 'utf-8')
           }

@@ -55,6 +55,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         security: data.security || { sensitiveWords: [], retentionDays: 0 },
         assistantModel: data.assistantModel || '',
         defaultModel: data.defaultModel || 'claude-sonnet-4-20250514',
+        defaultSystemPrompt: data.defaultSystemPrompt ?? '',
         devRepoUrl: data.devRepoUrl || '',
         providers: data.providers || [],
         activeProviderId: data.activeProviderId || '',
@@ -677,6 +678,23 @@ function SettingsTabContent({
         )}
         <div className="text-xs mt-1 text-gray-400">
           新建项目时自动使用此模型，项目模型留空时也会回退到此值
+        </div>
+      </div>
+
+      {/* 默认系统提示词 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+          默认系统提示词
+        </label>
+        <textarea
+          value={settings.defaultSystemPrompt ?? ''}
+          onChange={e => updateField('defaultSystemPrompt', e.target.value)}
+          placeholder="所有项目共享的安全约束提示词，留空不注入"
+          rows={6}
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-2 outline-none resize-y min-h-[80px]"
+        />
+        <div className="text-xs mt-1 text-gray-400">
+          注入所有项目的 CLAUDE.md，用于安全约束（如限制操作目录、禁止危险命令）。留空则使用内置默认值
         </div>
       </div>
 

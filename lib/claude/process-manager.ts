@@ -178,7 +178,7 @@ export async function* executeChat(
   // 同步项目 CLAUDE.md（系统提示词 + 用户记忆总纲 + .learnings 摘要 + 主动检索记忆）和初始化 .learnings/ 模板
   const projectInfo = getProjectById(projectId)
   const userId = projectInfo?.ownerId
-  syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills, userId, projectId, message)
+  syncProjectClaudeMd(sdkCwd, settings.systemPrompt || '', enabledSkills, userId, projectId, message, globalSettings.defaultSystemPrompt || '')
 
   // 加载技能 .env 环境变量，注入 SDK env
   const skillEnv = loadSkillEnvVars(enabledSkills)
@@ -249,36 +249,24 @@ export async function* executeChat(
       }
     }
 
-    // Bash 命令：检查是否包含写入项目目录外的重定向/管道
+    // Bash 命令：提取所有绝对路径，检查是否有写入项目目录外的操作
     if (toolName === 'Bash') {
       const command = String(toolInput.command || '')
       if (!command) return null
-      // 检测明显的绝对路径写入模式（> /path, >> /path, tee /path 等）
-      const absoluteWritePatterns = [
-        /\s*>\s*\//,          // > /path
-        /\s*>>\s*\//,         // >> /path
-        /\btee\s+\//,         // tee /path
-        /\bcp\s+.*\s+\//,     // cp src /path
-        /\bmv\s+.*\s+\//,     // mv src /path
-        /\binstall\s+.*\s+\//, // install ... /path
-      ]
-      for (const pattern of absoluteWritePatterns) {
-        if (pattern.test(command)) {
-          // 允许写入 /tmp 和项目目录内的路径
-          const tmpDir = path.resolve('/tmp')
-          // 提取可能的目标路径做进一步检查
-          const pathMatch = command.match(/(?:[>]{1,2}|tee\s+|cp\s+\S+\s+|mv\s+\S+\s+)(\/[^\s;|&]+)/)
-          if (pathMatch) {
-            const targetPath = path.resolve(pathMatch[1])
-            if (targetPath.startsWith(tmpDir + path.sep) || targetPath === tmpDir) {
-              continue // /tmp 是允许的
-            }
-            if (targetPath.startsWith(resolvedCwd + path.sep) || targetPath === resolvedCwd) {
-              continue // 项目目录内是允许的
-            }
-            return `命令尝试写入项目目录外的路径: ${pathMatch[1]}`
-          }
-        }
+
+      // 允许的系统/临时路径前缀（只读或安全的写入目标）
+      const ALLOWED_PREFIXES = ['/tmp', '/dev/null', '/usr', '/bin', '/sbin', '/lib', '/etc', '/var', '/proc', '/sys', '/opt']
+
+      // 提取命令中所有绝对路径
+      const absPaths = [...command.matchAll(/(?:^|[\s;|&()'"`])(\/[a-zA-Z0-9_.\/-]+)/g)].map(m => m[1])
+      for (const rawPath of absPaths) {
+        const resolved = path.resolve(rawPath)
+        // 跳过允许的系统路径
+        if (ALLOWED_PREFIXES.some(p => resolved.startsWith(p + '/') || resolved === p)) continue
+        // 跳过项目目录内的路径
+        if (resolved.startsWith(resolvedCwd + path.sep) || resolved === resolvedCwd) continue
+        // 路径在项目目录外且不是系统路径 → 阻止
+        return `命令引用了项目目录外的路径: ${rawPath}（项目目录: ${resolvedCwd}）`
       }
     }
 
