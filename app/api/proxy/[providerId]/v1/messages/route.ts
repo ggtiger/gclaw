@@ -648,9 +648,12 @@ export async function POST(
   const baseUrl = provider.baseUrl.replace(/\/+$/, '')
   const upstreamUrl = `${baseUrl}/v1/chat/completions`
 
-  logger.info(`[Proxy] ${provider.name} → ${upstreamUrl} | model=${body.model} → ${upstreamModel} | stream=${openaiBody.stream} | msgs=${openaiBody.messages.length}`)
+  const requestBody = JSON.stringify(openaiBody)
+  const bodySizeKB = (requestBody.length / 1024).toFixed(1)
+  logger.info(`[Proxy] ${provider.name} → ${upstreamUrl} | model=${body.model} → ${upstreamModel} | stream=${openaiBody.stream} | msgs=${openaiBody.messages.length} | body=${bodySizeKB}KB | tools=${openaiBody.tools?.length || 0}`)
 
   // 转发到上游
+  const ttfbStart = Date.now()
   let upstreamResp: Response
   try {
     upstreamResp = await fetch(upstreamUrl, {
@@ -659,7 +662,7 @@ export async function POST(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${provider.apiKey}`,
       },
-      body: JSON.stringify(openaiBody),
+      body: requestBody,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -668,6 +671,8 @@ export async function POST(
   }
 
   // 上游错误 — 按状态码映射为 Anthropic 错误类型
+  const ttfb = Date.now() - ttfbStart
+  logger.info(`[Proxy] TTFB: ${ttfb}ms | status=${upstreamResp.status} | model=${upstreamModel}`)
   if (!upstreamResp.ok) {
     const errText = await upstreamResp.text().catch(() => '')
     logger.error(`[Proxy] 上游返回 ${upstreamResp.status}: ${errText.slice(0, 500)}`)

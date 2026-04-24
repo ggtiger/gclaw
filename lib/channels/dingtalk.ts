@@ -11,6 +11,8 @@ interface DingtalkMessage {
   text?: { content: string }
   picture?: { downloadCode: string; fileSize: number }
   richText?: { text: string }
+  voice?: { downloadCode: string; duration: number }
+  audio?: { downloadCode: string; duration: number }
   msgId: string
   createAt: string
   conversationType: string // '1'=单聊, '2'=群聊
@@ -68,6 +70,11 @@ export function parseDingtalkMessage(body: Record<string, unknown>): {
     imageUrl = msg.picture.downloadCode
   } else if (msg.msgtype === 'richText' && msg.richText?.text) {
     text = msg.richText.text.trim()
+  } else if (msg.msgtype === 'voice' || msg.msgtype === 'audio') {
+    const duration = msg.voice?.duration || msg.audio?.duration
+    text = duration ? `[语音消息 ${Math.ceil(duration / 1000)}秒]` : '[语音消息]'
+  } else if (msg.msgtype) {
+    text = `[${msg.msgtype}消息]`
   }
 
   return {

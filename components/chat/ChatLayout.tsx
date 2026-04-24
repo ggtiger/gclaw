@@ -609,7 +609,7 @@ export function ChatLayout() {
       <Modal open={modalOpen === 'channels'} onClose={() => setModalOpen(null)} title="渠道管理">
         <ChannelsPanel projectId={project.currentId} />
       </Modal>
-      <Modal open={modalOpen === 'settings'} onClose={() => setModalOpen(null)} title="设置">
+      <Modal open={modalOpen === 'settings'} onClose={() => setModalOpen(null)} title="设置" wide persistent noScroll>
         <SettingsPanel
           projectId={project.currentId}
           backgroundImage={backgroundImage}

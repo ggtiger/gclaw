@@ -38,6 +38,10 @@ interface RobotMessage {
     fileName?: string
     fileSize?: number
     fileType?: string
+    /** 语音转文字结果 */
+    recognition?: string
+    /** 语音时长（毫秒） */
+    duration?: number
     /** 富文本内容数组，每个元素是 text 或 picture */
     richText?: Array<{
       type?: string
@@ -235,6 +239,15 @@ class DingtalkStreamService {
           fileName: data.content.fileName || 'file',
         }],
       }
+    }
+
+    // 语音消息（纯文字，优先用语音转文字结果）
+    if (data.msgtype === 'audio' && data.content) {
+      const recognition = data.content.recognition?.trim()
+      const duration = data.content.duration ? Math.ceil(data.content.duration / 1000) : 0
+      const suffix = duration ? ` (时长: ${duration}秒)` : ''
+      const text = recognition ? `[语音消息] ${recognition}${suffix}` : `[语音消息]${suffix}`
+      return { type: 'audio', text, attachments: [] }
     }
 
     // 富文本（可能含文字+图片混合）

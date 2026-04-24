@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Loader, Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw, FileText, Code2, Plus, Trash2, Check, Server } from 'lucide-react'
+import { Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw, FileText, Code2, Plus, Trash2, Check, Server, Pencil } from 'lucide-react'
 import type { GlobalSettings, ModelProvider } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { LogsPanel } from './LogsPanel'
@@ -81,8 +81,23 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     setLoadingModels(true)
     try {
       const body: Record<string, string> = {}
-      if (providerId) {
-        body.providerId = providerId
+      const pid = providerId || settings.activeProviderId
+      if (pid) {
+        // 从本地状态查找供应商凭据
+        const provider = (settings.providers || []).find(p => p.id === pid)
+        if (provider) {
+          if (provider.apiKey.startsWith('****')) {
+            // 已保存的供应商，apiKey 脱敏，需要服务端从磁盘读取
+            body.providerId = pid
+          } else {
+            // 新增未保存的供应商，apiKey 是明文，直接传凭据
+            body.apiBaseUrl = provider.baseUrl
+            body.apiKey = provider.apiKey
+            body.providerType = provider.type
+          }
+        } else {
+          body.providerId = pid
+        }
       } else {
         if (apiKeyRawValue) body.apiKey = apiKeyRawValue
         if (settings.apiBaseUrl) body.apiBaseUrl = settings.apiBaseUrl
@@ -150,9 +165,9 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const tabs: { key: SettingsTab; icon: React.ReactNode; label: string; adminOnly: boolean }[] = [
     { key: 'preferences', icon: <Palette size={14} />, label: '偏好', adminOnly: false },
     { key: 'defaultSkills', icon: <Zap size={14} />, label: '默认技能', adminOnly: true },
+    { key: 'settings', icon: <SettingsIcon size={14} />, label: '模型设置', adminOnly: true },
     { key: 'prompts', icon: <FileText size={14} />, label: '提示词', adminOnly: true },
     { key: 'devMode', icon: <Code2 size={14} />, label: '开发模式', adminOnly: true },
-    { key: 'settings', icon: <SettingsIcon size={14} />, label: '设置', adminOnly: true },
     { key: 'audit', icon: <Shield size={14} />, label: '审计日志', adminOnly: true },
     { key: 'logs', icon: <Terminal size={14} />, label: '运行日志', adminOnly: true },
     { key: 'users', icon: <Users size={14} />, label: '用户管理', adminOnly: true },
@@ -163,17 +178,17 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin)
 
   return (
-    <div>
-      {/* Tab 栏 */}
-      <div className="flex px-4 pt-3 gap-1 overflow-x-auto scrollbar-none">
+    <div className="flex h-full overflow-hidden">
+      {/* 左侧 Tab 侧边栏 - 固定不滚动 */}
+      <div className="flex flex-col w-36 shrink-0 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-black/20 py-2 px-2">
         {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-3 rounded-lg text-xs font-medium cursor-pointer transition-colors text-left ${
               activeTab === tab.key
                 ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-white/5'
             }`}
           >
             {tab.icon}
@@ -182,43 +197,45 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
         ))}
       </div>
 
-      {/* Tab 内容 */}
-      {activeTab === 'preferences' ? (
-        <PreferencesPanel backgroundImage={backgroundImage} onBackgroundChange={onBackgroundChange} />
-      ) : activeTab === 'defaultSkills' ? (
-        <DefaultSkillsPanel />
-      ) : activeTab === 'prompts' ? (
-        <PromptsPanel />
-      ) : activeTab === 'audit' ? (
-        <AuditLogPanel />
-      ) : activeTab === 'logs' ? (
-        <LogsPanel />
-      ) : activeTab === 'users' ? (
-        <UsersPanel />
-      ) : activeTab === 'security' ? (
-        <SecurityPanel />
-      ) : activeTab === 'about' ? (
-        <AboutPanel />
-      ) : activeTab === 'devMode' ? (
-        <DevModePanel />
-      ) : activeTab === 'settings' ? (
-        <SettingsTabContent
-          settings={settings}
-          apiKeyRawValue={apiKeyRawValue}
-          showApiKey={showApiKey}
-          models={models}
-          loadingModels={loadingModels}
-          dirty={dirty}
-          saving={saving}
-          setApiKeyRawValue={setApiKeyRawValue}
-          setShowApiKey={setShowApiKey}
-          updateField={updateField}
-          fetchModels={fetchModels}
-          saveSettings={saveSettings}
-          setActiveTab={setActiveTab}
-          toast={toast}
-        />
-      ) : null}
+      {/* 右侧内容区 */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'preferences' ? (
+          <PreferencesPanel backgroundImage={backgroundImage} onBackgroundChange={onBackgroundChange} />
+        ) : activeTab === 'defaultSkills' ? (
+          <DefaultSkillsPanel />
+        ) : activeTab === 'prompts' ? (
+          <PromptsPanel />
+        ) : activeTab === 'audit' ? (
+          <AuditLogPanel />
+        ) : activeTab === 'logs' ? (
+          <LogsPanel />
+        ) : activeTab === 'users' ? (
+          <UsersPanel />
+        ) : activeTab === 'security' ? (
+          <SecurityPanel />
+        ) : activeTab === 'about' ? (
+          <AboutPanel />
+        ) : activeTab === 'devMode' ? (
+          <DevModePanel />
+        ) : activeTab === 'settings' ? (
+          <SettingsTabContent
+            settings={settings}
+            apiKeyRawValue={apiKeyRawValue}
+            showApiKey={showApiKey}
+            models={models}
+            loadingModels={loadingModels}
+            dirty={dirty}
+            saving={saving}
+            setApiKeyRawValue={setApiKeyRawValue}
+            setShowApiKey={setShowApiKey}
+            updateField={updateField}
+            fetchModels={fetchModels}
+            saveSettings={saveSettings}
+            setActiveTab={setActiveTab}
+            toast={toast}
+          />
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -244,7 +261,7 @@ interface SettingsTabContentProps {
 
 function SettingsTabContent({
   settings,
-  apiKeyRawValue,
+  apiKeyRawValue: _apiKeyRawValue,
   showApiKey,
   models,
   loadingModels,
@@ -259,7 +276,8 @@ function SettingsTabContent({
   toast,
 }: SettingsTabContentProps) {
   const [showAddProvider, setShowAddProvider] = useState(false)
-  const [newProvider, setNewProvider] = useState({
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
+  const [providerForm, setProviderForm] = useState({
     name: '',
     type: 'anthropic' as 'anthropic' | 'openai-compatible',
     baseUrl: '',
@@ -267,28 +285,61 @@ function SettingsTabContent({
     model: '',
   })
   const [showProviderApiKey, setShowProviderApiKey] = useState<Record<string, boolean>>({})
+  const [providerModels, setProviderModels] = useState<{ id: string; name: string }[]>([])
+  const [loadingProviderModels, setLoadingProviderModels] = useState(false)
 
   const hasActiveProvider = !!settings.activeProviderId
 
   const providers = settings.providers || []
 
-  const handleAddProvider = () => {
-    if (!newProvider.name.trim()) {
+  const resetProviderForm = () => {
+    setProviderForm({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '' })
+    setEditingProviderId(null)
+    setShowAddProvider(false)
+    setProviderModels([])
+  }
+
+  const handleStartEdit = (p: ModelProvider) => {
+    setEditingProviderId(p.id)
+    setShowAddProvider(false)
+    setProviderForm({ name: p.name, type: p.type, baseUrl: p.baseUrl, apiKey: '', model: p.model || '' })
+  }
+
+  const handleSaveProvider = () => {
+    if (!providerForm.name.trim()) {
       toast('请填写供应商名称', 'error')
       return
     }
-    if (!newProvider.baseUrl.trim()) {
+    if (!providerForm.baseUrl.trim()) {
       toast('请填写 Base URL', 'error')
       return
     }
-    const id = crypto.randomUUID()
-    const updated = [
-      ...providers,
-      { id, name: newProvider.name.trim(), type: newProvider.type, baseUrl: newProvider.baseUrl.trim(), apiKey: newProvider.apiKey.trim(), model: newProvider.model.trim() },
-    ]
-    updateField('providers', updated)
-    setShowAddProvider(false)
-    setNewProvider({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '' })
+
+    if (editingProviderId) {
+      // 编辑模式：更新已有供应商
+      const updated = providers.map(p =>
+        p.id === editingProviderId
+          ? {
+              ...p,
+              name: providerForm.name.trim(),
+              type: providerForm.type,
+              baseUrl: providerForm.baseUrl.trim(),
+              apiKey: providerForm.apiKey.trim() || p.apiKey,
+              model: providerForm.model.trim(),
+            }
+          : p
+      )
+      updateField('providers', updated)
+    } else {
+      // 添加模式
+      const id = crypto.randomUUID()
+      const updated = [
+        ...providers,
+        { id, name: providerForm.name.trim(), type: providerForm.type, baseUrl: providerForm.baseUrl.trim(), apiKey: providerForm.apiKey.trim(), model: providerForm.model.trim() },
+      ]
+      updateField('providers', updated)
+    }
+    resetProviderForm()
   }
 
   const handleDeleteProvider = (id: string) => {
@@ -305,6 +356,38 @@ function SettingsTabContent({
     fetchModels(id)
   }
 
+  const fetchProviderModels = async () => {
+    if (!providerForm.baseUrl.trim()) {
+      toast('请先填写 Base URL', 'error')
+      return
+    }
+    setLoadingProviderModels(true)
+    try {
+      const body: Record<string, string> = {
+        apiBaseUrl: providerForm.baseUrl.trim(),
+        providerType: providerForm.type,
+      }
+      if (providerForm.apiKey.trim()) {
+        body.apiKey = providerForm.apiKey.trim()
+      }
+      const res = await fetch('/api/settings/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.models) {
+        setProviderModels(data.models)
+      } else {
+        toast(data.error || '获取模型列表失败', 'error')
+      }
+    } catch {
+      toast('获取模型列表失败', 'error')
+    } finally {
+      setLoadingProviderModels(false)
+    }
+  }
+
   return (
     <div className="p-4 flex flex-col gap-3">
       {/* ── 模型供应商 ── */}
@@ -314,14 +397,16 @@ function SettingsTabContent({
             <Server size={12} />
             模型供应商
           </label>
-          <button
-            type="button"
-            onClick={() => setShowAddProvider(true)}
-            className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
-          >
-            <Plus size={12} />
-            添加供应商
-          </button>
+          {!showAddProvider && !editingProviderId && (
+            <button
+              type="button"
+              onClick={() => { setShowAddProvider(true); setEditingProviderId(null) }}
+              className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+            >
+              <Plus size={12} />
+              添加供应商
+            </button>
+          )}
         </div>
 
         {/* 供应商列表 */}
@@ -371,6 +456,14 @@ function SettingsTabContent({
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleStartEdit(p)}
+                    className="p-1 rounded cursor-pointer text-gray-400 hover:text-blue-500 transition-colors"
+                    title="编辑"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDeleteProvider(p.id)}
                     className="p-1 rounded cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
                     title="删除"
@@ -387,19 +480,19 @@ function SettingsTabContent({
           </div>
         )}
 
-        {/* 添加供应商表单 */}
-        {showAddProvider && (
+        {/* 添加/编辑供应商表单 */}
+        {(showAddProvider || editingProviderId) && (
           <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-2.5 space-y-2">
             <input
               type="text"
-              value={newProvider.name}
-              onChange={e => setNewProvider({ ...newProvider, name: e.target.value })}
+              value={providerForm.name}
+              onChange={e => setProviderForm({ ...providerForm, name: e.target.value })}
               placeholder="名称，如 Anthropic、本地 LiteLLM"
               className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
             />
             <select
-              value={newProvider.type}
-              onChange={e => setNewProvider({ ...newProvider, type: e.target.value as 'anthropic' | 'openai-compatible' })}
+              value={providerForm.type}
+              onChange={e => setProviderForm({ ...providerForm, type: e.target.value as 'anthropic' | 'openai-compatible' })}
               className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
             >
               <option value="anthropic">Anthropic 兼容</option>
@@ -407,50 +500,76 @@ function SettingsTabContent({
             </select>
             <input
               type="text"
-              value={newProvider.baseUrl}
-              onChange={e => setNewProvider({ ...newProvider, baseUrl: e.target.value })}
+              value={providerForm.baseUrl}
+              onChange={e => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
               placeholder="Base URL，如 https://api.anthropic.com"
               className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
             />
             <div className="relative">
               <input
-                type={showProviderApiKey['new'] ? 'text' : 'password'}
-                value={newProvider.apiKey}
-                onChange={e => setNewProvider({ ...newProvider, apiKey: e.target.value })}
-                placeholder="API Key"
+                type={showProviderApiKey['form'] ? 'text' : 'password'}
+                value={providerForm.apiKey}
+                onChange={e => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                placeholder={editingProviderId ? '留空保持原 Key 不变' : 'API Key'}
                 className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 pr-8 outline-none"
               />
               <button
                 type="button"
-                onClick={() => setShowProviderApiKey({ ...showProviderApiKey, new: !showProviderApiKey['new'] })}
+                onClick={() => setShowProviderApiKey({ ...showProviderApiKey, form: !showProviderApiKey['form'] })}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded cursor-pointer text-gray-400"
               >
-                {showProviderApiKey['new'] ? <EyeOff size={12} /> : <Eye size={12} />}
+                {showProviderApiKey['form'] ? <EyeOff size={12} /> : <Eye size={12} />}
               </button>
             </div>
-            {newProvider.type === 'openai-compatible' && (
-              <input
-                type="text"
-                value={newProvider.model}
-                onChange={e => setNewProvider({ ...newProvider, model: e.target.value })}
-                placeholder="模型名，如 qwen-plus、deepseek-chat（必填）"
-                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
-              />
+            {providerForm.type === 'openai-compatible' && (
+              <div>
+                <div className="flex items-center justify-end mb-1">
+                  <button
+                    type="button"
+                    onClick={fetchProviderModels}
+                    disabled={loadingProviderModels}
+                    className="flex items-center gap-1 text-[10px] text-purple-600 dark:text-purple-400 hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw size={10} className={loadingProviderModels ? 'animate-spin' : ''} />
+                    {providerModels.length > 0 ? '刷新' : '获取模型列表'}
+                  </button>
+                </div>
+                {providerModels.length > 0 ? (
+                  <select
+                    value={providerForm.model}
+                    onChange={e => setProviderForm({ ...providerForm, model: e.target.value })}
+                    className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+                  >
+                    <option value="" disabled>选择模型</option>
+                    {providerModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={providerForm.model}
+                    onChange={e => setProviderForm({ ...providerForm, model: e.target.value })}
+                    placeholder="模型名，如 qwen-plus、deepseek-chat（必填）"
+                    className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+                  />
+                )}
+              </div>
             )}
             <div className="flex justify-end gap-1.5">
               <button
                 type="button"
-                onClick={() => { setShowAddProvider(false); setNewProvider({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '' }) }}
+                onClick={resetProviderForm}
                 className="text-xs px-2.5 py-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer"
               >
                 取消
               </button>
               <button
                 type="button"
-                onClick={handleAddProvider}
+                onClick={handleSaveProvider}
                 className="text-xs px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 cursor-pointer"
               >
-                添加
+                {editingProviderId ? '保存' : '添加'}
               </button>
             </div>
           </div>
