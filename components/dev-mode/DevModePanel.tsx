@@ -46,10 +46,14 @@ export function DevModePanel() {
 
   useEffect(() => {
     fetchStatus()
-    // 轮询状态（dev server 可能意外退出）
+  }, [fetchStatus])
+
+  // 仅在 dev-mode 激活时轮询状态（dev server 可能意外退出）
+  useEffect(() => {
+    if (status?.state !== 'active') return
     const interval = setInterval(fetchStatus, 10000)
     return () => clearInterval(interval)
-  }, [fetchStatus])
+  }, [status?.state, fetchStatus])
 
   const handleEnable = async () => {
     setLoading(true)
