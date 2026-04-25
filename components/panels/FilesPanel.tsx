@@ -44,7 +44,7 @@ import type { GitStatusResponse, GitFileStatus, GitDirInfo } from '@/types/git'
 import { getFileCategory } from './files/types'
 import { ContextMenu, TreeView } from './files/FileTree'
 import { FileIconSm } from './files/FileTree'
-import { ImagePreview, PDFPreview, WordPreview, ExcelPreview, PPTPreview } from './files/previews'
+import { ImagePreview, JitViewerPreview } from './files/previews'
 import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor, DiffEditor } from './files/editors'
 import { isTauri, openWithSystemApp, revealInFinder, selectDirectory } from '@/lib/tauri'
 
@@ -1532,10 +1532,7 @@ export default function FilesPanel({
                 ) : (() => {
                   const cat = getFileCategory(selectedFile.name)
                   if (cat === 'image') return <ImagePreview key={previewKey} projectId={projectId} filePath={selectedFile.path} refreshKey={previewKey} />
-                  if (cat === 'pdf') return <PDFPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} fileName={selectedFile.name} />
-                  if (cat === 'word') return <WordPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} />
-                  if (cat === 'excel') return <ExcelPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} />
-                  if (cat === 'ppt') return <PPTPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} />
+                  if (['pdf', 'word', 'excel', 'ppt'].includes(cat)) return <JitViewerPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} fileName={selectedFile.name} refreshKey={previewKey} />
                   if (cat === 'html') return <HtmlEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
                   if (cat === 'code') return <CodeEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
                   if (cat === 'markdown') return <MarkdownEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />

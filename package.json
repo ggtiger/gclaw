@@ -42,6 +42,7 @@
     "diff": "^9.0.0",
     "dingtalk-stream-sdk-nodejs": "^2.0.4",
     "highlight.js": "^11.11.1",
+    "jit-viewer": "^1.5.0",
     "jose": "^6.2.2",
     "lucide-react": "^0.460.0",
     "mammoth": "^1.12.0",
