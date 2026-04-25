@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createViewer, type ViewerInstance } from 'jit-viewer'
+import type { ViewerInstance } from 'jit-viewer'
 import 'jit-viewer/style.css'
 
 // ─── 图片预览 ───
@@ -37,22 +37,28 @@ export function JitViewerPreview({
 
   useEffect(() => {
     if (!containerRef.current) return
-    const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(filePath)}`
-    const isDark = document.documentElement.classList.contains('dark')
-    const viewer = createViewer({
-      target: containerRef.current,
-      file: url,
-      filename: fileName,
-      theme: isDark ? 'dark' : 'light',
-      toolbar: false,
-      locale: 'zh-CN',
-      width: '100%',
-      height: '100%',
-      onError: (err) => console.error('JitViewer error:', err),
+    let destroyed = false
+    Promise.all([
+      import('jit-viewer').then(m => m.createViewer),
+    ]).then(([createViewer]) => {
+      if (destroyed || !containerRef.current) return
+      const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(filePath)}`
+      const isDark = document.documentElement.classList.contains('dark')
+      const viewer = createViewer({
+        target: containerRef.current,
+        file: url,
+        filename: fileName,
+        theme: isDark ? 'dark' : 'light',
+        toolbar: false,
+        locale: 'zh-CN',
+        width: '100%',
+        height: '100%',
+        onError: (err) => console.error('JitViewer error:', err),
+      })
+      viewerRef.current = viewer
+      viewer.mount()
     })
-    viewerRef.current = viewer
-    viewer.mount()
-    return () => { viewer.destroy(); viewerRef.current = null }
+    return () => { destroyed = true; viewerRef.current?.destroy(); viewerRef.current = null }
   }, [projectId, filePath, fileName, refreshKey])
 
   return (
