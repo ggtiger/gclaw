@@ -403,7 +403,7 @@ export function ChatLayout() {
             onOpenSkills={() => setModalOpen('skills')}
             onOpenAgents={() => setModalOpen('agents')}
             onOpenSchedules={() => setModalOpen('schedules')}
-            onOpenSettings={() => setModalOpen('settings')}
+            onOpenSettings={() => { setSettingsInitialTab('settings'); setModalOpen('settings') }}
             onScheduleSend={async (message, schedule) => {
               try {
                 const res = await fetch('/api/schedules', {
