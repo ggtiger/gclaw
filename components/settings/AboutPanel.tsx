@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Download, RotateCw, Info } from 'lucide-react'
 import { isTauri } from '@/lib/tauri'
 import { checkForUpdate, downloadAndInstall, type UpdateInfo, type UpdateProgress, type UpdateStatus } from '@/lib/updater'
+import appIcon from '@/public/icon.png'
 
 export function AboutPanel() {
   const [version, setVersion] = useState<string>('')
@@ -60,9 +61,7 @@ export function AboutPanel() {
       {/* 版本信息 */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">G</span>
-          </div>
+          <img src={typeof appIcon === 'string' ? appIcon : appIcon.src} alt="GClaw" className="w-10 h-10 rounded-xl" />
           <div>
             <div className="text-sm font-semibold">GClaw</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">

@@ -6,6 +6,7 @@ import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRigh
 import type { ProjectInfo, ProjectMode, ProjectType } from '@/types/skills'
 import { ModeSelector } from './ModeSelector'
 import appIcon from '@/public/icon.png'
+import { version } from '@/package.json'
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[]
@@ -110,7 +111,7 @@ export function ProjectSidebar({
         <div className="flex items-center gap-2" >
           <Image src={appIcon} alt="GClaw" width={20} height={20} className="w-5 h-5 rounded" />
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">GClaw</span>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v0.1.0</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v{version}</span>
           <div className="flex-1" />
           <button
             onClick={onHide}

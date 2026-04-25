@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, Info, RefreshCw, FileText, Code2, Plus, Trash2, Check, Server, Pencil } from 'lucide-react'
+import { Eye, EyeOff, Settings as SettingsIcon, Shield, Users, ShieldAlert, Palette, Zap, Terminal, RefreshCw, FileText, Code2, Plus, Trash2, Check, Server, Pencil } from 'lucide-react'
+import appIcon from '@/public/icon.png'
 import type { GlobalSettings, ModelProvider } from '@/types/skills'
 import { AuditLogPanel } from './AuditLogPanel'
 import { LogsPanel } from './LogsPanel'
@@ -173,7 +174,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
     { key: 'logs', icon: <Terminal size={14} />, label: '运行日志', adminOnly: true },
     { key: 'users', icon: <Users size={14} />, label: '用户管理', adminOnly: true },
     { key: 'security', icon: <ShieldAlert size={14} />, label: '安全过滤', adminOnly: true },
-    { key: 'about', icon: <Info size={14} />, label: '关于', adminOnly: false },
+    { key: 'about', icon: <img src={typeof appIcon === 'string' ? appIcon : appIcon.src} alt="GClaw" className="w-3.5 h-3.5 rounded" />, label: '关于', adminOnly: false },
   ]
 
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin)
