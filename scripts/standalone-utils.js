@@ -109,14 +109,28 @@ function assembleServerBundle(standaloneRoot, destDir) {
   rmSync(destDir)
   copyDirSync(standaloneRoot, destDir)
 
-  // 修复 package.json: server.js 是 CommonJS，移除 "type": "module"
+  // 修复 package.json: server.js 是 CommonJS，移除 "type": "module"，同步版本号
   const pkgPath = path.join(destDir, 'package.json')
   if (fs.existsSync(pkgPath)) {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+    let changed = false
     if (pkg.type === 'module') {
       delete pkg.type
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+      changed = true
       console.log('[standalone]   Fixed package.json: removed "type": "module"')
+    }
+    // 同步根目录 package.json 的版本号到 server bundle
+    const rootPkgPath = path.join(ROOT, 'package.json')
+    if (fs.existsSync(rootPkgPath)) {
+      const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'))
+      if (rootPkg.version && pkg.version !== rootPkg.version) {
+        pkg.version = rootPkg.version
+        changed = true
+        console.log('[standalone]   Synced version:', rootPkg.version)
+      }
+    }
+    if (changed) {
+      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
     }
   }
 
