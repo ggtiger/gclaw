@@ -33,6 +33,7 @@ interface ChatPanelProps {
   onOpenSkills?: () => void
   onOpenAgents?: () => void
   onOpenSchedules?: () => void
+  sessionStats?: { inputTokens: number; maxContext: number; contextUsage: number }
   onOpenSettings?: () => void
   onScheduleSend?: (message: string, schedule: { mode: 'once' | 'interval'; runAt?: string; intervalMs?: number; label: string }) => void
   sidebarHidden?: boolean
@@ -81,7 +82,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, sessionStats, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -338,14 +339,6 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               <FileText size={14} />
               <span className="hidden sm:inline whitespace-nowrap">日志</span>
             </button>
-            <button
-              onClick={() => onClearChat?.()}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 text-xs flex-shrink-0"
-              title="清空对话"
-            >
-              <Trash2 size={14} />
-              <span className="hidden sm:inline whitespace-nowrap">清空</span>
-            </button>
             {rightPanelHidden && onToggleRightPanel && (
               <button
                 onClick={onToggleRightPanel}
@@ -539,6 +532,11 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           onOpenSchedules={onOpenSchedules}
           onScheduleSend={onScheduleSend}
           onOpenSettings={onOpenSettings}
+          contextUsage={sessionStats?.contextUsage ?? 0}
+          contextInputTokens={sessionStats?.inputTokens ?? 0}
+          contextMaxTokens={sessionStats?.maxContext ?? 200000}
+          onCompact={() => onSend('/compact')}
+          onClearChat={() => onClearChat?.()}
         />
       </div>
 

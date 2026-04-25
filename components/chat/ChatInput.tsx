@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen, Clock, ChevronDown, Check } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
 import { SchedulePicker } from './SchedulePicker'
+import { ContextRing } from './SessionInfoPopover'
 import type { ChatAttachment } from '@/types/chat'
 import type { AgentInfo } from '@/types/skills'
 
@@ -47,9 +48,14 @@ interface ChatInputProps {
   onScheduleSend?: (message: string, schedule: { mode: 'once' | 'interval'; runAt?: string; intervalMs?: number; label: string }) => void
   onOpenSchedules?: () => void
   onOpenSettings?: () => void
+  contextUsage?: number
+  contextInputTokens?: number
+  contextMaxTokens?: number
+  onCompact?: () => void
+  onClearChat?: () => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings, contextUsage, contextInputTokens, contextMaxTokens, onCompact, onClearChat }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
@@ -549,6 +555,17 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
 
           {/* 模型选择器 + 发送/停止按钮 */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* 上下文圆环 */}
+            {contextInputTokens != null && contextInputTokens > 0 && (
+              <ContextRing
+                inputTokens={contextInputTokens}
+                maxContext={contextMaxTokens ?? 200000}
+                contextUsage={contextUsage ?? 0}
+                onCompact={onCompact}
+                onClear={onClearChat}
+                disabled={sending}
+              />
+            )}
             {projectId && (
               <div className="relative">
                 <button

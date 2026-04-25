@@ -386,6 +386,7 @@ export function ChatLayout() {
             askQuestion={chat.askQuestion}
             statusText={chat.statusText}
             projectId={project.currentId}
+            sessionStats={chat.sessionStats}
             projectName={currentProject?.name}
             sidebarHidden={projectSidebarHidden}
             onToggleSidebar={() => setProjectSidebarHidden(false)}

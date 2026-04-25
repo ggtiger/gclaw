@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem, StreamingBlock, ContentBlock } from '@/types/chat'
 
 // ── Tauri 系统通知：窗口隐藏时推送 ──
@@ -942,6 +942,34 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     updateState(currentProjectIdRef.current, b => { b.askQuestion = null })
   }, [updateState])
 
+  // 会话上下文统计
+  const sessionStats = useMemo(() => {
+    // 从最近一条带 stats 的消息获取当前上下文信息
+    const lastMsgWithStats = [...messages].reverse().find(m => m.stats)
+    const stats = lastMsgWithStats?.stats || lastStats
+    const inputTokens = stats?.inputTokens || 0
+    const outputTokens = stats?.outputTokens || 0
+    const cachedTokens = stats?.cachedTokens || 0
+    const costUsd = stats?.costUsd || 0
+    const model = stats?.model || ''
+    // 根据模型推断最大上下文窗口
+    let maxContext = 200_000
+    if (model.includes('haiku')) maxContext = 200_000
+    else if (model.includes('opus')) maxContext = 200_000
+    else if (model.includes('sonnet')) maxContext = 200_000
+    const contextUsage = maxContext > 0 ? Math.min(inputTokens / maxContext, 1) : 0
+    return {
+      inputTokens,
+      outputTokens,
+      cachedTokens,
+      costUsd,
+      model,
+      maxContext,
+      contextUsage,
+      messageCount: messages.length,
+    }
+  }, [messages, lastStats])
+
   // 清空对话
   const clearChat = useCallback(async () => {
     try {
@@ -1133,6 +1161,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     askQuestion,
     statusText,
     activityData,
+    sessionStats,
     sendMessage,
     abortChat,
     clearChat,
