@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::process::{Child, Command};
 use std::net::TcpListener;
 
+mod delta;
+
 /// 服务器状态
 pub struct ServerState {
     pub child: Mutex<Option<Child>>,
@@ -1405,7 +1407,11 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![get_server_url, navigate_to, app_ready, save_file_content, retry_startup, flash_tray_icon])
+        .invoke_handler(tauri::generate_handler![
+            get_server_url, navigate_to, app_ready, save_file_content,
+            retry_startup, flash_tray_icon,
+            delta::apply_server_delta, delta::get_current_server_version,
+        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
