@@ -119,14 +119,15 @@ function assembleServerBundle(standaloneRoot, destDir) {
       changed = true
       console.log('[standalone]   Fixed package.json: removed "type": "module"')
     }
-    // 同步根目录 package.json 的版本号到 server bundle
+    // 同步根目录 package.json 的 serverVersion 到 server bundle
     const rootPkgPath = path.join(ROOT, 'package.json')
     if (fs.existsSync(rootPkgPath)) {
       const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'))
-      if (rootPkg.version && pkg.version !== rootPkg.version) {
-        pkg.version = rootPkg.version
+      const sv = rootPkg.serverVersion || rootPkg.version
+      if (sv && pkg.version !== sv) {
+        pkg.version = sv
         changed = true
-        console.log('[standalone]   Synced version:', rootPkg.version)
+        console.log('[standalone]   Synced server version:', sv)
       }
     }
     if (changed) {

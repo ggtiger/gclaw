@@ -114,7 +114,8 @@ jobs:
         run: |
           set -e
           TAG="${GITHUB_REF_NAME}"
-          NEW_VERSION=$(echo "$TAG" | sed 's/^v//')
+          # 从 package.json 读取 serverVersion（独立于 Tauri 应用版本）
+          NEW_VERSION=$(jq -r '.serverVersion // .version' package.json)
           echo "=== Generating deltas for ${TAG} (server ${NEW_VERSION}) ==="
 
           TMPDIR=$(mktemp -d)
