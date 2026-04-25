@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Settings, Brain, PanelRightClose } from 'lucide-react'
+import { Settings, Brain, PanelRightClose, Code2, Maximize2, Minimize2 } from 'lucide-react'
 import { useFocusData } from '@/hooks/useFocusData'
 import { useProject } from '@/hooks/useProject'
 import TodoList from './focus/TodoList'
@@ -11,15 +11,19 @@ import CalendarView from './focus/CalendarView'
 import { FocusSettingsModal } from './focus/FocusSettings'
 import MemoryList from './memory/MemoryList'
 import { useMemoryData } from '@/hooks/useMemoryData'
+import FilesPanel from './FilesPanel'
 
 interface Props {
   projectId: string
   onHide?: () => void
+  onTabChange?: (tab: MainTab) => void
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
 }
 
-type MainTab = 'focus' | 'memory'
+type MainTab = 'focus' | 'memory' | 'files'
 
-export default function FocusPanel({ projectId, onHide }: Props) {
+export default function FocusPanel({ projectId, onHide, onTabChange, isFullscreen, onToggleFullscreen }: Props) {
   const {
     loading, todos, notes, events, settings,
     addTodo, toggleTodo, removeTodo,
@@ -44,7 +48,11 @@ export default function FocusPanel({ projectId, onHide }: Props) {
   } = useMemoryData(userId, projectId)
 
   const [showSettings, setShowSettings] = useState(false)
-  const [mainTab, setMainTab] = useState<MainTab>('focus')
+  const [mainTab, setMainTabState] = useState<MainTab>('focus')
+  const setMainTab = (tab: MainTab) => {
+    setMainTabState(tab)
+    onTabChange?.(tab)
+  }
 
   // 延迟显示骨架屏：加载快于 200ms 时跳过骨架屏，避免闪烁
   const [showSkeleton, setShowSkeleton] = useState(false)
@@ -106,16 +114,39 @@ export default function FocusPanel({ projectId, onHide }: Props) {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setMainTab('files')}
+              className={`text-[10px] font-medium px-2 py-0.5 rounded-md transition-colors flex items-center gap-0.5 ${
+                mainTab === 'files'
+                  ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              <Code2 className="w-2.5 h-2.5" />
+              文件
+            </button>
           </div>
         </div>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          title="专注模式设置"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {mainTab === 'files' && onToggleFullscreen && (
+            <button
+              onClick={onToggleFullscreen}
+              className="p-0.5 rounded cursor-pointer shrink-0"
+              style={{ color: 'var(--color-text-secondary)' }}
+              title={isFullscreen ? '退出全屏' : '全屏'}
+            >
+              {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title="专注模式设置"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Tab 内容 */}
@@ -136,6 +167,11 @@ export default function FocusPanel({ projectId, onHide }: Props) {
             <CalendarView events={events} loading={loading} onAdd={addEvent} onRemove={removeEvent} />
           </div>
         </>
+      ) : mainTab === 'files' ? (
+        /* 文件面板 */
+        <div className="flex-1 min-h-0 relative">
+          <FilesPanel projectId={projectId} hideHeaderButtons />
+        </div>
       ) : (
         /* 记忆面板 */
         <div className="flex-1 min-h-0 overflow-hidden px-3 py-2 flex flex-col">

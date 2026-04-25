@@ -46,6 +46,8 @@ export function ChatLayout() {
   const [devModeStatus, setDevModeStatus] = useState<{ state: string; previewUrl?: string; projectId?: string } | null>(null)
   const [filesRefreshKey, setFilesRefreshKey] = useState(0)
   const [diffFilePath, setDiffFilePath] = useState<string | null>(null)
+  // 秘书面板当前标签（用于判断是否启用拖拽/全屏）
+  const [secretaryTab, setSecretaryTab] = useState<string>('focus')
 
   // AI 工具操作完成后刷新文件树 + git 状态
   useEffect(() => {
@@ -438,11 +440,17 @@ export function ChatLayout() {
         {/* Right side panel */}
         {!rightPanelHidden && (
         <aside
-          className={`relative min-h-0 ${filesFullscreen && !isSecretary ? 'flex-1 flex' : isSecretary ? 'w-80 max-w-[280px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex' : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'}`}
-          style={{ width: (filesFullscreen && !isSecretary) ? '100%' : isSecretary ? undefined : rightPanelWidth } as React.CSSProperties}
+          className={`relative min-h-0 ${
+            filesFullscreen
+              ? 'flex-1 flex'
+              : isSecretary
+                ? (secretaryTab === 'files' ? 'flex-shrink-0 min-w-[200px] hidden [@media(min-width:1024px)]:flex' : 'w-80 max-w-[280px] min-w-[200px] shrink hidden [@media(min-width:1024px)]:flex')
+                : 'flex-shrink-0 hidden [@media(min-width:1024px)]:flex'
+          }`}
+          style={{ width: filesFullscreen ? '100%' : (isSecretary && secretaryTab !== 'files') ? undefined : rightPanelWidth } as React.CSSProperties}
         >
-          {/* 拖拽手柄 - 仅 FilesPanel 且非全屏时显示 */}
-          {!isSecretary && !filesFullscreen && (
+          {/* 拖拽手柄 - 秘书文件标签或开发项目，非全屏时显示 */}
+          {((isSecretary && secretaryTab === 'files') || !isSecretary) && !filesFullscreen && (
           <div
             onMouseDown={handleResizeStart}
             className="absolute top-0 bottom-0 -left-1.5 w-3 cursor-col-resize z-50 hover:bg-purple-500/10 active:bg-purple-500/20 transition-colors"
@@ -452,7 +460,7 @@ export function ChatLayout() {
           {/* 面板内容 */}
           <div className={`w-full h-full overflow-hidden flex flex-col ${glass ? 'glass' : 'bg-white dark:bg-gray-900'}`}>
             {isSecretary ? (
-              <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} />
+              <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} onTabChange={setSecretaryTab} isFullscreen={filesFullscreen} onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)} />
             ) : (
               <>
                 {/* 开发项目 tab 栏 — 全屏时显示简化版 */}
