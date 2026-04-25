@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server'
+import path from 'path'
 import { getSettings, updateSettings } from '@/lib/store/settings'
+import { getProjectDir } from '@/lib/store/projects'
 import { maskApiKey } from '@/lib/crypto'
 import { addAuditLog } from '@/lib/store/audit-log'
 import { getAuthUser } from '@/lib/auth/helpers'
@@ -14,7 +16,12 @@ export async function GET(request: NextRequest) {
   const projectId = getProjectId(request)
   const settings = getSettings(projectId)
   // 脱敏：API Key 仅返回掩码
-  const safe = { ...settings, apiKey: maskApiKey(settings.apiKey) }
+  const safe: Record<string, unknown> = { ...settings, apiKey: maskApiKey(settings.apiKey) }
+  // 返回实际工作目录的绝对路径（供"打开目录"功能使用）
+  if (projectId) {
+    const projectDir = getProjectDir(projectId)
+    safe.effectiveCwd = path.resolve(settings.cwd || projectDir)
+  }
   return Response.json(safe)
 }
 

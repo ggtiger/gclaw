@@ -296,6 +296,7 @@ export default function FilesPanel({
 
   // 工作目录（cwd）
   const [projectCwd, setProjectCwd] = useState<string>('')
+  const [effectiveCwd, setEffectiveCwd] = useState<string>('')
   const [cwdDropdownOpen, setCwdDropdownOpen] = useState(false)
   const [cwdRefreshKey, setCwdRefreshKey] = useState(0)
 
@@ -315,6 +316,7 @@ export default function FilesPanel({
         const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
         const data = await res.json()
         setProjectCwd(data.cwd || '')
+        setEffectiveCwd(data.effectiveCwd || '')
       } catch { /* ignore */ }
     }
     loadCwd()
@@ -1266,9 +1268,9 @@ export default function FilesPanel({
         {isTauri() && (
           <button
             onClick={async () => {
-              const dirPath = projectCwd || `/api/projects/${encodeURIComponent(projectId)}/files?action=tree`
-              if (projectCwd) {
-                try { await revealInFinder(projectCwd) } catch { /* ignore */ }
+              const dirPath = effectiveCwd || projectCwd
+              if (dirPath) {
+                try { await revealInFinder(dirPath) } catch { /* ignore */ }
               }
             }}
             className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
