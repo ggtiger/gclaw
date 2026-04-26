@@ -42,9 +42,9 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         dangerouslySkipPermissions: data.dangerouslySkipPermissions ?? true,
         systemPrompt: data.systemPrompt || '',
         providerId: data.providerId || '',
-        assistantName: data.assistantName || undefined,
-        assistantIcon: data.assistantIcon || undefined,
-        assistantAvatar: data.assistantAvatar || undefined,
+        assistantName: data.assistantName || '',
+        assistantIcon: data.assistantIcon || '',
+        assistantAvatar: data.assistantAvatar || '',
       })
       setGlobalProviders(data.providers || [])
     } catch (err) {
@@ -99,7 +99,6 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      // 1. 上传图片到磁盘
       const fd = new FormData()
       fd.append('avatar', file)
       const res = await fetch(`/api/settings/avatar?projectId=${encodeURIComponent(projectId)}`, {
@@ -107,43 +106,20 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         body: fd,
       })
       const data = await res.json()
-      if (!data.filename) {
+      if (data.filename) {
+        updateField('assistantAvatar', data.filename)
+      } else {
         toast(data.error || '上传失败', 'error')
-        return
       }
-      // 2. 立即保存设置到 settings.json
-      const avatarValue = data.filename
-      const updated = { ...settings!, assistantAvatar: avatarValue }
-      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
-      })
-      // 3. 更新本地状态
-      setSettings(updated)
-      setDirty(false)
-      window.dispatchEvent(new CustomEvent('settings-changed', { detail: { projectId } }))
     } catch {
       toast('上传失败', 'error')
     }
     e.target.value = ''
-  }, [projectId, settings, toast]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAvatarRemove = useCallback(async () => {
-    if (!settings?.assistantAvatar) return
-    try {
-      await fetch(`/api/settings/avatar?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' })
-    } catch {}
-    const updated = { ...settings, assistantAvatar: undefined }
-    await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    })
-    setSettings(updated)
-    setDirty(false)
-    window.dispatchEvent(new CustomEvent('settings-changed', { detail: { projectId } }))
-  }, [projectId, settings]) // eslint-disable-line react-hooks/exhaustive-deps
+  const handleAvatarRemove = useCallback(() => {
+    updateField('assistantAvatar', '')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
@@ -197,7 +173,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           <input
             type="text"
             value={settings.assistantName || ''}
-            onChange={e => updateField('assistantName', e.target.value || undefined)}
+            onChange={e => updateField('assistantName', e.target.value || '')}
             placeholder="AI助理"
             className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
           />

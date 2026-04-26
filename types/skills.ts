@@ -92,9 +92,9 @@ export const DEFAULT_PROJECT: ProjectSettings = {
   dangerouslySkipPermissions: true,
   systemPrompt: '',
   providerId: '',
-  assistantName: undefined,
-  assistantIcon: undefined,
-  assistantAvatar: undefined,
+  assistantName: '',
+  assistantIcon: '',
+  assistantAvatar: '',
 }
 
 // 合并类型，向后兼容
