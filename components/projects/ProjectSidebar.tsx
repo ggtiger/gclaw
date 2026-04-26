@@ -7,6 +7,7 @@ import type { ProjectInfo, ProjectMode, ProjectType } from '@/types/skills'
 import { ModeSelector } from './ModeSelector'
 import appIcon from '@/public/icon.png'
 import { version } from '@/package.json'
+import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[]
@@ -23,16 +24,18 @@ interface ProjectSidebarProps {
   onOpenSettings?: () => void
   onCycleTheme?: () => void
   themeIcon?: React.ReactNode
-  user?: { username: string; role?: string }
+  user?: { username: string; role?: string; avatarUrl?: string }
   onUserMenu?: () => void
   onHide?: () => void
   onOpenProjectSettings?: (projectId: string) => void
+  assistantIdentity?: { assistantName?: string; assistantIcon?: string; assistantAvatar?: string }
 }
 
 export function ProjectSidebar({
   projects, currentId, activeProjectIds, collapsed, onToggleCollapse,
   onSwitch, onCreate, onRename, onDelete, userRole,
   onOpenSettings, onCycleTheme, themeIcon, user, onUserMenu, onHide, onOpenProjectSettings,
+  assistantIdentity,
 }: ProjectSidebarProps) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -41,6 +44,7 @@ export function ProjectSidebar({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const { name: assistantName, Icon: AssistantIcon, avatarUrl: assistantAvatarUrl } = useAssistantIdentity(assistantIdentity, currentId)
 
   const handleCreate = () => {
     if (newName.trim()) {
@@ -81,6 +85,12 @@ export function ProjectSidebar({
         </button>
         {/* 底部工具栏 - 收起态 */}
         <div className="mt-auto  border-gray-200 dark:border-white/[0.06] py-2 flex flex-col items-center gap-1">
+          <div className={`w-5 h-5 rounded-full flex items-center justify-center overflow-hidden shrink-0 ${assistantAvatarUrl ? '' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
+            {assistantAvatarUrl
+              ? <img src={assistantAvatarUrl} alt="" className="w-full h-full object-cover" />
+              : <AssistantIcon size={11} className="text-purple-600 dark:text-purple-400" />
+            }
+          </div>
           <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
             <Settings size={16} />
           </button>
@@ -88,8 +98,11 @@ export function ProjectSidebar({
             {themeIcon}
           </button>
           {user && (
-            <button onClick={onUserMenu} className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-colors cursor-pointer" title={user.username}>
-              {user.username.charAt(0).toUpperCase()}
+            <button onClick={onUserMenu} className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-colors cursor-pointer overflow-hidden" title={user.username}>
+              {user.avatarUrl
+                ? <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                : user.username.charAt(0).toUpperCase()
+              }
             </button>
           )}
         </div>
@@ -306,6 +319,16 @@ export function ProjectSidebar({
 
       {/* 底部工具栏 - 展开态 */}
       <div className="mt-auto  border-gray-200 dark:border-white/[0.06] px-3 py-2 flex items-center gap-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className={`w-5 h-5 rounded-full flex items-center justify-center overflow-hidden shrink-0 ${assistantAvatarUrl ? '' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
+            {assistantAvatarUrl
+              ? <img src={assistantAvatarUrl} alt="" className="w-full h-full object-cover" />
+              : <AssistantIcon size={11} className="text-purple-600 dark:text-purple-400" />
+            }
+          </div>
+          <span className="text-[10px] text-gray-400 truncate max-w-[60px]">{assistantName}</span>
+        </div>
+        <div className="flex-1" />
         <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
           <Settings size={16} />
         </button>
@@ -314,8 +337,11 @@ export function ProjectSidebar({
         </button>
         <div className="flex-1" />
         {user && (
-          <button onClick={onUserMenu} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-colors cursor-pointer" title={user.username}>
-            {user.username.charAt(0).toUpperCase()}
+          <button onClick={onUserMenu} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-colors cursor-pointer overflow-hidden" title={user.username}>
+            {user.avatarUrl
+              ? <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" />
+              : user.username.charAt(0).toUpperCase()
+            }
           </button>
         )}
       </div>
