@@ -99,29 +99,51 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     const file = e.target.files?.[0]
     if (!file) return
     try {
+      // 1. 上传图片到磁盘
+      const fd = new FormData()
+      fd.append('avatar', file)
       const res = await fetch(`/api/settings/avatar?projectId=${encodeURIComponent(projectId)}`, {
         method: 'POST',
-        body: (() => { const fd = new FormData(); fd.append('avatar', file); return fd })(),
+        body: fd,
       })
       const data = await res.json()
-      if (data.filename) {
-        updateField('assistantAvatar', data.filename)
-      } else {
+      if (!data.filename) {
         toast(data.error || '上传失败', 'error')
+        return
       }
+      // 2. 立即保存设置到 settings.json
+      const avatarValue = data.filename
+      const updated = { ...settings!, assistantAvatar: avatarValue }
+      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      })
+      // 3. 更新本地状态
+      setSettings(updated)
+      setDirty(false)
+      window.dispatchEvent(new CustomEvent('settings-changed', { detail: { projectId } }))
     } catch {
       toast('上传失败', 'error')
     }
     e.target.value = ''
-  }, [projectId, toast]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, settings, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAvatarRemove = useCallback(async () => {
     if (!settings?.assistantAvatar) return
     try {
       await fetch(`/api/settings/avatar?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' })
     } catch {}
-    updateField('assistantAvatar', undefined)
-  }, [projectId, settings?.assistantAvatar]) // eslint-disable-line react-hooks/exhaustive-deps
+    const updated = { ...settings, assistantAvatar: undefined }
+    await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    })
+    setSettings(updated)
+    setDirty(false)
+    window.dispatchEvent(new CustomEvent('settings-changed', { detail: { projectId } }))
+  }, [projectId, settings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
