@@ -116,30 +116,43 @@ jobs:
         run: |
           set -e
           TAG="${GITHUB_REF_NAME}"
-          # 从 package.json 读取 serverVersion（独立于 Tauri 应用版本）
           NEW_VERSION=$(jq -r '.serverVersion // .version' package.json)
           echo "=== Generating deltas for ${TAG} (server ${NEW_VERSION}) ==="
 
           TMPDIR=$(mktemp -d)
           trap "rm -rf $TMPDIR" EXIT
 
-          # 1. 构建当前版本的 server tar（始终执行）
-          echo "--- Building new server tar ---"
-          node scripts/bundle-sidecar.js
-          cd src-tauri
-          tar czf "$TMPDIR/server-new.tar.gz" --exclude='.git' -C server .
+          # 1. 从当前 Release 的全量包中提取 server（而不是重新构建）
+          echo "--- Extracting server from current release ---"
+          gh release download "$TAG" --repo ggtiger/gclaw \
+            --pattern "*.app.tar.gz" --dir "$TMPDIR/current" || true
+
+          APP_TAR=$(ls "$TMPDIR/current"/*.app.tar.gz 2>/dev/null | head -1 || true)
+          if [ -z "$APP_TAR" ]; then
+            echo "No .app.tar.gz found in current release, skipping"
+            exit 0
+          fi
+
+          mkdir -p "$TMPDIR/current-app"
+          tar xzf "$APP_TAR" -C "$TMPDIR/current-app"
+          SERVER_DIR=$(find "$TMPDIR/current-app" -path "*/Resources/server" -type d | head -1 || true)
+          if [ -z "$SERVER_DIR" ]; then
+            echo "Server directory not found in app bundle, skipping"
+            exit 0
+          fi
+
+          tar czf "$TMPDIR/server-new.tar.gz" --exclude='.git' -C "$SERVER_DIR" .
           NEW_HASH=$(sha256sum "$TMPDIR/server-new.tar.gz" | cut -d' ' -f1)
           NEW_SIZE=$(stat -c%s "$TMPDIR/server-new.tar.gz")
           echo "New server tar: ${NEW_SIZE} bytes, sha256=${NEW_HASH}"
-          cd ..
 
-          # 2. 始终上传当前版本 server tar（为后续版本的 delta 生成准备）
+          # 2. 始终上传当前版本 server tar
           SERVER_TAR_NAME="server-${NEW_VERSION}.tar.gz"
           cp "$TMPDIR/server-new.tar.gz" "$TMPDIR/${SERVER_TAR_NAME}"
           echo "--- Uploading server tar for future deltas ---"
-          gh release upload "$TAG" "$TMPDIR/${SERVER_TAR_NAME}" --repo ggtiger/gclaw
+          gh release upload "$TAG" "$TMPDIR/${SERVER_TAR_NAME}" --repo ggtiger/gclaw --clobber
 
-          # 3. 获取上一版本的 tag（按时间排序，只匹配正式版本 v{num}.{num}.{num}）
+          # 3. 获取上一版本的 tag
           PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1 || true)
           if [ -z "$PREV_TAG" ]; then
             echo "No previous tag found, skipping delta generation"
