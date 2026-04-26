@@ -1,7 +1,8 @@
 'use client'
 
 import { memo, useState, useCallback } from 'react'
-import { User, Bot, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
+import { User, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
+import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
 import { CornerLeftUp } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { StreamingBlocksRenderer, adaptContentBlocks } from './StreamingBlocksRenderer'
@@ -24,6 +25,8 @@ interface MessageBubbleProps {
   onMessageUpdate?: (message: ChatMessage) => void
   onOpenSettings?: () => void
   replyToMessage?: ChatMessage  // assistant 消息回复的 user 消息
+  assistantName?: string
+  assistantIcon?: string
 }
 
 // 模块级常量，避免每次渲染重建
@@ -33,12 +36,15 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-di
 // 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量
 const COLLAPSE_THRESHOLD = 2000
 
-export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings, replyToMessage }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings, replyToMessage, assistantName, assistantIcon }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const source = message.source || 'web'
   const sourceConfig = isUser ? SOURCE_CONFIG[source] : null
   const SourceIcon = sourceConfig?.icon
+  const { name: assistantDisplayName, Icon: AssistantIcon } = useAssistantIdentity(
+    assistantName || assistantIcon ? { assistantName, assistantIcon } : null
+  )
 
   // 长消息默认折叠，点击展开
   const [expanded, setExpanded] = useState(() => !message.isStreaming && message.content.length <= COLLAPSE_THRESHOLD)
@@ -111,7 +117,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
             ? SourceIcon
               ? <SourceIcon size={15} className={sourceConfig?.color || 'text-purple-600 dark:text-purple-400'} />
               : <User size={15} className="text-purple-600 dark:text-purple-400" />
-            : <Bot size={15} className="text-purple-600 dark:text-purple-400" />
+            : <AssistantIcon size={15} className="text-purple-600 dark:text-purple-400" />
           }
         </div>
       </div>
@@ -120,7 +126,7 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
       <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
         <div className={`flex items-center gap-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
           <span className={`text-xs font-medium ${isUser ? (sourceConfig?.color || 'text-purple-600 dark:text-purple-400') : 'text-slate-500 dark:text-slate-400'}`}>
-            {isUser ? (message.sourceName || sourceConfig?.label || '你') : 'AI助理'}
+            {isUser ? (message.sourceName || sourceConfig?.label || '你') : assistantDisplayName}
           </span>
           {isUser && message.sourceName && sourceConfig && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${sourceConfig.bg} ${sourceConfig.color}`}>

@@ -76,6 +76,10 @@ export interface ProjectSettings {
   systemPrompt: string                // 项目级系统提示词（Soul），写入 CLAUDE.md
   /** 项目级覆盖供应商 ID，空则跟随全局 */
   providerId: string
+  /** AI 助理名称 */
+  assistantName?: string
+  /** AI 助理图标（lucide 图标名） */
+  assistantIcon?: string
 }
 
 export const DEFAULT_PROJECT: ProjectSettings = {
@@ -86,6 +90,8 @@ export const DEFAULT_PROJECT: ProjectSettings = {
   dangerouslySkipPermissions: true,
   systemPrompt: '',
   providerId: '',
+  assistantName: undefined,
+  assistantIcon: undefined,
 }
 
 // 合并类型，向后兼容

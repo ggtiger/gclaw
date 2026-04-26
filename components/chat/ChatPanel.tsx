@@ -2,7 +2,8 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
-import { Bot, Brain, ChevronDown, ChevronUp, FileText, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { Brain, ChevronDown, ChevronUp, FileText, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
+import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
 import { MessageBubble } from './MessageBubble'
 import { StreamingBlocksRenderer } from './StreamingBlocksRenderer'
 import { ChatInput } from './ChatInput'
@@ -128,6 +129,17 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
     const interval = setInterval(loadStatus, 30000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [projectId])
+
+  // ─── 助理身份设置 ───
+  const [assistantIdentity, setAssistantIdentity] = useState<{ assistantName?: string; assistantIcon?: string }>({})
+  useEffect(() => {
+    if (!projectId) { setAssistantIdentity({}); return }
+    fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
+      .then(r => r.json())
+      .then(data => setAssistantIdentity({ assistantName: data.assistantName, assistantIcon: data.assistantIcon }))
+      .catch(() => {})
+  }, [projectId])
+  const { name: assistantDisplayName, Icon: AssistantIcon } = useAssistantIdentity(assistantIdentity)
 
   // 切换项目时重置自动滚动
   useEffect(() => {
@@ -423,6 +435,8 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                     onMessageUpdate={handleMessageUpdate}
                     onOpenSettings={onOpenSettings}
                     replyToMessage={replyToMap.get(msg.id)}
+                    assistantName={assistantIdentity.assistantName}
+                    assistantIcon={assistantIdentity.assistantIcon}
                   />
                 </div>
               ))
@@ -463,12 +477,12 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
-                    <Bot size={16} className="text-purple-600 dark:text-purple-400" />
+                    <AssistantIcon size={16} className="text-purple-600 dark:text-purple-400" />
                   </div>
                 </div>
                 <div className="flex-1 min-w-0 text-sm leading-relaxed">
                   <div className="text-xs font-medium mb-1 text-slate-500 dark:text-slate-400">
-                    AI助理
+                    {assistantDisplayName}
                   </div>
                   <StreamingBlocksRenderer
                     blocks={streamingBlocks}
@@ -485,12 +499,12 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
-                    <Bot size={16} className="text-purple-600 dark:text-purple-400" />
+                    <AssistantIcon size={16} className="text-purple-600 dark:text-purple-400" />
                   </div>
                 </div>
                 <div className="flex-1">
                   <div className="text-xs font-medium mb-2 text-slate-500 dark:text-slate-400">
-                    AI助理
+                    {assistantDisplayName}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-purple-500" style={{ animationDelay: '0ms' }} />

@@ -1,14 +1,19 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Loader, RefreshCw, FolderOpen } from 'lucide-react'
+import { Loader, RefreshCw, FolderOpen, Bot, Sparkles, Brain, Wand2, Cpu, MessageSquare, GraduationCap, Stethoscope, Code, Palette, Music, Heart } from 'lucide-react'
 import type { ProjectSettings, GlobalSettings, ModelProvider } from '@/types/skills'
 import { useToast } from '@/components/ui/Toast'
 import { isTauri, selectDirectory, revealInFinder } from '@/lib/tauri'
+import { useAssistantIdentity, AVAILABLE_ICONS } from '@/hooks/useAssistantIdentity'
 
 interface ProjectSettingsPanelProps {
   projectId: string
   onClose?: () => void
+}
+
+const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  Bot, Sparkles, Brain, Wand2, Cpu, MessageSquare, GraduationCap, Stethoscope, Code, Palette, Music, Heart,
 }
 
 export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPanelProps) {
@@ -21,6 +26,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   const [loadingModels, setLoadingModels] = useState(false)
 
   const { toast } = useToast()
+  const { Icon: AssistantIcon } = useAssistantIdentity(settings)
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -35,6 +41,8 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         dangerouslySkipPermissions: data.dangerouslySkipPermissions ?? true,
         systemPrompt: data.systemPrompt || '',
         providerId: data.providerId || '',
+        assistantName: data.assistantName || undefined,
+        assistantIcon: data.assistantIcon || undefined,
       })
       setGlobalProviders(data.providers || [])
     } catch (err) {
@@ -117,6 +125,50 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
 
   return (
     <div className="p-4 flex flex-col gap-3">
+      {/* 助理设置 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
+            <AssistantIcon size={14} className="text-purple-600 dark:text-purple-400" />
+          </div>
+          <label className="text-xs text-gray-500 dark:text-gray-400">
+            助理设置
+          </label>
+        </div>
+        <div className="space-y-2">
+          {/* 名称 */}
+          <input
+            type="text"
+            value={settings.assistantName || ''}
+            onChange={e => updateField('assistantName', e.target.value || undefined)}
+            placeholder="AI助理"
+            className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+          />
+          {/* 图标选择器 */}
+          <div className="grid grid-cols-6 gap-1">
+            {AVAILABLE_ICONS.map(name => {
+              const Comp = ICON_COMPONENTS[name]
+              const selected = (settings.assistantIcon || 'Bot') === name
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => updateField('assistantIcon', name)}
+                  className={`flex items-center justify-center p-1.5 rounded-lg cursor-pointer transition-colors ${
+                    selected
+                      ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                      : 'bg-gray-50 dark:bg-white/5 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
+                  }`}
+                  title={name}
+                >
+                  <Comp size={16} />
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Provider */}
       {globalProviders.length > 0 && (
         <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
