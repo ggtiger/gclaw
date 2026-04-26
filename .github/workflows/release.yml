@@ -141,7 +141,7 @@ jobs:
             exit 0
           fi
 
-          tar czf "$TMPDIR/server-new.tar.gz" --exclude='.git' -C "$SERVER_DIR" .
+          tar czf "$TMPDIR/server-new.tar.gz" --exclude='.git' --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$SERVER_DIR" .
           NEW_HASH=$(sha256sum "$TMPDIR/server-new.tar.gz" | cut -d' ' -f1)
           NEW_SIZE=$(stat -c%s "$TMPDIR/server-new.tar.gz")
           echo "New server tar: ${NEW_SIZE} bytes, sha256=${NEW_HASH}"
@@ -184,7 +184,7 @@ jobs:
               tar xzf "$APP_TAR" -C "$TMPDIR/old-app"
               OLD_SERVER=$(find "$TMPDIR/old-app" -path "*/Resources/server" -type d | head -1 || true)
               if [ -n "$OLD_SERVER" ]; then
-                tar czf "$PREV_SERVER_TAR" -C "$OLD_SERVER" .
+                tar czf "$PREV_SERVER_TAR" --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$OLD_SERVER" .
               else
                 echo "Server directory not found in old app bundle, skipping delta"
                 exit 0
