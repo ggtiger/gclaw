@@ -16,7 +16,7 @@ const STATIC_SRC = path.join(ROOT, '.next', 'static')
 const PUBLIC_SRC = path.join(ROOT, 'public')
 
 // 不需要复制到产物的目录
-const SKIP_DIRS = new Set(['data', '.claude', 'node_modules/.cache', '@img'])
+const SKIP_DIRS = new Set(['data', '.claude', 'node_modules/.cache', '@img', '.git'])
 
 /**
  * 递归复制目录，处理 symlink 和特殊文件

@@ -127,7 +127,7 @@ jobs:
           echo "--- Building new server tar ---"
           node scripts/bundle-sidecar.js
           cd src-tauri
-          tar czf "$TMPDIR/server-new.tar.gz" -C server .
+          tar czf "$TMPDIR/server-new.tar.gz" --exclude='.git' -C server .
           NEW_HASH=$(sha256sum "$TMPDIR/server-new.tar.gz" | cut -d' ' -f1)
           NEW_SIZE=$(stat -c%s "$TMPDIR/server-new.tar.gz")
           echo "New server tar: ${NEW_SIZE} bytes, sha256=${NEW_HASH}"
