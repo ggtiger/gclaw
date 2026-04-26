@@ -329,6 +329,31 @@ jobs:
             exit 1
           fi
 
+          # Gitee 上传函数（带重试）
+          upload_to_gitee() {
+            local file=$1 max_time=$2 retries=3 delay=10
+            local SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+            echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
+            for i in $(seq 1 $retries); do
+              RESP=$(curl -s --max-time "$max_time" --connect-timeout 30 --retry 2 --retry-delay 5 \
+                -w "\n%{http_code}" -X POST \
+                "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
+                -F "access_token=${GITEE_TOKEN}" \
+                -F "file=@${file}" 2>&1)
+              HTTP_CODE=$(echo "$RESP" | tail -1)
+              BODY=$(echo "$RESP" | sed '$d')
+              FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
+              if [ -n "$FNAME" ]; then
+                echo "    OK: ${FNAME}"
+                return 0
+              fi
+              echo "    Attempt ${i}/${retries} failed (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
+              [ $i -lt $retries ] && sleep $delay
+            done
+            echo "    FAIL: ${file}"
+            return 1
+          }
+
           # 3. 上传文件到 Gitee（分两步：先小文件，再大文件）
           echo "--- Step 1: Uploading critical small files ---"
           SUCCESS=0
@@ -337,20 +362,9 @@ jobs:
           # 3a. 优先上传 delta（小文件，更新必需）
           for file in server-delta-*.delta; do
             [ -f "$file" ] || continue
-            SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
-            echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
-            RESP=$(curl -s --max-time 120 -w "\n%{http_code}" -X POST \
-              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
-              -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@${file}")
-            HTTP_CODE=$(echo "$RESP" | tail -1)
-            BODY=$(echo "$RESP" | sed '$d')
-            FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
-            if [ -n "$FNAME" ]; then
-              echo "    OK: ${FNAME}"
+            if upload_to_gitee "$file" 300; then
               SUCCESS=$((SUCCESS + 1))
             else
-              echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
               FAIL=$((FAIL + 1))
             fi
           done
@@ -370,19 +384,9 @@ jobs:
               )
             ' latest.json > latest-gitee.json
 
-            echo "  Uploading: latest.json (rewritten)"
-            RESP=$(curl -s --max-time 30 -w "\n%{http_code}" -X POST \
-              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
-              -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@latest-gitee.json;filename=latest.json")
-            HTTP_CODE=$(echo "$RESP" | tail -1)
-            BODY=$(echo "$RESP" | sed '$d')
-            FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
-            if [ -n "$FNAME" ]; then
-              echo "    OK: ${FNAME}"
+            if upload_to_gitee "latest-gitee.json" 60; then
               SUCCESS=$((SUCCESS + 1))
             else
-              echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
               FAIL=$((FAIL + 1))
             fi
           fi
@@ -396,20 +400,9 @@ jobs:
             case "$file" in
               server-delta-*.delta|latest.json|latest-gitee.json) continue ;;
             esac
-            SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
-            echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
-            RESP=$(curl -s --max-time 3600 -w "\n%{http_code}" -X POST \
-              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
-              -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@${file}")
-            HTTP_CODE=$(echo "$RESP" | tail -1)
-            BODY=$(echo "$RESP" | sed '$d')
-            FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
-            if [ -n "$FNAME" ]; then
-              echo "    OK: ${FNAME}"
+            if upload_to_gitee "$file" 3600; then
               SUCCESS=$((SUCCESS + 1))
             else
-              echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
               FAIL=$((FAIL + 1))
             fi
           done
