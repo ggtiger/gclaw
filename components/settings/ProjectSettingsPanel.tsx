@@ -107,7 +107,8 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
       })
       const data = await res.json()
       if (data.filename) {
-        updateField('assistantAvatar', data.filename)
+        setSettings(prev => prev ? { ...prev, assistantAvatar: data.filename } : prev)
+        setDirty(true)
       } else {
         toast(data.error || '上传失败', 'error')
       }
@@ -118,8 +119,9 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   }, [projectId, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAvatarRemove = useCallback(() => {
-    updateField('assistantAvatar', '')
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    setSettings(prev => prev ? { ...prev, assistantAvatar: '' } : prev)
+    setDirty(true)
+  }, [])
 
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
