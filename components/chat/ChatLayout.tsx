@@ -27,7 +27,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { isTauri } from '@/lib/tauri'
 import Modal from '@/components/ui/Modal'
 import { WindowControls } from '@/components/ui/WindowControls'
-import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
 
 export function ChatLayout() {
   const project = useProject()
@@ -49,24 +48,6 @@ export function ChatLayout() {
   const [diffFilePath, setDiffFilePath] = useState<string | null>(null)
   // 秘书面板当前标签（用于判断是否启用拖拽/全屏）
   const [secretaryTab, setSecretaryTab] = useState<string>('focus')
-
-  // ─── 助理身份设置（侧边栏用） ───
-  const [assistantIdentity, setAssistantIdentity] = useState<{ assistantName?: string; assistantIcon?: string; assistantAvatar?: string }>({})
-  useEffect(() => {
-    if (!project.currentId) { setAssistantIdentity({}); return }
-    const load = () => {
-      fetch(`/api/settings?projectId=${encodeURIComponent(project.currentId)}`)
-        .then(r => r.json())
-        .then(data => setAssistantIdentity({ assistantName: data.assistantName, assistantIcon: data.assistantIcon, assistantAvatar: data.assistantAvatar }))
-        .catch(() => {})
-    }
-    load()
-    const handler = (e: Event) => {
-      if ((e as CustomEvent).detail?.projectId === project.currentId) load()
-    }
-    window.addEventListener('settings-changed', handler)
-    return () => window.removeEventListener('settings-changed', handler)
-  }, [project.currentId])
 
   // AI 工具操作完成后刷新文件树 + git 状态
   useEffect(() => {
@@ -380,7 +361,6 @@ export function ChatLayout() {
             user={user ? { username: user.username, role: user.role, avatarUrl: user.avatarUrl } : undefined}
             onUserMenu={() => setModalOpen('account')}
             onHide={() => setProjectSidebarHidden(true)}
-            assistantIdentity={assistantIdentity}
             onOpenProjectSettings={(id) => {
               if (id !== project.currentId) project.switchProject(id)
               setModalOpen('projectSettings')
