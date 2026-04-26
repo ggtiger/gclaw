@@ -56,7 +56,7 @@ export function ChatLayout() {
     }
   }, [chat.activityData.fileChanges.length])
 
-  // 轮询开发模式状态
+  // 开发模式状态：激活时每 8 秒轮询，未激活时只查一次
   useEffect(() => {
     const fetchDevMode = () => {
       fetch('/api/dev-mode')
@@ -65,9 +65,12 @@ export function ChatLayout() {
         .catch(() => {})
     }
     fetchDevMode()
-    const interval = setInterval(fetchDevMode, 8000)
-    return () => clearInterval(interval)
-  }, [])
+    // 仅在开发模式激活时才启动轮询
+    if (devModeStatus?.state === 'active') {
+      const interval = setInterval(fetchDevMode, 8000)
+      return () => clearInterval(interval)
+    }
+  }, [devModeStatus?.state])
 
   // 监听 dev mode 项目切换事件
   useEffect(() => {
