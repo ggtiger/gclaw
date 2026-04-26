@@ -134,10 +134,18 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
   const [assistantIdentity, setAssistantIdentity] = useState<{ assistantName?: string; assistantIcon?: string }>({})
   useEffect(() => {
     if (!projectId) { setAssistantIdentity({}); return }
-    fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
-      .then(r => r.json())
-      .then(data => setAssistantIdentity({ assistantName: data.assistantName, assistantIcon: data.assistantIcon }))
-      .catch(() => {})
+    const load = () => {
+      fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
+        .then(r => r.json())
+        .then(data => setAssistantIdentity({ assistantName: data.assistantName, assistantIcon: data.assistantIcon }))
+        .catch(() => {})
+    }
+    load()
+    const handler = (e: Event) => {
+      if ((e as CustomEvent).detail?.projectId === projectId) load()
+    }
+    window.addEventListener('settings-changed', handler)
+    return () => window.removeEventListener('settings-changed', handler)
   }, [projectId])
   const { name: assistantDisplayName, Icon: AssistantIcon } = useAssistantIdentity(assistantIdentity)
 

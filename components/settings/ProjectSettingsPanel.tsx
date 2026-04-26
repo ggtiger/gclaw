@@ -104,6 +104,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
       })
       setDirty(false)
       toast('项目设置已保存', 'success')
+      window.dispatchEvent(new CustomEvent('settings-changed', { detail: { projectId } }))
       onClose?.()
     } catch (err) {
       console.error('Failed to save project settings:', err)
