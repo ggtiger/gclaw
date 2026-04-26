@@ -51,6 +51,9 @@ export function useAuth() {
     if (!cachedUser) {
       refresh()
     }
+    const handler = () => refresh()
+    window.addEventListener('user-changed', handler)
+    return () => window.removeEventListener('user-changed', handler)
   }, [refresh])
 
   const logout = useCallback(async () => {

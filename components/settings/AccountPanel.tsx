@@ -51,8 +51,8 @@ export function AccountPanel() {
       })
       const data = await res.json()
       if (data.success) {
-        // 刷新用户数据以获取新的 avatarUrl
         await refresh()
+        window.dispatchEvent(new Event('user-changed'))
       } else {
         alert(data.error || '上传失败')
       }
@@ -80,6 +80,7 @@ export function AccountPanel() {
       const data = await res.json()
       if (data.success) {
         await refresh()
+        window.dispatchEvent(new Event('user-changed'))
       } else {
         alert(data.error || '删除失败')
       }
