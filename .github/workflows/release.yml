@@ -141,8 +141,12 @@ jobs:
             exit 0
           fi
 
-          tar czf "$TMPDIR/server-new.tar.gz" --exclude='.git' --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$SERVER_DIR" .
-          NEW_HASH=$(sha256sum "$TMPDIR/server-new.tar.gz" | cut -d' ' -f1)
+          # bsdiff 作用在未压缩的 tar 上（gzip 压缩会放大微小差异导致 delta 过大）
+          tar cf "$TMPDIR/server-new.tar" --exclude='.git' --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$SERVER_DIR" .
+
+          # 压缩版本用于下载
+          gzip -k "$TMPDIR/server-new.tar"
+          NEW_HASH=$(sha256sum "$TMPDIR/server-new.tar" | cut -d' ' -f1)
           NEW_SIZE=$(stat -c%s "$TMPDIR/server-new.tar.gz")
           echo "New server tar: ${NEW_SIZE} bytes, sha256=${NEW_HASH}"
 
@@ -163,14 +167,16 @@ jobs:
 
           # 4. 尝试获取上一版本的 server tar
           echo "--- Downloading previous server tar ---"
-          PREV_SERVER_TAR="$TMPDIR/server-old.tar.gz"
+          PREV_SERVER_TAR="$TMPDIR/server-old.tar"
 
           # 优先从 Release 下载上一版本的 server tar
           gh release download "$PREV_TAG" --repo ggtiger/gclaw \
             --pattern "server-${OLD_VERSION}.tar.gz" --dir "$TMPDIR" || true
 
           if [ -f "$TMPDIR/server-${OLD_VERSION}.tar.gz" ]; then
-            cp "$TMPDIR/server-${OLD_VERSION}.tar.gz" "$PREV_SERVER_TAR"
+            # 解压得到未压缩 tar
+            gunzip -k "$TMPDIR/server-${OLD_VERSION}.tar.gz"
+            mv "$TMPDIR/server-${OLD_VERSION}.tar" "$PREV_SERVER_TAR"
           else
             # 回退：从上一版本的全量包中提取 server
             echo "No standalone server tar, extracting from app bundle..."
@@ -184,7 +190,7 @@ jobs:
               tar xzf "$APP_TAR" -C "$TMPDIR/old-app"
               OLD_SERVER=$(find "$TMPDIR/old-app" -path "*/Resources/server" -type d | head -1 || true)
               if [ -n "$OLD_SERVER" ]; then
-                tar czf "$PREV_SERVER_TAR" --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$OLD_SERVER" .
+                tar cf "$TMPDIR/server-old.tar" --exclude='.git' --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$OLD_SERVER" .
               else
                 echo "Server directory not found in old app bundle, skipping delta"
                 exit 0
@@ -198,11 +204,14 @@ jobs:
           OLD_HASH=$(sha256sum "$PREV_SERVER_TAR" | cut -d' ' -f1)
           echo "Old server tar: sha256=${OLD_HASH}"
 
-          # 5. 生成 bsdiff delta
+          # 5. 生成 bsdiff delta（在未压缩 tar 上差分）
           echo "--- Generating bsdiff delta ---"
           DELTA_NAME="server-delta-${OLD_VERSION}-${NEW_VERSION}.delta"
+          DELTA_RAW="$TMPDIR/${DELTA_NAME}.raw"
           DELTA_PATH="$TMPDIR/${DELTA_NAME}"
-          bsdiff "$PREV_SERVER_TAR" "$TMPDIR/server-new.tar.gz" "$DELTA_PATH"
+          bsdiff "$PREV_SERVER_TAR" "$TMPDIR/server-new.tar" "$DELTA_RAW"
+          gzip -c "$DELTA_RAW" > "$DELTA_PATH"
+          rm "$DELTA_RAW"
 
           DELTA_SIZE=$(stat -c%s "$DELTA_PATH")
           DELTA_HASH=$(sha256sum "$DELTA_PATH" | cut -d' ' -f1)

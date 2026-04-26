@@ -9,6 +9,27 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+/// 将 server/ 目录打包为未压缩 tar（用于 bsdiff 差分）
+pub fn pack_server_tar_raw(resource_dir: &Path) -> Result<PathBuf, String> {
+    let server_dir = resource_dir.join("server");
+    if !server_dir.exists() {
+        return Err("server/ 目录不存在".into());
+    }
+
+    let output_path = resource_dir.join("server-current.tar");
+    let file = fs::File::create(&output_path)
+        .map_err(|e| format!("创建 tar 失败: {}", e))?;
+    let mut tar = tar::Builder::new(file);
+
+    tar.append_dir_all(".", &server_dir)
+        .map_err(|e| format!("打包 server/ 失败: {}", e))?;
+
+    tar.finish()
+        .map_err(|e| format!("写入 tar 失败: {}", e))?;
+
+    Ok(output_path)
+}
+
 /// 将 server/ 目录打包为 server-current.tar.gz
 pub fn pack_server_tar(resource_dir: &Path) -> Result<PathBuf, String> {
     let server_dir = resource_dir.join("server");
@@ -69,17 +90,30 @@ pub fn apply_server_delta(
 
     println!("[Delta] 开始应用增量更新...");
 
-    // 1. 打包当前 server/ 为 old_tar
+    // 1. 打包当前 server/ 为 old_tar（未压缩，bsdiff 在未压缩数据上差分）
     println!("[Delta] 打包当前 server/...");
-    let old_tar = pack_server_tar(&resource_dir)?;
+    let old_tar = pack_server_tar_raw(&resource_dir)?;
 
-    // 2. bspatch: old_tar + delta → new_tar
+    // 2. 解压 delta（delta 是 gzip 压缩的）
+    println!("[Delta] 解压 delta...");
+    let delta_raw_path = resource_dir.join("server-delta.raw");
+    {
+        let delta_file = fs::File::open(delta)
+            .map_err(|e| format!("打开 delta 文件失败: {}", e))?;
+        let dec = flate2::read::GzDecoder::new(delta_file);
+        let mut raw = fs::File::create(&delta_raw_path)
+            .map_err(|e| format!("创建临时文件失败: {}", e))?;
+        io::copy(&mut dec.take(500_000_000), &mut raw) // 500MB safety limit
+            .map_err(|e| format!("解压 delta 失败: {}", e))?;
+    }
+
+    // 3. bspatch: old_tar + delta → new_tar
     println!("[Delta] 应用 bspatch...");
-    let new_tar_path = resource_dir.join("server-new.tar.gz");
+    let new_tar_path = resource_dir.join("server-new.tar");
     {
         let old_data = fs::read(&old_tar)
             .map_err(|e| format!("读取 old tar 失败: {}", e))?;
-        let delta_data = fs::read(delta)
+        let delta_data = fs::read(&delta_raw_path)
             .map_err(|e| format!("读取 delta 失败: {}", e))?;
 
         let mut new_data = Vec::new();
@@ -90,6 +124,9 @@ pub fn apply_server_delta(
         fs::write(&new_tar_path, &new_data)
             .map_err(|e| format!("写入 new tar 失败: {}", e))?;
     }
+
+    // 清理 raw delta
+    let _ = fs::remove_file(&delta_raw_path);
 
     // 3. SHA-256 校验
     println!("[Delta] 校验哈希...");
@@ -112,9 +149,9 @@ pub fn apply_server_delta(
     }
     rename_or_copy_dir(&server_dir, &backup_dir)?;
 
-    // 5. 解压 new_tar 到 server/
+    // 5. 解压 new_tar 到 server/（new_tar 是未压缩 tar）
     println!("[Delta] 解压新 server/...");
-    if let Err(e) = extract_tar_gz(&new_tar_path, &server_dir) {
+    if let Err(e) = extract_tar(&new_tar_path, &server_dir) {
         // 回滚
         println!("[Delta] 解压失败，回滚: {}", e);
         let _ = fs::remove_dir_all(&server_dir);
@@ -158,6 +195,32 @@ fn read_server_version(server_dir: &Path) -> String {
         }
     }
     "unknown".into()
+}
+
+/// 解压未压缩 tar 到目标目录
+fn extract_tar(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    let file = fs::File::open(archive_path)
+        .map_err(|e| format!("打开归档失败: {}", e))?;
+    let mut tar = tar::Archive::new(file);
+
+    // 先解压到临时目录，成功后原子替换
+    let tmp_dir = dest.with_extension("tmp");
+    if tmp_dir.exists() {
+        fs::remove_dir_all(&tmp_dir)
+            .map_err(|e| format!("清理临时目录失败: {}", e))?;
+    }
+
+    tar.unpack(&tmp_dir)
+        .map_err(|e| format!("解压失败: {}", e))?;
+
+    // 移动到目标位置
+    if dest.exists() {
+        fs::remove_dir_all(dest)
+            .map_err(|e| format!("删除旧目录失败: {}", e))?;
+    }
+    rename_or_copy_dir(&tmp_dir, dest)?;
+
+    Ok(())
 }
 
 /// 解压 tar.gz 到目标目录
