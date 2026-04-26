@@ -27,6 +27,7 @@ interface MessageBubbleProps {
   replyToMessage?: ChatMessage  // assistant 消息回复的 user 消息
   assistantName?: string
   assistantIcon?: string
+  assistantAvatar?: string
 }
 
 // 模块级常量，避免每次渲染重建
@@ -36,14 +37,15 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-di
 // 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量
 const COLLAPSE_THRESHOLD = 2000
 
-export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings, replyToMessage, assistantName, assistantIcon }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings, replyToMessage, assistantName, assistantIcon, assistantAvatar }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const source = message.source || 'web'
   const sourceConfig = isUser ? SOURCE_CONFIG[source] : null
   const SourceIcon = sourceConfig?.icon
-  const { name: assistantDisplayName, Icon: AssistantIcon } = useAssistantIdentity(
-    assistantName || assistantIcon ? { assistantName, assistantIcon } : null
+  const { name: assistantDisplayName, Icon: AssistantIcon, avatarUrl: assistantAvatarUrl } = useAssistantIdentity(
+    assistantName || assistantIcon || assistantAvatar ? { assistantName, assistantIcon, assistantAvatar } : null,
+    projectId
   )
 
   // 长消息默认折叠，点击展开
@@ -112,12 +114,14 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
     <div className={`flex gap-3 w-full ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
       {/* Avatar */}
       <div className="shrink-0">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isUser ? (sourceConfig?.bg || 'bg-purple-500/15') : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center overflow-hidden ${isUser ? (sourceConfig?.bg || 'bg-purple-500/15') : assistantAvatarUrl ? '' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
           {isUser
             ? SourceIcon
               ? <SourceIcon size={15} className={sourceConfig?.color || 'text-purple-600 dark:text-purple-400'} />
               : <User size={15} className="text-purple-600 dark:text-purple-400" />
-            : <AssistantIcon size={15} className="text-purple-600 dark:text-purple-400" />
+            : assistantAvatarUrl
+              ? <img src={assistantAvatarUrl} alt="" className="w-full h-full object-cover" />
+              : <AssistantIcon size={15} className="text-purple-600 dark:text-purple-400" />
           }
         </div>
       </div>

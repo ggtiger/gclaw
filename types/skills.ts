@@ -80,6 +80,8 @@ export interface ProjectSettings {
   assistantName?: string
   /** AI 助理图标（lucide 图标名） */
   assistantIcon?: string
+  /** AI 助理自定义头像文件名 */
+  assistantAvatar?: string
 }
 
 export const DEFAULT_PROJECT: ProjectSettings = {
@@ -92,6 +94,7 @@ export const DEFAULT_PROJECT: ProjectSettings = {
   providerId: '',
   assistantName: undefined,
   assistantIcon: undefined,
+  assistantAvatar: undefined,
 }
 
 // 合并类型，向后兼容

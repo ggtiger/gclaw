@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Loader, RefreshCw, FolderOpen, Bot, Sparkles, Brain, Wand2, Cpu, MessageSquare, GraduationCap, Stethoscope, Code, Palette, Music, Heart } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Loader, RefreshCw, FolderOpen, Bot, Sparkles, Brain, Wand2, Cpu, MessageSquare, GraduationCap, Stethoscope, Code, Palette, Music, Heart, Upload, X } from 'lucide-react'
 import type { ProjectSettings, GlobalSettings, ModelProvider } from '@/types/skills'
 import { useToast } from '@/components/ui/Toast'
 import { isTauri, selectDirectory, revealInFinder } from '@/lib/tauri'
@@ -26,7 +26,8 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   const [loadingModels, setLoadingModels] = useState(false)
 
   const { toast } = useToast()
-  const { Icon: AssistantIcon } = useAssistantIdentity(settings)
+  const { Icon: AssistantIcon, avatarUrl } = useAssistantIdentity(settings, projectId)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -43,6 +44,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         providerId: data.providerId || '',
         assistantName: data.assistantName || undefined,
         assistantIcon: data.assistantIcon || undefined,
+        assistantAvatar: data.assistantAvatar || undefined,
       })
       setGlobalProviders(data.providers || [])
     } catch (err) {
@@ -93,6 +95,34 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const res = await fetch(`/api/settings/avatar?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'POST',
+        body: (() => { const fd = new FormData(); fd.append('avatar', file); return fd })(),
+      })
+      const data = await res.json()
+      if (data.filename) {
+        updateField('assistantAvatar', data.filename)
+      } else {
+        toast(data.error || '上传失败', 'error')
+      }
+    } catch {
+      toast('上传失败', 'error')
+    }
+    e.target.value = ''
+  }, [projectId, toast]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAvatarRemove = useCallback(async () => {
+    if (!settings?.assistantAvatar) return
+    try {
+      await fetch(`/api/settings/avatar?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' })
+    } catch {}
+    updateField('assistantAvatar', undefined)
+  }, [projectId, settings?.assistantAvatar]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const saveSettings = useCallback(async () => {
     if (!settings || !dirty) return
     setSaving(true)
@@ -129,8 +159,12 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
       {/* 助理设置 */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-6 h-6 rounded-md flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20">
-            <AssistantIcon size={14} className="text-purple-600 dark:text-purple-400" />
+          <div className="w-6 h-6 rounded-md flex items-center justify-center bg-purple-500/10 dark:bg-purple-500/20 overflow-hidden">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <AssistantIcon size={14} className="text-purple-600 dark:text-purple-400" />
+            )}
           </div>
           <label className="text-xs text-gray-500 dark:text-gray-400">
             助理设置
@@ -145,28 +179,65 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
             placeholder="AI助理"
             className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
           />
-          {/* 图标选择器 */}
-          <div className="grid grid-cols-6 gap-1">
-            {AVAILABLE_ICONS.map(name => {
-              const Comp = ICON_COMPONENTS[name]
-              const selected = (settings.assistantIcon || 'Bot') === name
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => updateField('assistantIcon', name)}
-                  className={`flex items-center justify-center p-1.5 rounded-lg cursor-pointer transition-colors ${
-                    selected
-                      ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'
-                      : 'bg-gray-50 dark:bg-white/5 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
-                  }`}
-                  title={name}
-                >
-                  <Comp size={16} />
-                </button>
-              )
-            })}
+          {/* 头像上传 + 预览 */}
+          <div className="flex items-center gap-2">
+            <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-white/5 flex items-center justify-center">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <AssistantIcon size={20} className="text-purple-600 dark:text-purple-400" />
+              )}
+            </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={handleAvatarUpload}
+            />
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 transition-colors cursor-pointer text-gray-600 dark:text-gray-300"
+            >
+              <Upload size={12} />
+              上传头像
+            </button>
+            {settings.assistantAvatar && (
+              <button
+                type="button"
+                onClick={handleAvatarRemove}
+                className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                title="移除头像"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
+          {/* 图标选择器（仅无自定义头像时生效） */}
+          {!settings.assistantAvatar && (
+            <div className="grid grid-cols-6 gap-1">
+              {AVAILABLE_ICONS.map(name => {
+                const Comp = ICON_COMPONENTS[name]
+                const selected = (settings.assistantIcon || 'Bot') === name
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => updateField('assistantIcon', name)}
+                    className={`flex items-center justify-center p-1.5 rounded-lg cursor-pointer transition-colors ${
+                      selected
+                        ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
+                    }`}
+                    title={name}
+                  >
+                    <Comp size={16} />
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
