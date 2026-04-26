@@ -150,6 +150,42 @@ function getPlatformKey(): string {
 }
 
 /**
+ * 通过 Tauri Rust 端 curl 获取远程 JSON（绕过浏览器 CORS 限制）
+ */
+async function fetchJsonViaRust(url: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const body = await invoke<string>('fetch_url', { url })
+    return JSON.parse(body) as Record<string, unknown>
+  } catch (err) {
+    console.log(`[Delta] fetch_url 失败 (${url}):`, err)
+    return null
+  }
+}
+
+/**
+ * 通过 Gitee API 获取 latest.json
+ */
+async function fetchLatestJsonFromGitee(): Promise<Record<string, unknown> | null> {
+  try {
+    // 1. 通过 API 获取最新 release
+    const apiResult = await fetchJsonViaRust(
+      'https://gitee.com/api/v5/repos/laohu2022/gclaw/releases/latest',
+    )
+    if (!apiResult) return null
+
+    const assets = apiResult.assets as Array<{ name: string; browser_download_url: string }> | undefined
+    const asset = assets?.find(a => a.name === 'latest.json')
+    if (!asset) return null
+
+    // 2. 下载 latest.json
+    return await fetchJsonViaRust(asset.browser_download_url)
+  } catch {
+    return null
+  }
+}
+
+/**
  * 检查 server delta 更新
  * 从 latest.json 获取 serverVersion 和 serverDeltas 信息
  */
@@ -160,23 +196,21 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     const currentVersion = await getCurrentServerVersion()
     console.log(`[Delta] 当前 server 版本: ${currentVersion}`)
 
-    // 尝试从更新端点获取 latest.json
-    const endpoints = [
-      'https://gitee.com/laohu2022/gclaw/releases/latest/download/latest.json',
-      'https://github.com/ggtiger/gclaw/releases/latest/download/latest.json',
-    ]
-
+    // 依次尝试各端点获取 latest.json
     let latestJson: Record<string, unknown> | null = null
-    for (const url of endpoints) {
-      try {
-        const resp = await fetch(url, { signal: AbortSignal.timeout(15000) })
-        if (resp.ok) {
-          latestJson = await resp.json()
-          break
-        }
-      } catch {
-        continue
-      }
+
+    // 1. Gitee（通过 API 解析最新 release）
+    if (!latestJson) {
+      console.log('[Delta] 尝试 Gitee...')
+      latestJson = await fetchLatestJsonFromGitee()
+    }
+
+    // 2. GitHub 直链
+    if (!latestJson) {
+      console.log('[Delta] 尝试 GitHub...')
+      latestJson = await fetchJsonViaRust(
+        'https://github.com/ggtiger/gclaw/releases/latest/download/latest.json',
+      )
     }
 
     if (!latestJson) {
@@ -186,7 +220,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
 
     const serverVersion = latestJson.serverVersion as string | undefined
     if (!serverVersion || serverVersion === currentVersion) {
-      console.log('[Delta] server 已是最新或无版本信息')
+      console.log(`[Delta] server 已是最新或无版本信息 (本地=${currentVersion}, 远程=${serverVersion})`)
       return null
     }
 
@@ -220,7 +254,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
 
 /**
  * 下载并应用 server delta 更新
- * 成功后重启 Node 进程（无需重启整个应用）
+ * 通过 Rust 端 curl 下载（绕过 CORS），成功后应用 delta
  */
 export async function downloadAndApplyDelta(
   delta: ServerDelta,
@@ -233,51 +267,16 @@ export async function downloadAndApplyDelta(
 
   console.log(`[Delta] 开始下载 delta: ${delta.url}`)
 
-  // 下载 delta 到临时目录（使用 fetch + 手动进度）
   const dataDir = await appDataDir()
   const deltaFileName = delta.url.split('/').pop() ?? 'server.delta'
   const deltaPath = await join(dataDir, deltaFileName)
 
-  const totalSize = delta.size
+  onProgress?.({ downloaded: 0, total: delta.size, percent: 0 })
 
-  const resp = await fetch(delta.url, { signal: AbortSignal.timeout(120000) })
-  if (!resp.ok) throw new Error(`下载失败: HTTP ${resp.status}`)
-  if (!resp.body) throw new Error('下载失败: 无响应体')
+  // 通过 Rust 端 curl 下载（绕过 CORS）
+  await invoke('download_file', { url: delta.url, path: deltaPath })
 
-  // 使用 ReadableStream 读取并追踪进度
-  const reader = resp.body.getReader()
-  const chunks: Uint8Array[] = []
-  let downloaded = 0
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    downloaded += value.length
-    onProgress?.({
-      downloaded,
-      total: totalSize,
-      percent: totalSize > 0 ? Math.round(downloaded / totalSize * 100) : 0,
-    })
-  }
-
-  // 合并 chunks
-  const fullData = new Uint8Array(downloaded)
-  let offset = 0
-  for (const chunk of chunks) {
-    fullData.set(chunk, offset)
-    offset += chunk.length
-  }
-
-  console.log('[Delta] 下载完成，写入文件...')
-
-  // 写入文件（通过 Tauri 命令）
-  await invoke('save_file_content', {
-    path: deltaPath,
-    content: Array.from(fullData),
-  })
-
-  onProgress?.({ downloaded: totalSize, total: totalSize, percent: 100 })
+  onProgress?.({ downloaded: delta.size, total: delta.size, percent: 100 })
 
   // 调用 Rust 端应用 delta
   const newVersion = await invoke<string>('apply_server_delta', {

@@ -7,7 +7,57 @@ use sha2::{Sha256, Digest};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tauri::Manager;
+
+/// 通过 curl 获取远程 JSON（绕过浏览器 CORS 限制）
+#[tauri::command]
+pub fn fetch_url(url: String) -> Result<String, String> {
+    let curl = if cfg!(target_os = "windows") { "curl.exe" } else { "curl" };
+    let mut cmd = Command::new(curl);
+    cmd.args(&["-sL", "--connect-timeout", "15", "--max-time", "30"]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd.arg(&url);
+
+    let output = cmd.output()
+        .map_err(|e| format!("执行 curl 失败: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("curl 返回错误: {}", String::from_utf8_lossy(&output.stderr)));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// 通过 curl 下载文件到指定路径（绕过浏览器 CORS 限制）
+#[tauri::command]
+pub fn download_file(url: String, path: String) -> Result<(), String> {
+    let curl = if cfg!(target_os = "windows") { "curl.exe" } else { "curl" };
+    let mut cmd = Command::new(curl);
+    cmd.args(&["-sL", "-f", "--connect-timeout", "30", "--max-time", "300"]);
+    cmd.args(&["-o", &path]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd.arg(&url);
+
+    let output = cmd.output()
+        .map_err(|e| format!("执行 curl 失败: {}", e))?;
+
+    if !output.status.success() {
+        // 清理不完整的文件
+        let _ = fs::remove_file(&path);
+        return Err(format!("下载失败: {}", String::from_utf8_lossy(&output.stderr)));
+    }
+
+    Ok(())
+}
 
 /// 将 server/ 目录打包为未压缩 tar（用于 bsdiff 差分）
 pub fn pack_server_tar_raw(resource_dir: &Path) -> Result<PathBuf, String> {

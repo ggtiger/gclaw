@@ -329,16 +329,17 @@ jobs:
             exit 1
           fi
 
-          # 3. 上传所有文件到 Gitee（latest.json 最后单独处理）
-          echo "--- Uploading to Gitee ---"
+          # 3. 上传文件到 Gitee（分两步：先小文件，再大文件）
+          echo "--- Step 1: Uploading critical small files ---"
           SUCCESS=0
           FAIL=0
-          for file in *; do
+
+          # 3a. 优先上传 delta 和 server tar（小文件，更新必需）
+          for file in server-delta-*.delta server-*.tar.gz; do
             [ -f "$file" ] || continue
-            [ "$file" = "latest.json" ] && continue  # last.json 最后处理
             SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
             echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
-            RESP=$(curl -s --max-time 3600 -w "\n%{http_code}" -X POST \
+            RESP=$(curl -s --max-time 120 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" \
               -F "file=@${file}")
@@ -353,9 +354,8 @@ jobs:
               FAIL=$((FAIL + 1))
             fi
           done
-          echo "Uploaded: ${SUCCESS} OK, ${FAIL} FAIL"
 
-          # 4. 重写 latest.json URL（GitHub → Gitee）
+          # 3b. 上传 latest.json（URL 重写为 Gitee）
           if [ -f "latest.json" ]; then
             echo "--- Rewriting latest.json for Gitee ---"
             GITEE_BASE="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${TAG}"
@@ -380,9 +380,39 @@ jobs:
             FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
             if [ -n "$FNAME" ]; then
               echo "    OK: ${FNAME}"
+              SUCCESS=$((SUCCESS + 1))
             else
               echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
+              FAIL=$((FAIL + 1))
             fi
           fi
+
+          echo "Step 1 done: ${SUCCESS} OK, ${FAIL} FAIL"
+
+          # 3c. 上传剩余大文件（安装包）
+          echo "--- Step 2: Uploading large installers ---"
+          for file in *; do
+            [ -f "$file" ] || continue
+            case "$file" in
+              server-delta-*.delta|server-*.tar.gz|latest.json|latest-gitee.json) continue ;;
+            esac
+            SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+            echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
+            RESP=$(curl -s --max-time 3600 -w "\n%{http_code}" -X POST \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "file=@${file}")
+            HTTP_CODE=$(echo "$RESP" | tail -1)
+            BODY=$(echo "$RESP" | sed '$d')
+            FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
+            if [ -n "$FNAME" ]; then
+              echo "    OK: ${FNAME}"
+              SUCCESS=$((SUCCESS + 1))
+            else
+              echo "    FAIL (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          echo "Total: ${SUCCESS} OK, ${FAIL} FAIL"
 
           echo "=== Gitee sync complete ==="
