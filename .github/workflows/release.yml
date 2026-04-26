@@ -334,8 +334,8 @@ jobs:
           SUCCESS=0
           FAIL=0
 
-          # 3a. 优先上传 delta 和 server tar（小文件，更新必需）
-          for file in server-delta-*.delta server-*.tar.gz; do
+          # 3a. 优先上传 delta（小文件，更新必需）
+          for file in server-delta-*.delta; do
             [ -f "$file" ] || continue
             SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
             echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
@@ -394,7 +394,7 @@ jobs:
           for file in *; do
             [ -f "$file" ] || continue
             case "$file" in
-              server-delta-*.delta|server-*.tar.gz|latest.json|latest-gitee.json) continue ;;
+              server-delta-*.delta|latest.json|latest-gitee.json) continue ;;
             esac
             SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
             echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
