@@ -127,7 +127,11 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
 
     loadStatus()
     const interval = setInterval(loadStatus, 30000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const handler = (e: Event) => {
+      if ((e as CustomEvent).detail?.projectId === projectId) loadStatus()
+    }
+    window.addEventListener('channels-changed', handler)
+    return () => { cancelled = true; clearInterval(interval); window.removeEventListener('channels-changed', handler) }
   }, [projectId])
 
   // ─── 助理身份设置 ───

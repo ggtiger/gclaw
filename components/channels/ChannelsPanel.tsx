@@ -13,6 +13,23 @@ const CHANNEL_TYPES: { type: ChannelType; label: string; icon: string }[] = [
   { type: 'api', label: 'API 接入', icon: '🔌' },
 ]
 
+/** 根据渠道类型发起连接 */
+async function connectChannel(projectId: string, channel: ChannelConfig) {
+  const endpoints: Partial<Record<ChannelType, string>> = {
+    dingtalk: '/api/channels/webhook/dingtalk/connect',
+    feishu: '/api/channels/webhook/feishu/connect',
+  }
+  const url = endpoints[channel.type]
+  if (!url || !channel.enabled) return
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, channelId: channel.id }),
+    })
+  } catch { /* ignore */ }
+}
+
 export function ChannelsPanel({ projectId }: { projectId: string }) {
   const { toast } = useToast()
   const [channels, setChannels] = useState<ChannelConfig[]>([])
@@ -210,6 +227,10 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
         setNewName('')
         setNewFields({})
         toast('渠道添加成功', 'success')
+        // 立即发起连接（钉钉/飞书有完整配置时）
+        connectChannel(projectId, data.channel)
+        // 通知 ChatPanel 刷新渠道状态
+        window.dispatchEvent(new CustomEvent('channels-changed', { detail: { projectId } }))
       } else {
         toast(data.error || '添加渠道失败', 'error')
       }
@@ -228,6 +249,10 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !ch.enabled }),
       })
+      if (updated.enabled) {
+        connectChannel(projectId, updated)
+      }
+      window.dispatchEvent(new CustomEvent('channels-changed', { detail: { projectId } }))
     } catch {
       setChannels(prev => prev.map(c => c.id === ch.id ? ch : c))
     }
@@ -294,9 +319,13 @@ export function ChannelsPanel({ projectId }: { projectId: string }) {
         body: JSON.stringify(body),
       })
       if (res.ok) {
-        setChannels(prev => prev.map(c => c.id === editingId ? { ...c, ...body } as ChannelConfig : c))
+        const updated = { ...ch, ...body } as ChannelConfig
+        setChannels(prev => prev.map(c => c.id === editingId ? updated : c))
         setEditingId(null)
         toast('渠道已更新', 'success')
+        // 保存后立即重连
+        connectChannel(projectId, updated)
+        window.dispatchEvent(new CustomEvent('channels-changed', { detail: { projectId } }))
       } else {
         toast('更新渠道失败', 'error')
       }
