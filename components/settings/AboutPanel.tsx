@@ -112,12 +112,8 @@ export function AboutPanel() {
 
   const handleRestartServer = useCallback(async () => {
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('restart_server')
-      setServerNeedsRestart(false)
-      setStatus('idle')
-      // Server 重启成功，刷新页面加载新代码
-      window.location.reload()
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
     } catch (err: any) {
       setErrorMsg('重启失败，请手动重启应用')
       setStatus('error')
