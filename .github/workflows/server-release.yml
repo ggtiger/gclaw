@@ -342,6 +342,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "GClaw Server ${VERSION}" \
             --notes "$NOTES" \
+            --latest=false \
             2>/dev/null || echo "Release already exists, uploading assets..."
 
           # 上传 server tar

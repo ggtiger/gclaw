@@ -91,7 +91,11 @@
 - 智能查找系统已安装的运行时（支持 nvm-windows / fnm / Homebrew 等）
 - 系统托盘：关闭窗口最小化到托盘，新消息时图标闪烁提醒
 - 桌面通知：窗口隐藏时自动推送系统通知（渠道消息 / AI 回复完成）
-- 自动更新检测（GitHub Releases）
+- **双轨更新机制**：
+  - **Server 热更新** — bsdiff 增量差分，仅下载变更部分（~几 MB），无需重启应用，自动重启 Node 进程生效
+  - **Tauri 全量更新** — `tauri-plugin-updater` 检测 Rust 客户端壳版本，需用户确认重启
+  - 双端点容错：优先 Gitee（国内加速），回退 GitHub
+  - 自动后台检查：启动 30s 后首次检查，之后每 2 小时自动检测
 - Next.js standalone 打包为 sidecar 进程
 
 ---
@@ -298,8 +302,20 @@ npm run tauri:build    # 构建当前平台安装包
 
 ### CI/CD
 
-- **CI** — PR 和 push 到 main 时自动触发三平台编译检查
-- **Release** — 推送 `v*` tag 自动触发四平台构建并发布 GitHub Release
+| 工作流 | 触发 Tag | 构建内容 |
+|--------|----------|----------|
+| `release.yml` | `v*` | 完整 Tauri 应用 + server tar + delta |
+| `server-release.yml` | `server-v*` | 仅 Next.js server bundle + delta |
+
+**双轨版本体系**：
+
+| 版本 | 文件 | 含义 | 更新时机 |
+|------|------|------|----------|
+| Server 版本 | `package.json` → `serverVersion` | Web/Node.js 侧代码版本 | 任何 Web 代码变更 |
+| Tauri 壳版本 | `tauri.conf.json` + `Cargo.toml` → `version` | Rust 客户端壳版本 | Rust/Tauri 代码变更 |
+
+- **Delta 生成** — 自动对最近 3 个旧版本生成 bsdiff 增量包，注入 `latest.json`
+- **Gitee 同步** — 自动同步 Release 到 Gitee 镜像（优先上传 delta + latest.json，再传大文件）
 
 ---
 
