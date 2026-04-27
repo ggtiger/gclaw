@@ -233,14 +233,14 @@ jobs:
             cp "$DELTA_PATH" "dist/${DELTA_NAME}"
 
             # 累积到 JSON 数组
-            GH_BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+            # URL 稍后在上传阶段根据 LATEST_APP_TAG 填充，此处先用占位符
             DELTAS_JSON=$(echo "$DELTAS_JSON" | jq \
               --arg from "$OLD_VERSION" \
-              --arg url "${GH_BASE}/${DELTA_NAME}" \
+              --arg deltaName "${DELTA_NAME}" \
               --argjson size "$DELTA_SIZE" \
               --arg hash "sha256:${DELTA_HASH}" \
               --arg targetHash "${NEW_HASH}" \
-              '. + [{ from: $from, url: $url, size: $size, hash: $hash, targetHash: $targetHash }]')
+              '. + [{ from: $from, deltaName: $deltaName, size: $size, hash: $hash, targetHash: $targetHash }]')
 
             DELTA_COUNT=$((DELTA_COUNT + 1))
           done
@@ -252,6 +252,26 @@ jobs:
           echo "$DELTAS_JSON" > dist/deltas.json
           echo "delta_count=${DELTA_COUNT}" >> "$GITHUB_ENV"
 
+      # 找到最近的 v* 全量 Release，server 资产将上传到该 Release 下
+      - name: Find latest app release
+        id: app_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          echo "=== Finding latest v* app release ==="
+
+          LATEST_APP_TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("v")) | select(.tagName | startswith("server-v") | not)][0].tagName')
+
+          if [ -z "$LATEST_APP_TAG" ] || [ "$LATEST_APP_TAG" = "null" ]; then
+            echo "ERROR: No v* app release found. You must publish a full app release (v*) before releasing server-only updates."
+            exit 1
+          fi
+
+          echo "Found latest app release: ${LATEST_APP_TAG}"
+          echo "app_tag=${LATEST_APP_TAG}" >> "$GITHUB_OUTPUT"
+
       # 生成 latest.json（保留现有 Tauri 更新信息，更新 server 相关字段）
       - name: Generate latest.json
         env:
@@ -259,41 +279,22 @@ jobs:
         run: |
           set -e
           VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ steps.version.outputs.tag }}"
+          LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
 
-          DELTAS_JSON=$(cat dist/deltas.json)
+          # 先将 deltas.json 中的 deltaName 转换为完整 URL（指向 v* Release）
+          GH_BASE="https://github.com/${{ github.repository }}/releases/download/${LATEST_APP_TAG}"
+          DELTAS_JSON=$(cat dist/deltas.json | jq --arg base "$GH_BASE" '
+            [ .[] | .url = "\($base)/\(.deltaName)" | del(.deltaName) ]
+          ')
 
-          # 尝试从最近的全量 Release (v* tag) 下载现有 latest.json 以保留 platforms 字段
-          LATEST_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
-          EXISTING_LATEST=""
+          # 下载现有 Release 的 latest.json 以保留 platforms 等 Tauri 更新信息
+          mkdir -p dist/existing
+          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
+            --pattern "latest.json" --dir dist/existing --clobber 2>/dev/null || true
 
-          if [ -n "$LATEST_TAG" ]; then
-            echo "Trying to download latest.json from ${LATEST_TAG}..."
-            gh release download "$LATEST_TAG" --repo "${{ github.repository }}" \
-              --pattern "latest.json" --dir dist/existing 2>/dev/null || true
-            if [ -f "dist/existing/latest.json" ]; then
-              EXISTING_LATEST="dist/existing/latest.json"
-              echo "Found existing latest.json from ${LATEST_TAG}"
-            fi
-          fi
-
-          # 也尝试从最近的 server-v* Release 获取
-          if [ -z "$EXISTING_LATEST" ]; then
-            LATEST_SERVER_TAG=$(git tag --sort=-creatordate | grep -E '^server-v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1 || true)
-            if [ -n "$LATEST_SERVER_TAG" ]; then
-              echo "Trying to download latest.json from ${LATEST_SERVER_TAG}..."
-              mkdir -p dist/existing
-              gh release download "$LATEST_SERVER_TAG" --repo "${{ github.repository }}" \
-                --pattern "latest.json" --dir dist/existing 2>/dev/null || true
-              if [ -f "dist/existing/latest.json" ]; then
-                EXISTING_LATEST="dist/existing/latest.json"
-                echo "Found existing latest.json from ${LATEST_SERVER_TAG}"
-              fi
-            fi
-          fi
-
-          if [ -n "$EXISTING_LATEST" ]; then
-            # 在现有 latest.json 基础上更新 server 相关字段（保留 platforms 等 Tauri 更新信息）
+          if [ -f "dist/existing/latest.json" ]; then
+            echo "Found existing latest.json from ${LATEST_APP_TAG}"
+            # 在现有 latest.json 基础上更新 server 相关字段
             jq --arg sv "$VERSION" \
                --argjson deltas "$DELTAS_JSON" \
                '
@@ -305,10 +306,10 @@ jobs:
                  "windows-x86_64": $deltas,
                  "linux-x86_64": $deltas
                }
-               ' "$EXISTING_LATEST" > dist/latest.json
+               ' dist/existing/latest.json > dist/latest.json
           else
             # 没有现有 latest.json，创建一个仅包含 server 信息的新文件
-            echo "No existing latest.json found, creating new one"
+            echo "No existing latest.json found in ${LATEST_APP_TAG}, creating new one"
             jq -n \
                --arg sv "$VERSION" \
                --argjson deltas "$DELTAS_JSON" \
@@ -328,26 +329,19 @@ jobs:
           cat dist/latest.json | jq .
           echo "=========================="
 
-      # 创建 GitHub Release 并上传所有资产
-      - name: Create GitHub Release
+      # 上传所有资产到最近的 v* Release（不创建独立 Release）
+      - name: Upload assets to app release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
+          LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
 
-          # 创建 Release（如果不存在）
-          NOTES="Server-only 更新 (v${VERSION})。仅包含 Next.js server 变更，无需重新下载完整客户端。"
-          gh release create "$TAG" \
-            --repo "${{ github.repository }}" \
-            --title "GClaw Server ${VERSION}" \
-            --notes "$NOTES" \
-            --latest=false \
-            2>/dev/null || echo "Release already exists, uploading assets..."
+          echo "=== Uploading server assets to ${LATEST_APP_TAG} release ==="
 
           # 上传 server tar
           echo "--- Uploading server tar ---"
-          gh release upload "$TAG" "dist/${SERVER_TAR_NAME}" \
+          gh release upload "$LATEST_APP_TAG" "dist/${SERVER_TAR_NAME}" \
             --repo "${{ github.repository }}" --clobber
 
           # 上传 delta 文件
@@ -355,18 +349,18 @@ jobs:
           for delta in dist/server-delta-*.delta; do
             [ -f "$delta" ] || continue
             echo "  Uploading: $(basename $delta)"
-            gh release upload "$TAG" "$delta" \
+            gh release upload "$LATEST_APP_TAG" "$delta" \
               --repo "${{ github.repository }}" --clobber
           done
 
-          # 上传 latest.json
+          # 上传 latest.json（覆盖旧的）
           echo "--- Uploading latest.json ---"
-          gh release upload "$TAG" dist/latest.json \
+          gh release upload "$LATEST_APP_TAG" dist/latest.json \
             --repo "${{ github.repository }}" --clobber
 
-          echo "=== GitHub Release complete ==="
+          echo "=== Upload to ${LATEST_APP_TAG} complete ==="
 
-  # Job 2: 同步 Release 到 Gitee
+  # Job 2: 同步 Release 到 Gitee（上传到对应的 v* Release）
   sync-gitee:
     needs: build-and-delta
     runs-on: ubuntu-latest
@@ -395,42 +389,57 @@ jobs:
           TAG="${TAG}"
           echo "=== Syncing server release ${TAG} to Gitee ==="
 
+          # 找到最近的 v* Release tag（与 GitHub job 保持一致）
+          LATEST_APP_TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("v")) | select(.tagName | startswith("server-v") | not)][0].tagName')
+
+          if [ -z "$LATEST_APP_TAG" ] || [ "$LATEST_APP_TAG" = "null" ]; then
+            echo "ERROR: No v* app release found on GitHub, cannot sync to Gitee"
+            exit 1
+          fi
+          echo "Target app release tag: ${LATEST_APP_TAG}"
+
           TMPDIR=$(mktemp -d)
           trap "rm -rf $TMPDIR" EXIT
           cd "$TMPDIR"
 
-          # 1. 从 GitHub 下载当前 Release 的所有资产
-          echo "--- Downloading assets from GitHub ---"
-          gh release download "$TAG" --repo "${{ github.repository }}" --clobber
+          # 1. 从 GitHub v* Release 下载 server 相关资产
+          echo "--- Downloading server assets from GitHub ${LATEST_APP_TAG} release ---"
+          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
+            --pattern "server-*.tar.gz" --clobber 2>/dev/null || true
+          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
+            --pattern "server-delta-*.delta" --clobber 2>/dev/null || true
+          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
+            --pattern "latest.json" --clobber 2>/dev/null || true
 
           ls -lh
           echo ""
 
-          # 2. 在 Gitee 创建 Release
-          echo "--- Creating Gitee release ---"
+          # 2. 找到 Gitee 上对应的 v* Release
+          echo "--- Finding Gitee release for ${LATEST_APP_TAG} ---"
           RELEASE_ID=$(curl -s --max-time 30 \
-            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${LATEST_APP_TAG}?access_token=${GITEE_TOKEN}" \
             | jq -r '.id // empty' 2>/dev/null || true)
 
           if [ -z "$RELEASE_ID" ]; then
-            echo "Creating new release on Gitee..."
+            echo "WARNING: Gitee release for ${LATEST_APP_TAG} not found, creating one..."
             RESP=$(curl -s --max-time 30 -w "\n%{http_code}" -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
               -F "access_token=${GITEE_TOKEN}" \
-              -F "tag_name=${TAG}" \
-              -F "name=GClaw Server ${TAG#server-v}" \
-              -F "body=Server-only 更新。仅包含 Next.js server 变更。" \
+              -F "tag_name=${LATEST_APP_TAG}" \
+              -F "name=GClaw ${LATEST_APP_TAG#v}" \
+              -F "body=GClaw ${LATEST_APP_TAG#v} Release" \
               -F "target_commitish=main")
             HTTP_CODE=$(echo "$RESP" | tail -1)
             BODY=$(echo "$RESP" | sed '$d')
             echo "HTTP ${HTTP_CODE}: $(echo "$BODY" | head -c 500)"
             RELEASE_ID=$(echo "$BODY" | jq -r '.id // empty' 2>/dev/null || true)
           else
-            echo "Gitee release already exists: ${RELEASE_ID}"
+            echo "Gitee release found: ${RELEASE_ID}"
           fi
 
           if [ -z "$RELEASE_ID" ]; then
-            echo "ERROR: Failed to create Gitee release"
+            echo "ERROR: Failed to get/create Gitee release for ${LATEST_APP_TAG}"
             exit 1
           fi
 
@@ -477,8 +486,8 @@ jobs:
           # 3b. 上传 latest.json（URL 重写为 Gitee 地址）
           if [ -f "latest.json" ]; then
             echo "--- Rewriting latest.json URLs for Gitee ---"
-            GITEE_BASE="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${TAG}"
-            GH_BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+            GITEE_BASE="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${LATEST_APP_TAG}"
+            GH_BASE="https://github.com/${{ github.repository }}/releases/download/${LATEST_APP_TAG}"
 
             jq --arg gb "$GH_BASE" --arg gitee "$GITEE_BASE" '
               walk(
