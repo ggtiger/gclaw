@@ -592,3 +592,146 @@ jobs:
           echo "Total: ${SUCCESS} OK, ${FAIL} FAIL"
 
           echo "=== Gitee sync complete ==="
+
+  # 同步 Release 到七牛云 CDN（加速国内下载）
+  sync-qiniu:
+    needs: [release, generate-delta]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push'
+    continue-on-error: true
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Download assets from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ steps.version.outputs.tag }}"
+          mkdir -p assets
+          cd assets
+          echo "--- Downloading all assets from GitHub Release ${TAG} ---"
+          gh release download "$TAG" --repo ggtiger/gclaw --clobber
+          echo "--- Downloaded files ---"
+          ls -lh
+
+      - name: Install qshell
+        run: |
+          set -e
+          echo "--- Installing qshell ---"
+          curl -fSL -o qshell.tar.gz https://devtools.qiniu.com/qshell-v2.14.0-linux-amd64.tar.gz
+          tar xzf qshell.tar.gz
+          chmod +x qshell
+          sudo mv qshell /usr/local/bin/qshell
+          qshell version
+
+      - name: Configure qshell
+        run: |
+          qshell account ${{ secrets.QINIU_ACCESS_KEY }} ${{ secrets.QINIU_SECRET_KEY }} gclaw-ci
+
+      - name: Rewrite latest.json URLs for Qiniu
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          CDN_BASE="https://o09u11p5v.qnssl.com/gclaw/releases/${VERSION}"
+          GH_BASE="https://github.com/ggtiger/gclaw/releases/download/${TAG}"
+
+          if [ ! -f assets/latest.json ]; then
+            echo "WARNING: latest.json not found, skipping URL rewrite"
+            exit 0
+          fi
+
+          echo "--- Rewriting latest.json URLs ---"
+          echo "GitHub base: ${GH_BASE}"
+          echo "CDN base:    ${CDN_BASE}"
+
+          jq --arg gb "$GH_BASE" --arg cdn "$CDN_BASE" '
+            walk(
+              if type == "object" and has("url") then
+                .url = (.url | sub($gb; $cdn))
+              else .
+              end
+            ) |
+            walk(
+              if type == "object" and has("signature") then
+                .signature = (.signature | sub($gb; $cdn))
+              else .
+              end
+            )
+          ' assets/latest.json > assets/latest-qiniu.json
+
+          mv assets/latest-qiniu.json assets/latest.json
+          echo "--- Rewritten latest.json ---"
+          cat assets/latest.json | jq .
+
+      - name: Upload all files to Qiniu
+        env:
+          QINIU_BUCKET: ${{ secrets.QINIU_BUCKET }}
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          FAIL=0
+          SUCCESS=0
+
+          upload_with_retry() {
+            local local_file="$1"
+            local key="$2"
+            local retries=3
+            local attempt=1
+            while [ $attempt -le $retries ]; do
+              echo "  Upload attempt ${attempt}/${retries}: ${key}"
+              if qshell fput "${QINIU_BUCKET}" "${key}" "${local_file}" --overwrite; then
+                echo "  OK: ${key}"
+                return 0
+              fi
+              echo "  Attempt ${attempt} failed"
+              attempt=$((attempt + 1))
+              sleep 5
+            done
+            echo "  FAIL: ${key}"
+            return 1
+          }
+
+          echo "--- Uploading assets to Qiniu (gclaw/releases/${VERSION}/) ---"
+          cd assets
+          for file in *; do
+            [ -f "$file" ] || continue
+            KEY="gclaw/releases/${VERSION}/${file}"
+            if upload_with_retry "$file" "$KEY"; then
+              SUCCESS=$((SUCCESS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+          done
+
+          # 额外上传 latest.json 到固定路径（客户端检查更新用）
+          if [ -f "latest.json" ]; then
+            echo "--- Uploading latest.json to gclaw/latest.json ---"
+            if upload_with_retry "latest.json" "gclaw/latest.json"; then
+              SUCCESS=$((SUCCESS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+          fi
+
+          cd ..
+          echo "=== Qiniu upload complete: ${SUCCESS} OK, ${FAIL} FAIL ==="
+          if [ $FAIL -gt 0 ]; then
+            echo "WARNING: ${FAIL} file(s) failed to upload to Qiniu"
+          fi
+
+      - name: Refresh Qiniu CDN cache
+        if: success()
+        run: |
+          echo "=== Refreshing CDN cache for latest.json ==="
+          echo "https://o09u11p5v.qnssl.com/gclaw/latest.json" > /tmp/cdn_refresh_urls.txt
+          qshell cdnrefresh --urls -i /tmp/cdn_refresh_urls.txt || echo "WARNING: CDN refresh failed, cache will expire naturally"
+          echo "CDN cache refresh requested"

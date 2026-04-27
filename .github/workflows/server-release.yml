@@ -485,9 +485,164 @@ jobs:
 
           echo "=== Upload to ${LATEST_APP_TAG} complete ==="
 
-  # Job 2: 同步 Release 到 Gitee（上传到对应的 v* Release）
-  sync-gitee:
+  # Job 2: 同步到七牛云 CDN（国内加速）
+  sync-qiniu:
     needs: build-and-delta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#server-v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Server version: ${VERSION}"
+
+      - name: Find latest app release
+        id: app_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          LATEST_APP_TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("v")) | select(.tagName | startswith("server-v") | not)][0].tagName')
+
+          if [ -z "$LATEST_APP_TAG" ] || [ "$LATEST_APP_TAG" = "null" ]; then
+            echo "ERROR: No v* app release found"
+            exit 1
+          fi
+
+          echo "Found latest app release: ${LATEST_APP_TAG}"
+          echo "app_tag=${LATEST_APP_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Download assets from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
+          mkdir -p dist/qiniu
+          cd dist/qiniu
+
+          echo "--- Downloading server assets from ${LATEST_APP_TAG} ---"
+          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
+            --pattern "server-*.tar.gz" --clobber 2>/dev/null || true
+          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
+            --pattern "latest.json" --clobber 2>/dev/null || true
+
+          echo "Downloaded files:"
+          ls -lh
+
+      - name: Install qshell
+        run: |
+          set -e
+          wget -q https://devtools.qiniu.com/qshell-v2.14.0-linux-amd64.tar.gz -O /tmp/qshell.tar.gz
+          tar xzf /tmp/qshell.tar.gz -C /tmp
+          sudo mv /tmp/qshell /usr/local/bin/qshell
+          chmod +x /usr/local/bin/qshell
+          qshell version
+
+      - name: Configure qshell
+        run: |
+          qshell account ${{ secrets.QINIU_ACCESS_KEY }} ${{ secrets.QINIU_SECRET_KEY }} gclaw-ci
+
+      - name: Rewrite latest.json URLs for Qiniu
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
+          GH_BASE="https://github.com/${{ github.repository }}/releases/download/${LATEST_APP_TAG}"
+          CDN_BASE="https://o09u11p5v.qnssl.com/gclaw/releases/${VERSION}"
+
+          if [ -f "dist/qiniu/latest.json" ]; then
+            jq --arg gb "$GH_BASE" --arg cdn "$CDN_BASE" '
+              walk(
+                if type == "object" and has("url") then
+                  .url = (.url | sub($gb; $cdn))
+                else .
+                end
+              )
+            ' dist/qiniu/latest.json > dist/qiniu/latest-qiniu.json
+            mv dist/qiniu/latest-qiniu.json dist/qiniu/latest.json
+            echo "=== Rewritten latest.json ==="
+            cat dist/qiniu/latest.json | jq .
+          else
+            echo "WARNING: latest.json not found, skipping URL rewrite"
+          fi
+
+      - name: Upload files to Qiniu
+        env:
+          QINIU_BUCKET: ${{ secrets.QINIU_BUCKET }}
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          SUCCESS=0
+          FAIL=0
+
+          upload_to_qiniu() {
+            local file="$1"
+            local key="$2"
+            echo "  Uploading: ${file} -> ${key}"
+            if qshell fput "$QINIU_BUCKET" "$key" "$file" --overwrite; then
+              echo "    OK: ${key}"
+              return 0
+            else
+              echo "    FAIL: ${key}"
+              return 1
+            fi
+          }
+
+          # Upload server tar and patch tar files
+          for file in dist/qiniu/server-*.tar.gz; do
+            [ -f "$file" ] || continue
+            FNAME=$(basename "$file")
+            if upload_to_qiniu "$file" "gclaw/releases/${VERSION}/${FNAME}"; then
+              SUCCESS=$((SUCCESS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+          done
+
+          # Upload latest.json to versioned path
+          if [ -f "dist/qiniu/latest.json" ]; then
+            if upload_to_qiniu "dist/qiniu/latest.json" "gclaw/releases/${VERSION}/latest.json"; then
+              SUCCESS=$((SUCCESS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+
+            # Upload latest.json to fixed path for update checking
+            if upload_to_qiniu "dist/qiniu/latest.json" "gclaw/latest.json"; then
+              SUCCESS=$((SUCCESS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+          fi
+
+          echo ""
+          echo "=== Qiniu upload complete: ${SUCCESS} OK, ${FAIL} FAIL ==="
+          if [ "$FAIL" -gt 0 ]; then
+            echo "WARNING: Some uploads failed, but continuing (Qiniu is acceleration channel)"
+          fi
+
+      - name: Refresh Qiniu CDN cache
+        if: success()
+        run: |
+          echo "=== Refreshing CDN cache for latest.json ==="
+          echo "https://o09u11p5v.qnssl.com/gclaw/latest.json" > /tmp/cdn_refresh_urls.txt
+          qshell cdnrefresh --urls -i /tmp/cdn_refresh_urls.txt || echo "WARNING: CDN refresh failed, cache will expire naturally"
+          echo "CDN cache refresh requested"
+
+  # Job 3: 同步 Release 到 Gitee（上传到对应的 v* Release）
+  sync-gitee:
+    needs: [build-and-delta]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'push'

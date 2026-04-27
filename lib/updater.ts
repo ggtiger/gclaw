@@ -215,10 +215,11 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * 带重试的 latest.json 获取，依次尝试 Gitee 和 GitHub，每个端点支持指数退避重试
+ * 带重试的 latest.json 获取，依次尝试七牛云 CDN、Gitee 和 GitHub，每个端点支持指数退避重试
  */
 async function fetchLatestJsonWithRetry(maxRetries = 2): Promise<Record<string, unknown> | null> {
   const endpoints: Array<() => Promise<Record<string, unknown> | null>> = [
+    () => fetchJsonViaRust('https://o09u11p5v.qnssl.com/gclaw/latest.json'),
     () => fetchLatestJsonFromGitee(),
     () => fetchJsonViaRust('https://github.com/ggtiger/gclaw/releases/latest/download/latest.json'),
   ]
