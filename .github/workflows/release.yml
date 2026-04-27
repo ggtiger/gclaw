@@ -144,8 +144,9 @@ jobs:
           # bsdiff 作用在未压缩的 tar 上（gzip 压缩会放大微小差异导致 delta 过大）
           tar cf "$TMPDIR/server-new.tar" --exclude='.git' --sort=name --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner -C "$SERVER_DIR" .
 
-          # 压缩版本用于下载
-          gzip -k "$TMPDIR/server-new.tar"
+          # 压缩版本用于下载（使用 gzip -c 避免截断）
+          gzip -c "$TMPDIR/server-new.tar" > "$TMPDIR/server-new.tar.gz"
+          gzip -t "$TMPDIR/server-new.tar.gz" || { echo "ERROR: gzip verification failed!"; exit 1; }
           NEW_HASH=$(sha256sum "$TMPDIR/server-new.tar" | cut -d' ' -f1)
           NEW_GZ_SIZE=$(stat -c%s "$TMPDIR/server-new.tar.gz")
           echo "New server tar: ${NEW_GZ_SIZE} bytes, sha256=${NEW_HASH}"
@@ -248,6 +249,9 @@ jobs:
 
             DELTA_HASH=$(sha256sum "$DELTA_PATH" | cut -d' ' -f1)
             echo "Delta: ${DELTA_NAME} (${DELTA_SIZE} bytes, sha256=${DELTA_HASH})"
+
+            # 验证 delta 完整性
+            gzip -t "$DELTA_PATH" || { echo "ERROR: $(basename $DELTA_PATH) integrity check failed!"; exit 1; }
 
             # 上传 delta 到 Release
             echo "Uploading ${DELTA_NAME}..."

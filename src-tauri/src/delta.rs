@@ -139,37 +139,107 @@ pub fn get_or_pack_server_tar_raw(
         format!("https://gitee.com/laohu2022/gclaw/releases/download/v{}/server-{}.tar.gz", current_version, current_version),
     ];
 
+    let mut download_ok = false;
     for url in &base_urls {
         if download_file_internal(url, &tar_gz_path.to_string_lossy()).is_ok() {
-            // 解压得到未压缩 tar
-            println!("[Delta] 解压下载的 server tar.gz...");
-            let file = fs::File::open(&tar_gz_path)
-                .map_err(|e| format!("打开 tar.gz 失败: {}", e))?;
-            let dec = flate2::read::GzDecoder::new(file);
-            let mut tar_data = Vec::new();
-            io::BufReader::new(dec).read_to_end(&mut tar_data)
-                .map_err(|e| format!("解压 tar.gz 失败: {}", e))?;
-            fs::write(&output_path, &tar_data)
-                .map_err(|e| format!("写入 tar 失败: {}", e))?;
-
-            // 清理 gz
-            let _ = fs::remove_file(&tar_gz_path);
-
-            println!("[Delta] 从 Release 下载 server tar 成功 ({} bytes)", tar_data.len());
-            return Ok(output_path);
+            // 下载完成后，解压前验证 gzip 完整性
+            println!("[Delta] 验证下载的 tar.gz 完整性...");
+            match fs::read(&tar_gz_path) {
+                Ok(gz_data) => {
+                    let mut decoder = flate2::read::GzDecoder::new(&gz_data[..]);
+                    let mut tar_data = Vec::new();
+                    match io::Read::read_to_end(&mut decoder, &mut tar_data) {
+                        Ok(_) => {
+                            // 验证解压后是有效的 tar（至少 512 字节）
+                            if tar_data.len() < 512 {
+                                println!(
+                                    "[Delta] 下载的 tar.gz 解压后过小 ({} bytes)，跳过此源",
+                                    tar_data.len()
+                                );
+                                let _ = fs::remove_file(&tar_gz_path);
+                                continue;
+                            }
+                            // 写入解压后的 tar
+                            if let Err(e) = fs::write(&output_path, &tar_data) {
+                                println!("[Delta] 写入 tar 失败: {}，跳过此源", e);
+                                let _ = fs::remove_file(&tar_gz_path);
+                                continue;
+                            }
+                            let _ = fs::remove_file(&tar_gz_path);
+                            println!(
+                                "[Delta] 从 Release 下载 server tar 成功 ({} bytes)",
+                                tar_data.len()
+                            );
+                            download_ok = true;
+                            break;
+                        }
+                        Err(e) => {
+                            println!(
+                                "[Delta] 下载的 tar.gz 解压失败: {}，跳过此源",
+                                e
+                            );
+                            let _ = fs::remove_file(&tar_gz_path);
+                            continue;
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("[Delta] 读取下载文件失败: {}，跳过此源", e);
+                    let _ = fs::remove_file(&tar_gz_path);
+                    continue;
+                }
+            }
         }
     }
 
-    // 回退：本地打包（使用 Rust tar crate + 确定性参数）
+    if download_ok {
+        return Ok(output_path);
+    }
+
+    // 回退：本地打包
     println!("[Delta] 无法下载 server tar，回退到本地打包...");
     let _ = fs::remove_file(&tar_gz_path);
 
+    // 优先使用系统 GNU tar（与 CI 端参数一致，保证 bsdiff 兼容）
+    let tar_cmd = if cfg!(target_os = "macos") { "gtar" } else { "tar" };
+    let server_dir_str = server_dir.to_string_lossy().to_string();
+    let output_str = output_path.to_string_lossy().to_string();
+
+    let tar_result = Command::new(tar_cmd)
+        .args(&[
+            "cf", &output_str,
+            "--sort=name",
+            "--mtime=2024-01-01 00:00:00",
+            "--owner=0", "--group=0", "--numeric-owner",
+            "--exclude=.git",
+            "-C", &server_dir_str,
+            ".",
+        ])
+        .output();
+
+    match tar_result {
+        Ok(output) if output.status.success() => {
+            println!("[Delta] 使用系统 {} 打包成功", tar_cmd);
+            return Ok(output_path);
+        }
+        Ok(output) => {
+            println!(
+                "[Delta] 系统 {} 执行失败: {}，回退到 Rust tar crate",
+                tar_cmd,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Err(e) => {
+            println!(
+                "[Delta] 系统 {} 不可用: {}，回退到 Rust tar crate",
+                tar_cmd, e
+            );
+        }
+    }
+
+    // 回退：使用 Rust tar crate（可能与 CI 端 GNU tar 不完全一致）
     let file = fs::File::create(&output_path)
-        .map_err(|e| format!("创建 tar 失败: {}", e));
-    let file = match file {
-        Ok(f) => f,
-        Err(e) => return Err(e),
-    };
+        .map_err(|e| format!("创建 tar 失败: {}", e))?;
     let mut builder = tar::Builder::new(file);
 
     // 收集并排序文件列表，确保可重现

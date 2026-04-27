@@ -118,9 +118,11 @@ jobs:
             --owner=0 --group=0 --numeric-owner \
             -C dist/gclaw-server .
 
-          # 压缩版本用于分发
-          gzip -k dist/server-current.tar
-          cp dist/server-current.tar.gz "dist/${SERVER_TAR_NAME}"
+          # 从未压缩 tar 生成分发版本（避免 gzip -k + cp 导致截断）
+          gzip -c dist/server-current.tar > "dist/${SERVER_TAR_NAME}"
+
+          # 验证 gzip 完整性
+          gzip -t "dist/${SERVER_TAR_NAME}" || { echo "ERROR: gzip verification failed!"; exit 1; }
 
           # 计算 hash
           NEW_HASH=$(sha256sum dist/server-current.tar | cut -d' ' -f1)
@@ -323,7 +325,6 @@ jobs:
             jq --arg sv "$VERSION" \
                --argjson deltas "$DELTAS_JSON" \
                '
-               .version = $sv |
                .serverVersion = $sv |
                .serverDeltas = {
                  "darwin-aarch64": $deltas,
@@ -339,7 +340,6 @@ jobs:
                --arg sv "$VERSION" \
                --argjson deltas "$DELTAS_JSON" \
                '{
-                 version: $sv,
                  serverVersion: $sv,
                  serverDeltas: {
                    "darwin-aarch64": $deltas,
@@ -363,6 +363,17 @@ jobs:
           LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
 
           echo "=== Uploading server assets to ${LATEST_APP_TAG} release ==="
+
+          # 上传前完整性校验
+          echo "--- Verifying file integrity before upload ---"
+          gzip -t "dist/${SERVER_TAR_NAME}" || { echo "ERROR: ${SERVER_TAR_NAME} integrity check failed!"; exit 1; }
+          echo "✓ ${SERVER_TAR_NAME} integrity verified"
+
+          for delta in dist/server-delta-*.delta; do
+            [ -f "$delta" ] || continue
+            gzip -t "$delta" || { echo "ERROR: $(basename $delta) integrity check failed!"; exit 1; }
+            echo "✓ $(basename $delta) integrity verified"
+          done
 
           # 上传 server tar
           echo "--- Uploading server tar ---"

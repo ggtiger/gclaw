@@ -272,12 +272,14 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     // 查找匹配当前版本的 delta
     const matchedDelta = platformDeltas?.find(d => d.from === currentVersion) ?? null
 
-    const sizeMB = matchedDelta
-      ? (matchedDelta.size / 1024 / 1024).toFixed(1)
-      : '~25'
+    const sizeLabel = matchedDelta
+      ? (matchedDelta.size >= 1024 * 1024
+        ? `~${(matchedDelta.size / 1024 / 1024).toFixed(1)} MB`
+        : `~${(matchedDelta.size / 1024).toFixed(0)} KB`)
+      : '~25 MB'
 
     const label = matchedDelta
-      ? `热更新 ~${sizeMB} MB`
+      ? `热更新 ${sizeLabel}`
       : `全量更新 ~25 MB`
 
     console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
