@@ -2,47 +2,24 @@
 
 import { useState, useRef } from 'react'
 import { Sun, Moon, Monitor, Image as ImageIcon, X as XIcon, Upload, Loader, Palette } from 'lucide-react'
-import { applyThemeColor as applyThemeColorGlobal, resetThemeColor as resetThemeColorGlobal } from '@/lib/theme-color'
 import { useToast } from '@/components/ui/Toast'
+import { usePreferencesStore } from '@/lib/store/usePreferencesStore'
 
-interface PreferencesPanelProps {
-  backgroundImage?: string
-  onBackgroundChange?: (url: string) => void
-}
+export function PreferencesPanel() {
+  const {
+    theme,
+    themeColor,
+    backgroundImage,
+    setTheme,
+    setThemeColor,
+    resetThemeColor: resetThemeColorAction,
+    setBackgroundImage,
+  } = usePreferencesStore()
 
-export function PreferencesPanel({ backgroundImage, onBackgroundChange }: PreferencesPanelProps) {
-  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(() => {
-    if (typeof window === 'undefined') return 'system'
-    try {
-      return (localStorage.getItem('gclaw-theme') as 'light' | 'dark' | 'system') || 'system'
-    } catch {
-      return 'system'
-    }
-  })
   const [uploadingBg, setUploadingBg] = useState(false)
   const bgFileInputRef = useRef<HTMLInputElement>(null)
-  const [themeColor, setThemeColor] = useState<string>(() => {
-    try {
-      return localStorage.getItem('gclaw-theme-color') || ''
-    } catch {
-      return ''
-    }
-  })
 
   const { toast } = useToast()
-
-  const setTheme = (newTheme: 'light' | 'dark' | 'system') => {
-    setThemeState(newTheme)
-    localStorage.setItem('gclaw-theme', newTheme)
-    const root = document.documentElement
-    root.classList.remove('light', 'dark')
-    if (newTheme === 'system') {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      root.classList.add(prefersDark ? 'dark' : 'light')
-    } else {
-      root.classList.add(newTheme)
-    }
-  }
 
   const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -69,7 +46,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
       })
       const data = await res.json()
       if (data.success && data.url) {
-        onBackgroundChange?.(data.url)
+        setBackgroundImage(data.url)
         toast('背景图上传成功', 'success')
       } else {
         toast(data.error || '上传失败', 'error')
@@ -124,7 +101,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
           <div className="relative rounded-lg overflow-hidden h-20 border border-gray-200 dark:border-gray-600">
             <img src={backgroundImage} alt="背景预览" className="w-full h-full object-cover" />
             <button
-              onClick={() => onBackgroundChange?.('')}
+              onClick={() => setBackgroundImage('')}
               className="absolute top-1.5 right-1.5 p-1 rounded-full cursor-pointer transition-all bg-black/50 hover:bg-black/70 text-white"
               title="移除背景"
             >
@@ -170,7 +147,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
           <input
             type="text"
             value={backgroundImage || ''}
-            onChange={e => onBackgroundChange?.(e.target.value)}
+            onChange={e => setBackgroundImage(e.target.value)}
             placeholder="或输入图片 URL"
             className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
           />
@@ -197,8 +174,6 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
               key={c.hex}
               onClick={() => {
                 setThemeColor(c.hex)
-                localStorage.setItem('gclaw-theme-color', c.hex)
-                applyThemeColorGlobal(c.hex)
               }}
               className="w-7 h-7 rounded-full border-2 transition-all cursor-pointer hover:scale-110"
               style={{
@@ -217,8 +192,6 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
               onChange={e => {
                 const hex = e.target.value
                 setThemeColor(hex)
-                localStorage.setItem('gclaw-theme-color', hex)
-                applyThemeColorGlobal(hex)
               }}
               className="absolute inset-0 w-7 h-7 opacity-0 cursor-pointer"
             />
@@ -234,9 +207,7 @@ export function PreferencesPanel({ backgroundImage, onBackgroundChange }: Prefer
         {themeColor && themeColor !== '#8b5cf6' && (
           <button
             onClick={() => {
-              setThemeColor('')
-              localStorage.removeItem('gclaw-theme-color')
-              resetThemeColorGlobal()
+              resetThemeColorAction()
             }}
             className="text-xs mt-2 cursor-pointer hover:underline text-gray-400"
           >

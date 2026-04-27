@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Image from 'next/image'
 import { Brain, ChevronDown, ChevronUp, FileText, Link2, Menu, MoreHorizontal, PanelLeft, PanelRight, RefreshCw, Trash2, X, Wifi, WifiOff } from 'lucide-react'
 import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 import { MessageBubble } from './MessageBubble'
 import { StreamingBlocksRenderer } from './StreamingBlocksRenderer'
 import { ChatInput } from './ChatInput'
@@ -134,23 +135,13 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
     return () => { cancelled = true; clearInterval(interval); window.removeEventListener('channels-changed', handler) }
   }, [projectId])
 
-  // ─── 助理身份设置 ───
-  const [assistantIdentity, setAssistantIdentity] = useState<{ assistantName?: string; assistantIcon?: string; assistantAvatar?: string }>({})
-  useEffect(() => {
-    if (!projectId) { setAssistantIdentity({}); return }
-    const load = () => {
-      fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
-        .then(r => r.json())
-        .then(data => setAssistantIdentity({ assistantName: data.assistantName, assistantIcon: data.assistantIcon, assistantAvatar: data.assistantAvatar }))
-        .catch(() => {})
-    }
-    load()
-    const handler = (e: Event) => {
-      if ((e as CustomEvent).detail?.projectId === projectId) load()
-    }
-    window.addEventListener('settings-changed', handler)
-    return () => window.removeEventListener('settings-changed', handler)
-  }, [projectId])
+  // ─── 助理身份设置（从 store 响应式读取）───
+  const projectSettings = useSettingsStore(state => state.projectSettings)
+  const assistantIdentity = useMemo(() => ({
+    assistantName: projectSettings?.assistantName,
+    assistantIcon: projectSettings?.assistantIcon,
+    assistantAvatar: projectSettings?.assistantAvatar,
+  }), [projectSettings?.assistantName, projectSettings?.assistantIcon, projectSettings?.assistantAvatar])
   const { name: assistantDisplayName, Icon: AssistantIcon, avatarUrl: assistantAvatarUrl } = useAssistantIdentity(assistantIdentity, projectId)
 
   // 切换项目时重置自动滚动

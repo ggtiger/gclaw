@@ -21,8 +21,8 @@ import { PreviewPanel } from '../dev-mode/PreviewPanel'
 import { CommandPalette } from './CommandPalette'
 import { useChat, useActiveProjects } from '@/hooks/useChat'
 import { useProject } from '@/hooks/useProject'
-import { useTheme } from '@/hooks/useTheme'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { usePreferencesStore } from '@/lib/store/usePreferencesStore'
 import { useAuth } from '@/hooks/useAuth'
 import { isTauri } from '@/lib/tauri'
 import Modal from '@/components/ui/Modal'
@@ -34,7 +34,7 @@ export function ChatLayout() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<'preferences' | 'settings'>('preferences')
   const chat = useChat(project.currentId, () => { setSettingsInitialTab('settings'); setModalOpen('settings') })
   const activeProjectIds = useActiveProjects()
-  const { theme, setTheme, backgroundImage, setBackgroundImage } = useTheme()
+  const { theme, setTheme, backgroundImage, setBackgroundImage } = usePreferencesStore()
   const { user, loading: authLoading } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false)
@@ -624,8 +624,6 @@ export function ChatLayout() {
       <Modal open={modalOpen === 'settings'} onClose={() => setModalOpen(null)} title="设置" wide persistent noScroll>
         <SettingsPanel
           projectId={project.currentId}
-          backgroundImage={backgroundImage}
-          onBackgroundChange={setBackgroundImage}
           initialTab={settingsInitialTab}
         />
       </Modal>

@@ -22,6 +22,7 @@
     "dialog:allow-save",
     "updater:default",
     "notification:default",
-    "os:default"
+    "os:default",
+    "process:default"
   ]
 }

@@ -15,23 +15,29 @@ import { PromptsPanel } from './PromptsPanel'
 import { DevModePanel } from '../dev-mode/DevModePanel'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 
 type SettingsTab = 'preferences' | 'settings' | 'defaultSkills' | 'prompts' | 'devMode' | 'audit' | 'logs' | 'users' | 'security' | 'about'
 
 interface SettingsPanelProps {
   projectId: string
-  backgroundImage?: string
-  onBackgroundChange?: (url: string) => void
   initialTab?: SettingsTab
 }
 
-export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, initialTab }: SettingsPanelProps) {
-  const [settings, setSettings] = useState<GlobalSettings | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [dirty, setDirty] = useState(false)
+export function SettingsPanel({ projectId, initialTab }: SettingsPanelProps) {
+  const {
+    draftGlobal: settings,
+    loading,
+    saving,
+    dirty,
+    apiKeyRawValue,
+    fetchSettings,
+    updateGlobalField: updateField,
+    setApiKeyRawValue,
+    saveGlobalSettings,
+  } = useSettingsStore()
+
   const [showApiKey, setShowApiKey] = useState(false)
-  const [apiKeyRawValue, setApiKeyRawValue] = useState('')
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'preferences')
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
@@ -41,42 +47,9 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
 
   const { toast } = useToast()
 
-  const fetchSettings = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
-      const data = await res.json()
-      if (data.apiKey && !data.apiKey.startsWith('****')) {
-        setApiKeyRawValue(data.apiKey)
-      }
-      setSettings({
-        apiKey: data.apiKey || '',
-        apiBaseUrl: data.apiBaseUrl || '',
-        theme: data.theme || 'system',
-        security: data.security || { sensitiveWords: [], retentionDays: 0 },
-        assistantModel: data.assistantModel || '',
-        defaultModel: data.defaultModel || 'claude-sonnet-4-20250514',
-        defaultSystemPrompt: data.defaultSystemPrompt ?? '',
-        devRepoUrl: data.devRepoUrl || '',
-        providers: data.providers || [],
-        activeProviderId: data.activeProviderId || '',
-      })
-    } catch (err) {
-      console.error('Failed to load settings:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
-
   useEffect(() => {
-    fetchSettings()
-  }, [fetchSettings])
-
-  const updateField = <K extends keyof GlobalSettings>(key: K, value: GlobalSettings[K]) => {
-    if (!settings) return
-    setSettings({ ...settings, [key]: value })
-    setDirty(true)
-  }
+    fetchSettings(projectId)
+  }, [projectId, fetchSettings])
 
   const fetchModels = useCallback(async (providerId?: string) => {
     if (!settings) return
@@ -85,14 +58,11 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
       const body: Record<string, string> = {}
       const pid = providerId || settings.activeProviderId
       if (pid) {
-        // 从本地状态查找供应商凭据
         const provider = (settings.providers || []).find(p => p.id === pid)
         if (provider) {
           if (provider.apiKey.startsWith('****')) {
-            // 已保存的供应商，apiKey 脱敏，需要服务端从磁盘读取
             body.providerId = pid
           } else {
-            // 新增未保存的供应商，apiKey 是明文，直接传凭据
             body.apiBaseUrl = provider.baseUrl
             body.apiKey = provider.apiKey
             body.providerType = provider.type
@@ -123,36 +93,13 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
   }, [settings, apiKeyRawValue, toast])
 
   const saveSettings = useCallback(async () => {
-    if (!settings || !dirty) return
-    if (!settings.assistantModel?.trim()) {
-      toast('辅助模型不能为空，请选择或填写模型名称', 'error')
-      return
-    }
-    if (!settings.defaultModel?.trim()) {
-      toast('默认项目模型不能为空，请选择或填写模型名称', 'error')
-      return
-    }
-    setSaving(true)
-    try {
-      const toSave = { ...settings }
-      if (apiKeyRawValue && !apiKeyRawValue.startsWith('****')) {
-        toSave.apiKey = apiKeyRawValue
-      }
-      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toSave),
-      })
-      setDirty(false)
-      fetchSettings()
+    const result = await saveGlobalSettings(projectId)
+    if (result.success) {
       toast('设置已保存', 'success')
-    } catch (err) {
-      console.error('Failed to save settings:', err)
-      toast('保存设置失败', 'error')
-    } finally {
-      setSaving(false)
+    } else if (result.error && result.error !== 'no changes') {
+      toast(result.error, 'error')
     }
-  }, [settings, dirty, apiKeyRawValue, projectId, fetchSettings, toast])
+  }, [projectId, saveGlobalSettings, toast])
 
   if (loading || !settings) {
     return (
@@ -202,7 +149,7 @@ export function SettingsPanel({ projectId, backgroundImage, onBackgroundChange, 
       {/* 右侧内容区 */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'preferences' ? (
-          <PreferencesPanel backgroundImage={backgroundImage} onBackgroundChange={onBackgroundChange} />
+          <PreferencesPanel />
         ) : activeTab === 'defaultSkills' ? (
           <DefaultSkillsPanel />
         ) : activeTab === 'prompts' ? (

@@ -7,6 +7,7 @@ import { SchedulePicker } from './SchedulePicker'
 import { ContextRing } from './SessionInfoPopover'
 import type { ChatAttachment } from '@/types/chat'
 import type { AgentInfo } from '@/types/skills'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 
 /** 模型 ID → 短名称（按钮显示） */
 function shortModelName(id: string): string {
@@ -61,11 +62,16 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const [uploading, setUploading] = useState(false)
   const [optimizing, setOptimizing] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  // ── 模型选择器：从 store 响应式读取当前模型 + 供应商 ──
+  const projectSettings = useSettingsStore(state => state.projectSettings)
+  const globalSettings = useSettingsStore(state => state.globalSettings)
+  const storeModel = projectSettings?.model || globalSettings?.defaultModel || ''
+  const storeProviderId = projectSettings?.providerId || globalSettings?.activeProviderId || ''
+
   const [currentModel, setCurrentModel] = useState('')
   const [modelList, setModelList] = useState<{ id: string; name: string }[]>([])
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
-  const [projectProviderId, setProjectProviderId] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
@@ -112,18 +118,14 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
       .catch(() => {})
   }, [projectId])
 
-  // ── 模型选择器：加载当前模型 + 供应商 ──
+  // ── 模型选择器：从 store 同步当前模型，切换供应商时清空缓存 ──
   useEffect(() => {
-    if (!projectId) return
-    fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
-      .then(r => r.json())
-      .then(data => {
-        setCurrentModel(data.model || data.defaultModel || '')
-        setProjectProviderId(data.providerId || data.activeProviderId || '')
-        setModelList([]) // 切换项目时清空缓存，重新拉取
-      })
-      .catch(() => {})
-  }, [projectId])
+    setCurrentModel(storeModel)
+  }, [storeModel])
+
+  useEffect(() => {
+    setModelList([]) // 供应商变更时清空缓存，重新拉取
+  }, [storeProviderId])
 
   const handleToggleModelPicker = useCallback(async () => {
     if (showModelPicker) { setShowModelPicker(false); return }
@@ -132,7 +134,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     setLoadingModels(true)
     try {
       const body: Record<string, string> = {}
-      if (projectProviderId) body.providerId = projectProviderId
+      if (storeProviderId) body.providerId = storeProviderId
       const res = await fetch('/api/settings/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,11 +143,20 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
       const data = await res.json()
       if (data.models) setModelList(data.models)
     } catch {} finally { setLoadingModels(false) }
-  }, [showModelPicker, modelList.length, projectProviderId])
+  }, [showModelPicker, modelList.length, storeProviderId])
 
   const handleSelectModel = useCallback(async (modelId: string) => {
     setCurrentModel(modelId)
     setShowModelPicker(false)
+    // 直接更新正式状态（对话框选模型是立即生效的）
+    const state = useSettingsStore.getState()
+    if (state.projectSettings) {
+      useSettingsStore.setState({
+        projectSettings: { ...state.projectSettings, model: modelId },
+        draftProject: state.draftProject ? { ...state.draftProject, model: modelId } : state.draftProject,
+      })
+    }
+    // 持久化到后端
     if (projectId) {
       fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
         method: 'PUT',

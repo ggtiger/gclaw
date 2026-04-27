@@ -6,6 +6,7 @@ import type { ProjectSettings, GlobalSettings, ModelProvider } from '@/types/ski
 import { useToast } from '@/components/ui/Toast'
 import { isTauri, selectDirectory, revealInFinder } from '@/lib/tauri'
 import { useAssistantIdentity, AVAILABLE_ICONS } from '@/hooks/useAssistantIdentity'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 
 interface ProjectSettingsPanelProps {
   projectId: string
@@ -17,11 +18,20 @@ const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; class
 }
 
 export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPanelProps) {
-  const [settings, setSettings] = useState<ProjectSettings | null>(null)
-  const [globalProviders, setGlobalProviders] = useState<ModelProvider[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [dirty, setDirty] = useState(false)
+  const {
+    draftProject: settings,
+    globalProviders,
+    loading,
+    saving,
+    dirty,
+    fetchSettings,
+    updateProjectField,
+    saveProjectSettings,
+    setDirty,
+  } = useSettingsStore()
+
+  const updateField = updateProjectField
+
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
 
@@ -29,41 +39,9 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   const { Icon: AssistantIcon, avatarUrl } = useAssistantIdentity(settings, projectId)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
-  const fetchSettings = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`)
-      const data = await res.json()
-      setSettings({
-        model: data.model || '',
-        effort: data.effort || 'medium',
-        sessionId: data.sessionId || '',
-        cwd: data.cwd || '',
-        dangerouslySkipPermissions: data.dangerouslySkipPermissions ?? true,
-        systemPrompt: data.systemPrompt || '',
-        providerId: data.providerId || '',
-        assistantName: data.assistantName || '',
-        assistantIcon: data.assistantIcon || '',
-        assistantAvatar: data.assistantAvatar || '',
-      })
-      setGlobalProviders(data.providers || [])
-    } catch (err) {
-      console.error('Failed to load project settings:', err)
-      toast('加载项目设置失败', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, toast])
-
   useEffect(() => {
-    fetchSettings()
-  }, [fetchSettings])
-
-  const updateField = <K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]) => {
-    if (!settings) return
-    setSettings({ ...settings, [key]: value })
-    setDirty(true)
-  }
+    fetchSettings(projectId)
+  }, [projectId, fetchSettings])
 
   const fetchModels = useCallback(async (providerId?: string) => {
     setLoadingModels(true)
@@ -107,8 +85,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
       })
       const data = await res.json()
       if (data.filename) {
-        setSettings(prev => prev ? { ...prev, assistantAvatar: data.filename } : prev)
-        setDirty(true)
+        updateField('assistantAvatar', data.filename)
       } else {
         toast(data.error || '上传失败', 'error')
       }
@@ -119,30 +96,18 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   }, [projectId, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAvatarRemove = useCallback(() => {
-    setSettings(prev => prev ? { ...prev, assistantAvatar: '' } : prev)
-    setDirty(true)
-  }, [])
+    updateField('assistantAvatar', '')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveSettings = useCallback(async () => {
-    if (!settings || !dirty) return
-    setSaving(true)
-    try {
-      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      })
-      setDirty(false)
+  const saveSettingsHandler = useCallback(async () => {
+    const result = await saveProjectSettings(projectId)
+    if (result.success) {
       toast('项目设置已保存', 'success')
-      window.dispatchEvent(new CustomEvent('settings-changed', { detail: { projectId } }))
       onClose?.()
-    } catch (err) {
-      console.error('Failed to save project settings:', err)
-      toast('保存项目设置失败', 'error')
-    } finally {
-      setSaving(false)
+    } else if (result.error && result.error !== 'no changes') {
+      toast(result.error, 'error')
     }
-  }, [settings, dirty, projectId, toast, onClose])
+  }, [projectId, saveProjectSettings, toast, onClose])
 
   if (loading || !settings) {
     return (
@@ -443,7 +408,7 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
           取消
         </button>
         <button
-          onClick={saveSettings}
+          onClick={saveSettingsHandler}
           disabled={!dirty || saving}
           className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
