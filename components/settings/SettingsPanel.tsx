@@ -112,7 +112,7 @@ export function SettingsPanel({ projectId, initialTab }: SettingsPanelProps) {
   }
 
   const tabs: { key: SettingsTab; icon: React.ReactNode; label: string; adminOnly: boolean }[] = [
-    { key: 'preferences', icon: <Palette size={14} />, label: '偏好', adminOnly: false },
+    { key: 'preferences', icon: <Palette size={14} />, label: '偏好设置', adminOnly: false },
     { key: 'defaultSkills', icon: <Zap size={14} />, label: '默认技能', adminOnly: true },
     { key: 'settings', icon: <SettingsIcon size={14} />, label: '模型设置', adminOnly: true },
     { key: 'prompts', icon: <FileText size={14} />, label: '提示词', adminOnly: true },
