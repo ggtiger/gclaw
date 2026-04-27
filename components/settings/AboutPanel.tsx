@@ -95,7 +95,7 @@ export function AboutPanel() {
     setStatus('downloading')
     setErrorMsg('')
     try {
-      const newVersion = await downloadAndApplyDelta(serverUpdate.delta, (p) => {
+      const newVersion = await downloadAndApplyDelta(serverUpdate.delta, serverUpdate.version, (p) => {
         setProgress(p)
       })
       setServerVersion(newVersion)

@@ -301,6 +301,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
  */
 export async function downloadAndApplyDelta(
   delta: ServerDelta,
+  serverVersion: string,
   onProgress?: (progress: UpdateProgress) => void,
 ): Promise<string> {
   if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
@@ -351,14 +352,13 @@ export async function downloadAndApplyDelta(
     }
   }
 
-  // 调用 Rust 端应用 delta
+  // 调用 Rust 端应用文件级补丁
   onProgress?.({ downloaded: delta.size || 0, total: delta.size || 0, percent: 70 })
   let newVersion: string
   try {
-    newVersion = await invoke<string>('apply_server_delta', {
-      deltaPath,
-      targetHash: delta.targetHash,
-      fromVersion: delta.from,
+    newVersion = await invoke<string>('apply_server_patch', {
+      patchPath: deltaPath,
+      expectedVersion: serverVersion,
     })
   } catch (err) {
     const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
@@ -430,7 +430,7 @@ export class AutoUpdater {
         const serverUpdate = await checkServerDelta()
         if (serverUpdate?.delta) {
           console.log('[AutoUpdater] 发现 server 增量更新，静默应用...')
-          const newVersion = await downloadAndApplyDelta(serverUpdate.delta)
+          const newVersion = await downloadAndApplyDelta(serverUpdate.delta, serverUpdate.version)
           callbacks.onServerUpdated?.(newVersion)
           return
         }

@@ -32,9 +32,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install bsdiff
-        run: sudo apt-get update && sudo apt-get install -y bsdiff
-
       # 从 tag 名中提取版本号（server-v0.2.8 -> 0.2.8）
       - name: Extract version from tag
         id: version
@@ -104,55 +101,41 @@ jobs:
             printBundleSize(destDir);
           '
 
-      # 打包为 tar.gz（使用确定性参数保证可复现的 tar）
+      # 打包为 tar.gz
       - name: Package server bundle
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           SERVER_TAR_NAME="server-${VERSION}.tar.gz"
 
-          # 创建确定性的 tar（bsdiff 工作在未压缩的 tar 上）
-          tar cf dist/server-current.tar \
-            --exclude='.git' \
-            --sort=name \
-            --mtime='2024-01-01 00:00:00' \
-            --owner=0 --group=0 --numeric-owner \
-            -C dist/gclaw-server .
-
-          # 从未压缩 tar 生成分发版本（避免 gzip -k + cp 导致截断）
-          gzip -c dist/server-current.tar > "dist/${SERVER_TAR_NAME}"
+          tar czf "dist/${SERVER_TAR_NAME}" -C dist/gclaw-server .
 
           # 验证 gzip 完整性
           gzip -t "dist/${SERVER_TAR_NAME}" || { echo "ERROR: gzip verification failed!"; exit 1; }
 
-          # 计算 hash
-          NEW_HASH=$(sha256sum dist/server-current.tar | cut -d' ' -f1)
           NEW_GZ_SIZE=$(stat -c%s "dist/${SERVER_TAR_NAME}")
           echo "Server tar: ${SERVER_TAR_NAME} (${NEW_GZ_SIZE} bytes)"
-          echo "SHA-256 (uncompressed tar): ${NEW_HASH}"
 
-          echo "NEW_HASH=${NEW_HASH}" >> "$GITHUB_ENV"
           echo "NEW_GZ_SIZE=${NEW_GZ_SIZE}" >> "$GITHUB_ENV"
           echo "SERVER_TAR_NAME=${SERVER_TAR_NAME}" >> "$GITHUB_ENV"
 
-      # 从之前的 Release（v* 和 server-v*）中下载旧版本 server tar，生成 bsdiff delta
-      - name: Generate bsdiff deltas
+      # 从之前的 Release 下载旧版本 server tar，生成文件级补丁
+      - name: Generate file-level patches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
-          echo "=== Generating deltas for ${TAG} (server ${VERSION}) ==="
+          echo "=== Generating file-level patches for ${TAG} (server ${VERSION}) ==="
 
           TMPDIR=$(mktemp -d)
           trap "rm -rf $TMPDIR" EXIT
 
-          # 查找最近 3 个包含 server tar 的旧版本（从 v* 和 server-v* tag 中查找）
-          # 合并两种 tag 并按创建时间排序
+          # 查找最近的包含 server tar 的旧版本 tag
           ALL_TAGS=$(git tag --sort=-creatordate | grep -E '^(v|server-v)[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -10)
 
           if [ -z "$ALL_TAGS" ]; then
-            echo "No previous tags found, skipping delta generation"
+            echo "No previous tags found, skipping patch generation"
             mkdir -p dist
             echo "[]" > dist/deltas.json
             exit 0
@@ -161,24 +144,23 @@ jobs:
           echo "Candidate tags: $(echo $ALL_TAGS | tr '\n' ' ')"
 
           DELTAS_JSON="[]"
-          DELTA_COUNT=0
+          PATCH_COUNT=0
+          NEW_SERVER_DIR="dist/gclaw-server"
 
           for PREV_TAG in $ALL_TAGS; do
-            [ "$DELTA_COUNT" -ge 3 ] && break
+            [ "$PATCH_COUNT" -ge 3 ] && break
 
             echo ""
             echo "--- Trying ${PREV_TAG} ---"
 
             # 从 tag 类型决定如何提取实际 server 版本号
             if [[ "$PREV_TAG" == server-v* ]]; then
-              # server-v* tag 的版本号就是 server 版本，直接提取
               OLD_VERSION=$(echo "$PREV_TAG" | sed 's/^server-v//')
             else
-              # v* tag（Tauri 壳版本）需要从 Release 资产中查找实际 server 版本
               PROBE_DIR=$(mktemp -d)
               if gh release download "$PREV_TAG" --repo "${{ github.repository }}" \
                 --pattern "server-*.tar.gz" --dir "$PROBE_DIR" 2>/dev/null; then
-                FOUND_TAR=$(ls -1 "$PROBE_DIR"/server-*.tar.gz 2>/dev/null | head -1)
+                FOUND_TAR=$(ls -1 "$PROBE_DIR"/server-*.tar.gz 2>/dev/null | grep -v 'patch' | head -1)
                 if [ -n "$FOUND_TAR" ]; then
                   OLD_VERSION=$(basename "$FOUND_TAR" | sed 's/^server-//' | sed 's/\.tar\.gz$//')
                 else
@@ -198,16 +180,12 @@ jobs:
 
             OLD_WORKDIR="$TMPDIR/old-${OLD_VERSION}"
             mkdir -p "$OLD_WORKDIR"
-            PREV_SERVER_TAR="$OLD_WORKDIR/server-old.tar"
 
-            # 优先下载独立的 server tar
+            # 下载旧版 server tar
             gh release download "$PREV_TAG" --repo "${{ github.repository }}" \
               --pattern "server-${OLD_VERSION}.tar.gz" --dir "$OLD_WORKDIR" 2>/dev/null || true
 
-            if [ -f "$OLD_WORKDIR/server-${OLD_VERSION}.tar.gz" ]; then
-              gunzip -k "$OLD_WORKDIR/server-${OLD_VERSION}.tar.gz"
-              mv "$OLD_WORKDIR/server-${OLD_VERSION}.tar" "$PREV_SERVER_TAR"
-            else
+            if [ ! -f "$OLD_WORKDIR/server-${OLD_VERSION}.tar.gz" ]; then
               # 回退：从全量 Tauri Release 的 app bundle 中提取
               echo "No standalone server tar for ${PREV_TAG}, trying app bundle..."
               gh release download "$PREV_TAG" --repo "${{ github.repository }}" \
@@ -220,9 +198,8 @@ jobs:
                 tar xzf "$OLD_APP_TAR" -C "$OLD_WORKDIR/app"
                 OLD_SERVER=$(find "$OLD_WORKDIR/app" -path "*/Resources/server" -type d | head -1 || true)
                 if [ -n "$OLD_SERVER" ]; then
-                  tar cf "$PREV_SERVER_TAR" --exclude='.git' --sort=name \
-                    --mtime='2024-01-01 00:00:00' --owner=0 --group=0 --numeric-owner \
-                    -C "$OLD_SERVER" .
+                  # 打包成 server tar 以便统一处理
+                  tar czf "$OLD_WORKDIR/server-${OLD_VERSION}.tar.gz" -C "$OLD_SERVER" .
                 else
                   echo "Server directory not found in ${PREV_TAG} app bundle, skipping"
                   continue
@@ -233,51 +210,120 @@ jobs:
               fi
             fi
 
-            # 生成 bsdiff delta（在未压缩的 tar 上差分，避免 gzip 放大差异）
-            echo "Generating bsdiff: ${OLD_VERSION} -> ${VERSION}..."
-            DELTA_NAME="server-delta-${OLD_VERSION}-${VERSION}.delta"
-            DELTA_RAW="$OLD_WORKDIR/${DELTA_NAME}.raw"
-            DELTA_PATH="$TMPDIR/${DELTA_NAME}"
+            OLD_TAR="$OLD_WORKDIR/server-${OLD_VERSION}.tar.gz"
 
-            bsdiff "$PREV_SERVER_TAR" dist/server-current.tar "$DELTA_RAW"
-            gzip -c "$DELTA_RAW" > "$DELTA_PATH"
-            rm "$DELTA_RAW"
-
-            DELTA_SIZE=$(stat -c%s "$DELTA_PATH")
-
-            # Delta 大小异常检测：超过全量 tar.gz 的 80% 则跳过（delta 没有意义）
-            THRESHOLD=$(( ${NEW_GZ_SIZE} * 80 / 100 ))
-            if [ "$DELTA_SIZE" -gt "$THRESHOLD" ]; then
-              echo "Delta ${DELTA_NAME} (${DELTA_SIZE} bytes) exceeds 80% of full tar (${NEW_GZ_SIZE} bytes), skipping"
-              rm -f "$DELTA_PATH"
+            if [ ! -f "$OLD_TAR" ]; then
+              echo "Old server tar not found, skipping"
               continue
             fi
 
-            DELTA_HASH=$(sha256sum "$DELTA_PATH" | cut -d' ' -f1)
-            echo "Delta: ${DELTA_NAME} (${DELTA_SIZE} bytes, sha256=${DELTA_HASH})"
+            echo "Old server tar found: $OLD_TAR"
 
-            # 复制 delta 到 dist 目录供后续上传
-            cp "$DELTA_PATH" "dist/${DELTA_NAME}"
+            # 解压旧版 server
+            OLD_SERVER_DIR=$(mktemp -d)
+            tar xzf "$OLD_TAR" -C "$OLD_SERVER_DIR"
 
-            # 累积到 JSON 数组
-            # URL 稍后在上传阶段根据 LATEST_APP_TAG 填充，此处先用占位符
-            DELTAS_JSON=$(echo "$DELTAS_JSON" | jq \
-              --arg from "$OLD_VERSION" \
-              --arg deltaName "${DELTA_NAME}" \
-              --argjson size "$DELTA_SIZE" \
-              --arg hash "sha256:${DELTA_HASH}" \
-              --arg targetHash "${NEW_HASH}" \
-              '. + [{ from: $from, deltaName: $deltaName, size: $size, hash: $hash, targetHash: $targetHash }]')
+            # 生成两边的文件列表和哈希
+            PATCH_DIR=$(mktemp -d)
 
-            DELTA_COUNT=$((DELTA_COUNT + 1))
+            (cd "$OLD_SERVER_DIR" && find . -type f | sort | while read f; do
+              echo "$(sha256sum "$f" | cut -d' ' -f1) $f"
+            done) > /tmp/old_hashes.txt
+
+            (cd "$NEW_SERVER_DIR" && find . -type f | sort | while read f; do
+              echo "$(sha256sum "$f" | cut -d' ' -f1) $f"
+            done) > /tmp/new_hashes.txt
+
+            # 分析差异
+            ADDED=""
+            MODIFIED=""
+            DELETED=""
+
+            # 找出 added 和 modified
+            while IFS=' ' read -r hash filepath; do
+              filepath="${filepath#./}"
+              old_hash=$(grep " \./${filepath}$" /tmp/old_hashes.txt | cut -d' ' -f1 || true)
+              if [ -z "$old_hash" ]; then
+                ADDED="${ADDED}\"${filepath}\","
+                mkdir -p "$PATCH_DIR/$(dirname "$filepath")"
+                cp "$NEW_SERVER_DIR/$filepath" "$PATCH_DIR/$filepath"
+              elif [ "$hash" != "$old_hash" ]; then
+                MODIFIED="${MODIFIED}\"${filepath}\","
+                mkdir -p "$PATCH_DIR/$(dirname "$filepath")"
+                cp "$NEW_SERVER_DIR/$filepath" "$PATCH_DIR/$filepath"
+              fi
+            done < /tmp/new_hashes.txt
+
+            # 找出 deleted（在旧版中但不在新版中）
+            while IFS=' ' read -r hash filepath; do
+              filepath="${filepath#./}"
+              if ! grep -q " \./${filepath}$" /tmp/new_hashes.txt; then
+                DELETED="${DELETED}\"${filepath}\","
+              fi
+            done < /tmp/old_hashes.txt
+
+            # 去掉尾部逗号，构造 JSON
+            ADDED=$(echo "[$ADDED]" | sed 's/,]/]/')
+            MODIFIED=$(echo "[$MODIFIED]" | sed 's/,]/]/')
+            DELETED=$(echo "[$DELETED]" | sed 's/,]/]/')
+
+            # 写入 manifest
+            cat > "$PATCH_DIR/__manifest.json" << MANIFEST_EOF
+{
+  "from": "${OLD_VERSION}",
+  "to": "${VERSION}",
+  "modified": ${MODIFIED},
+  "added": ${ADDED},
+  "deleted": ${DELETED}
+}
+MANIFEST_EOF
+
+            echo "=== Patch Manifest ==="
+            cat "$PATCH_DIR/__manifest.json"
+
+            # 检查是否有实际变化
+            TOTAL_CHANGES=$(echo "$ADDED $MODIFIED $DELETED" | tr ',' '\n' | grep -c '"' || true)
+
+            if [ "$TOTAL_CHANGES" -gt 0 ]; then
+              PATCH_NAME="server-patch-${OLD_VERSION}-${VERSION}.tar.gz"
+              tar czf "dist/${PATCH_NAME}" -C "$PATCH_DIR" .
+
+              PATCH_SIZE=$(stat -c%s "dist/${PATCH_NAME}" 2>/dev/null || stat -f%z "dist/${PATCH_NAME}")
+
+              # 补丁大小异常检测：超过全量 tar.gz 的 80% 则跳过
+              THRESHOLD=$(( ${NEW_GZ_SIZE} * 80 / 100 ))
+              if [ "$PATCH_SIZE" -gt "$THRESHOLD" ]; then
+                echo "Patch ${PATCH_NAME} (${PATCH_SIZE} bytes) exceeds 80% of full tar (${NEW_GZ_SIZE} bytes), skipping"
+                rm -f "dist/${PATCH_NAME}"
+                rm -rf "$OLD_SERVER_DIR" "$PATCH_DIR"
+                continue
+              fi
+
+              PATCH_HASH=$(sha256sum "dist/${PATCH_NAME}" | cut -d' ' -f1)
+              echo "Patch: ${PATCH_NAME}, size: ${PATCH_SIZE}, hash: ${PATCH_HASH}"
+
+              # 累积到 JSON 数组（patchName 稍后在上传阶段替换为完整 URL）
+              DELTAS_JSON=$(echo "$DELTAS_JSON" | jq \
+                --arg from "$OLD_VERSION" \
+                --arg patchName "${PATCH_NAME}" \
+                --argjson size "$PATCH_SIZE" \
+                --arg hash "sha256:${PATCH_HASH}" \
+                '. + [{ from: $from, patchName: $patchName, size: $size, hash: $hash }]')
+
+              PATCH_COUNT=$((PATCH_COUNT + 1))
+            else
+              echo "No changes detected between ${OLD_VERSION} and ${VERSION}, skipping"
+            fi
+
+            # 清理
+            rm -rf "$OLD_SERVER_DIR" "$PATCH_DIR"
           done
 
           echo ""
-          echo "--- Generated ${DELTA_COUNT} valid delta(s) ---"
+          echo "--- Generated ${PATCH_COUNT} valid patch(es) ---"
 
-          # 保存 deltas JSON 到文件（避免环境变量中的转义问题）
           echo "$DELTAS_JSON" > dist/deltas.json
-          echo "delta_count=${DELTA_COUNT}" >> "$GITHUB_ENV"
+          echo "patch_count=${PATCH_COUNT}" >> "$GITHUB_ENV"
 
       # 找到最近的 v* 全量 Release，server 资产将上传到该 Release 下
       - name: Find latest app release
@@ -308,10 +354,10 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
 
-          # 先将 deltas.json 中的 deltaName 转换为完整 URL（指向 v* Release）
+          # 先将 deltas.json 中的 patchName 转换为完整 URL（指向 v* Release）
           GH_BASE="https://github.com/${{ github.repository }}/releases/download/${LATEST_APP_TAG}"
           DELTAS_JSON=$(cat dist/deltas.json | jq --arg base "$GH_BASE" '
-            [ .[] | .url = "\($base)/\(.deltaName)" | del(.deltaName) ]
+            [ .[] | .url = "\($base)/\(.patchName)" | del(.patchName) ]
           ')
 
           # 下载现有 Release 的 latest.json 以保留 platforms 等 Tauri 更新信息
@@ -364,35 +410,79 @@ jobs:
 
           echo "=== Uploading server assets to ${LATEST_APP_TAG} release ==="
 
+          # 上传并回验函数：上传后从 GitHub 重新下载校验完整性
+          upload_and_verify() {
+            local file="$1"
+            local tag="$2"
+            local max_retries=3
+            local attempt=1
+            local basename=$(basename "$file")
+
+            while [ $attempt -le $max_retries ]; do
+              echo "Upload attempt $attempt/$max_retries: $basename"
+              gh release upload "$tag" "$file" --repo "${{ github.repository }}" --clobber
+
+              # 回验：从 GitHub 重新下载并校验
+              local verify_dir=$(mktemp -d)
+              gh release download "$tag" --repo "${{ github.repository }}" --pattern "$basename" --dir "$verify_dir"
+
+              if [[ "$basename" == *.tar.gz ]]; then
+                if gzip -t "$verify_dir/$basename" 2>/dev/null; then
+                  echo "✓ Upload verified: $basename"
+                  rm -rf "$verify_dir"
+                  return 0
+                else
+                  echo "✗ Upload corrupted on attempt $attempt: $basename"
+                fi
+              elif [[ "$basename" == *.json ]]; then
+                if jq empty "$verify_dir/$basename" 2>/dev/null; then
+                  echo "✓ Upload verified: $basename"
+                  rm -rf "$verify_dir"
+                  return 0
+                else
+                  echo "✗ Upload corrupted on attempt $attempt: $basename"
+                fi
+              else
+                echo "✓ Upload completed (no format check): $basename"
+                rm -rf "$verify_dir"
+                return 0
+              fi
+
+              rm -rf "$verify_dir"
+              attempt=$((attempt + 1))
+              sleep 5
+            done
+
+            echo "ERROR: Upload failed after $max_retries attempts: $basename"
+            return 1
+          }
+
           # 上传前完整性校验
           echo "--- Verifying file integrity before upload ---"
           gzip -t "dist/${SERVER_TAR_NAME}" || { echo "ERROR: ${SERVER_TAR_NAME} integrity check failed!"; exit 1; }
           echo "✓ ${SERVER_TAR_NAME} integrity verified"
 
-          for delta in dist/server-delta-*.delta; do
-            [ -f "$delta" ] || continue
-            gzip -t "$delta" || { echo "ERROR: $(basename $delta) integrity check failed!"; exit 1; }
-            echo "✓ $(basename $delta) integrity verified"
+          for patch in dist/server-patch-*.tar.gz; do
+            [ -f "$patch" ] || continue
+            gzip -t "$patch" || { echo "ERROR: $(basename $patch) integrity check failed!"; exit 1; }
+            echo "✓ $(basename $patch) integrity verified"
           done
 
           # 上传 server tar
           echo "--- Uploading server tar ---"
-          gh release upload "$LATEST_APP_TAG" "dist/${SERVER_TAR_NAME}" \
-            --repo "${{ github.repository }}" --clobber
+          upload_and_verify "dist/${SERVER_TAR_NAME}" "$LATEST_APP_TAG"
 
-          # 上传 delta 文件
-          echo "--- Uploading delta files ---"
-          for delta in dist/server-delta-*.delta; do
-            [ -f "$delta" ] || continue
-            echo "  Uploading: $(basename $delta)"
-            gh release upload "$LATEST_APP_TAG" "$delta" \
-              --repo "${{ github.repository }}" --clobber
+          # 上传 patch 文件
+          echo "--- Uploading patch files ---"
+          for patch in dist/server-patch-*.tar.gz; do
+            [ -f "$patch" ] || continue
+            echo "  Uploading: $(basename $patch)"
+            upload_and_verify "$patch" "$LATEST_APP_TAG"
           done
 
           # 上传 latest.json（覆盖旧的）
           echo "--- Uploading latest.json ---"
-          gh release upload "$LATEST_APP_TAG" dist/latest.json \
-            --repo "${{ github.repository }}" --clobber
+          upload_and_verify dist/latest.json "$LATEST_APP_TAG"
 
           echo "=== Upload to ${LATEST_APP_TAG} complete ==="
 
@@ -443,8 +533,6 @@ jobs:
           echo "--- Downloading server assets from GitHub ${LATEST_APP_TAG} release ---"
           gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
             --pattern "server-*.tar.gz" --clobber 2>/dev/null || true
-          gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
-            --pattern "server-delta-*.delta" --clobber 2>/dev/null || true
           gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
             --pattern "latest.json" --clobber 2>/dev/null || true
 
@@ -509,8 +597,8 @@ jobs:
           SUCCESS=0
           FAIL=0
 
-          # 3a. 上传 delta 文件（小文件，优先）
-          for file in server-delta-*.delta; do
+          # 3a. 上传 patch 文件（小文件，优先）
+          for file in server-patch-*.tar.gz; do
             [ -f "$file" ] || continue
             if upload_to_gitee "$file" 300; then
               SUCCESS=$((SUCCESS + 1))

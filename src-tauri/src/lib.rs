@@ -1416,7 +1416,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_server_url, navigate_to, app_ready, save_file_content,
             retry_startup, flash_tray_icon,
-            delta::apply_server_delta, delta::get_current_server_version, delta::fetch_url, delta::download_file,
+            delta::apply_server_patch, delta::get_current_server_version, delta::fetch_url, delta::download_file,
             delta::restart_server, delta::verify_file_hash,
         ])
         .build(tauri::generate_context!())
