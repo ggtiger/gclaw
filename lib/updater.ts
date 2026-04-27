@@ -3,7 +3,7 @@
  * 检查更新 → 下载 → 安装 → 重启
  *
  * 支持两种更新通道：
- * - Server 热更新：通过 bsdiff delta patch 更新 server/ 目录（无需重启应用）
+ * - Server 热更新：通过文件级补丁（覆盖式）更新 server/ 目录
  * - Tauri 全量更新：通过 tauri-plugin-updater 更新整个应用
  */
 
@@ -39,7 +39,6 @@ export interface ServerDelta {
   url: string
   size: number
   hash: string
-  targetHash: string
 }
 
 export interface ServerUpdateInfo {
@@ -254,7 +253,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
       return null
     }
 
-    const serverVersion = (latestJson.serverVersion || latestJson.version) as string | undefined
+    const serverVersion = latestJson.serverVersion as string | undefined
     if (!serverVersion || !isVersionNewer(serverVersion, currentVersion)) {
       console.log(`[Delta] server 已是最新或无需更新 (本地=${currentVersion}, 远程=${serverVersion})`)
       return null
@@ -344,16 +343,6 @@ export async function downloadAndApplyDelta(
 
   onProgress?.({ downloaded: delta.size || 0, total: delta.size || 0, percent: 50 })
 
-  // 检查下载的 delta 文件大小合理性
-  // delta.size 来自 latest.json，是期望的大小
-  if (delta.size && delta.size > 0) {
-    // 如果实际文件远小于期望大小（< 50%），说明下载可能失败（如拿到了 HTML 错误页）
-    // 注意：这里无法直接拿到实际文件大小，通过 Rust 端检查
-    // Rust 端的 download_file_internal 已添加最小大小检查
-  } else {
-    console.warn('[Delta] latest.json 中未提供 delta.size，跳过大小预检')
-  }
-
   // 下载完成后，校验 delta 文件 hash
   if (delta.hash) {
     const hashValid = await invoke<boolean>('verify_file_hash', {
@@ -380,6 +369,8 @@ export async function downloadAndApplyDelta(
     }
     throw new Error(`应用更新失败: ${msg}`)
   }
+
+  // 补丁文件留在 appDataDir，下次更新会覆盖同名文件
 
   console.log(`[Delta] 应用成功: server version = ${newVersion}`)
 
