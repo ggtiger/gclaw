@@ -164,10 +164,35 @@ jobs:
           for PREV_TAG in $ALL_TAGS; do
             [ "$DELTA_COUNT" -ge 3 ] && break
 
-            # 从 tag 名提取版本号
-            OLD_VERSION=$(echo "$PREV_TAG" | sed 's/^server-v//' | sed 's/^v//')
             echo ""
-            echo "--- Trying ${PREV_TAG} (server ${OLD_VERSION}) ---"
+            echo "--- Trying ${PREV_TAG} ---"
+
+            # 从 tag 类型决定如何提取实际 server 版本号
+            if [[ "$PREV_TAG" == server-v* ]]; then
+              # server-v* tag 的版本号就是 server 版本，直接提取
+              OLD_VERSION=$(echo "$PREV_TAG" | sed 's/^server-v//')
+            else
+              # v* tag（Tauri 壳版本）需要从 Release 资产中查找实际 server 版本
+              PROBE_DIR=$(mktemp -d)
+              if gh release download "$PREV_TAG" --repo "${{ github.repository }}" \
+                --pattern "server-*.tar.gz" --dir "$PROBE_DIR" 2>/dev/null; then
+                FOUND_TAR=$(ls -1 "$PROBE_DIR"/server-*.tar.gz 2>/dev/null | head -1)
+                if [ -n "$FOUND_TAR" ]; then
+                  OLD_VERSION=$(basename "$FOUND_TAR" | sed 's/^server-//' | sed 's/\.tar\.gz$//')
+                else
+                  echo "WARNING: No server tar in $PREV_TAG, skipping"
+                  rm -rf "$PROBE_DIR"
+                  continue
+                fi
+              else
+                echo "WARNING: Cannot download from $PREV_TAG, skipping"
+                rm -rf "$PROBE_DIR"
+                continue
+              fi
+              rm -rf "$PROBE_DIR"
+            fi
+
+            echo "Resolved actual server version: ${OLD_VERSION}"
 
             OLD_WORKDIR="$TMPDIR/old-${OLD_VERSION}"
             mkdir -p "$OLD_WORKDIR"

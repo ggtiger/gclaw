@@ -167,9 +167,29 @@ jobs:
           # 4. 对每个旧版本循环生成 delta
           DELTAS_JSON="[]"
           for PREV_TAG in $PREV_TAGS; do
-            OLD_VERSION=$(echo "$PREV_TAG" | sed 's/^v//')
             echo ""
-            echo "--- Processing ${PREV_TAG} (server ${OLD_VERSION}) ---"
+            echo "--- Processing ${PREV_TAG} ---"
+
+            # v* tag（Tauri 壳版本）需要从 Release 资产中查找实际 server 版本
+            PROBE_DIR=$(mktemp -d)
+            if gh release download "$PREV_TAG" --repo ggtiger/gclaw \
+              --pattern "server-*.tar.gz" --dir "$PROBE_DIR" 2>/dev/null; then
+              FOUND_TAR=$(ls -1 "$PROBE_DIR"/server-*.tar.gz 2>/dev/null | head -1)
+              if [ -n "$FOUND_TAR" ]; then
+                OLD_VERSION=$(basename "$FOUND_TAR" | sed 's/^server-//' | sed 's/\.tar\.gz$//')
+              else
+                echo "WARNING: No server tar in $PREV_TAG, skipping"
+                rm -rf "$PROBE_DIR"
+                continue
+              fi
+            else
+              # 回退：从 tag 名提取（旧版本可能还没有 server tar）
+              OLD_VERSION=$(echo "$PREV_TAG" | sed 's/^v//')
+              echo "No server tar found for $PREV_TAG, falling back to tag-based version: $OLD_VERSION"
+            fi
+            rm -rf "$PROBE_DIR"
+
+            echo "Resolved actual server version: ${OLD_VERSION}"
 
             # 为每个旧版本创建独立的工作目录
             OLD_WORKDIR="$TMPDIR/old-${OLD_VERSION}"
@@ -284,13 +304,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Publish release
+      - name: Generate release notes and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          gh release edit "$TAG" --draft=false
+          VERSION="${TAG#v}"
+
+          # 生成自上个 tag 以来的 commit log 作为 release notes
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1)
+
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(cat <<EOF
+          ## GClaw ${VERSION}
+
+          ### 变更内容
+          $(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s" --no-merges)
+
+          ---
+          在下方 Assets 中下载对应平台的安装包。
+          EOF
+          )
+          else
+            NOTES=$(cat <<EOF
+          ## GClaw ${VERSION}
+
+          ### 变更内容
+          $(git log --pretty=format:"- %s" --no-merges -20)
+
+          ---
+          在下方 Assets 中下载对应平台的安装包。
+          EOF
+          )
+          fi
+
+          gh release edit "$TAG" --notes "$NOTES" --draft=false
 
   # 同步 Release 到 Gitee（全部文件）
   sync-gitee:
