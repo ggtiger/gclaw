@@ -268,15 +268,14 @@ jobs:
             DELETED=$(echo "[$DELETED]" | sed 's/,]/]/')
 
             # 写入 manifest
-            cat > "$PATCH_DIR/__manifest.json" << MANIFEST_EOF
-{
-  "from": "${OLD_VERSION}",
-  "to": "${VERSION}",
-  "modified": ${MODIFIED},
-  "added": ${ADDED},
-  "deleted": ${DELETED}
-}
-MANIFEST_EOF
+            jq -n \
+              --arg from "$OLD_VERSION" \
+              --arg to "$VERSION" \
+              --argjson modified "$MODIFIED" \
+              --argjson added "$ADDED" \
+              --argjson deleted "$DELETED" \
+              '{from: $from, to: $to, modified: $modified, added: $added, deleted: $deleted}' \
+              > "$PATCH_DIR/__manifest.json"
 
             echo "=== Patch Manifest ==="
             cat "$PATCH_DIR/__manifest.json"
