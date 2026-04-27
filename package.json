@@ -1,7 +1,6 @@
 {
   "name": "gclaw",
-  "version": "0.2.1",
-  "serverVersion": "0.2.7",
+  "version": "0.2.7",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3100",
@@ -35,6 +34,7 @@
     "@tanstack/react-virtual": "^3.13.23",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
+    "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@uiw/react-codemirror": "^4.25.9",

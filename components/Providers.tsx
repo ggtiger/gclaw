@@ -3,6 +3,8 @@
 import { useEffect } from 'react'
 import { ToastProvider } from '@/components/ui/Toast'
 import { applyThemeColor, resetThemeColor } from '@/lib/theme-color'
+import { AutoUpdater } from '@/lib/updater'
+import type { UpdateInfo } from '@/lib/updater'
 
 /**
  * 全局渠道连接：应用启动时自动连接所有项目的已启用渠道
@@ -62,9 +64,33 @@ function useGlobalChannelConnect() {
   }, [])
 }
 
+/**
+ * 自动更新：桌面端启动后延迟检查更新，非 Tauri 环境自动跳过
+ */
+function useAutoUpdater() {
+  useEffect(() => {
+    const updater = new AutoUpdater()
+    updater.start({
+      onServerUpdated: (newVersion) => {
+        console.log(`[AutoUpdater] Server 已热更新到 ${newVersion}`)
+      },
+      onTauriUpdate: (info: UpdateInfo) => {
+        console.log(`[AutoUpdater] 发现全量更新: ${info.version}`)
+      },
+      onError: (err) => {
+        console.warn('[AutoUpdater] 更新检查失败:', err)
+      },
+    })
+    return () => updater.stop()
+  }, [])
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   // 全局渠道连接
   useGlobalChannelConnect()
+
+  // 自动更新检查
+  useAutoUpdater()
 
   // 全局主题初始化：从 localStorage 读取并应用 dark 类
   useEffect(() => {

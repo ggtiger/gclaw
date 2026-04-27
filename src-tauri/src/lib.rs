@@ -193,7 +193,7 @@ fn find_available_port() -> u16 {
         .port()
 }
 
-fn wait_for_server(port: u16) {
+pub fn wait_for_server(port: u16) {
     for i in 0..300 {
         if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
             startup_log(&format!("Server ready at http://127.0.0.1:{}", port));
@@ -935,7 +935,8 @@ fn clean_windows_path(path: &std::path::Path) -> String {
     }
 }
 
-fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
+/// 启动 server 进程的核心逻辑（供 delta::restart_server 复用）
+pub fn start_server_process(app: &tauri::AppHandle) -> (Child, u16) {
     let port = find_available_port();
     let resource_dir = app.path().resource_dir()
         .expect("Failed to get resource dir");
@@ -1087,6 +1088,10 @@ fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
     }
 
     (child, port)
+}
+
+fn start_server(app: &tauri::AppHandle) -> (Child, u16) {
+    start_server_process(app)
 }
 
 // ============ Tauri Commands ============
@@ -1407,10 +1412,12 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_os::init())
         .invoke_handler(tauri::generate_handler![
             get_server_url, navigate_to, app_ready, save_file_content,
             retry_startup, flash_tray_icon,
             delta::apply_server_delta, delta::get_current_server_version, delta::fetch_url, delta::download_file,
+            delta::restart_server, delta::verify_file_hash,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

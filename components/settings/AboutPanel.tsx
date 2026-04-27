@@ -58,6 +58,12 @@ export function AboutPanel() {
 
       if (tauriInfo || serverInfo) {
         setStatus('available')
+      } else if (tauriResult.status === 'rejected' && (!serverInfo)) {
+        // Tauri 检查失败，且 server delta 也没有结果 → 显示网络错误
+        const reason = tauriResult.reason
+        const msg = reason instanceof Error ? reason.message : String(reason)
+        setErrorMsg(msg || '更新检查失败，请检查网络后重试')
+        setStatus('error')
       } else {
         setStatus('idle')
       }
@@ -78,7 +84,8 @@ export function AboutPanel() {
       })
       setStatus('downloaded')
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '更新失败')
+      const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
+      setErrorMsg(msg || '更新失败')
       setStatus('error')
     }
   }, [])
@@ -95,7 +102,8 @@ export function AboutPanel() {
       setServerUpdate(null)
       setStatus('downloaded')
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '热更新失败')
+      const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
+      setErrorMsg(msg || '热更新失败')
       setStatus('error')
     }
   }, [serverUpdate])
