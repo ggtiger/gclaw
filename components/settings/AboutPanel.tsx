@@ -116,6 +116,8 @@ export function AboutPanel() {
       await invoke('restart_server')
       setServerNeedsRestart(false)
       setStatus('idle')
+      // Server 重启成功，刷新页面加载新代码
+      window.location.reload()
     } catch (err: any) {
       setErrorMsg('重启失败，请手动重启应用')
       setStatus('error')
