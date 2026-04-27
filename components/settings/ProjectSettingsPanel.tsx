@@ -434,8 +434,8 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         </button>
       </div>
 
-      {/* Footer */}
-      <div className="flex justify-end gap-2 pt-2">
+      {/* Footer - sticky 底部 */}
+      <div className="sticky bottom-0 flex justify-end gap-2 py-2 -mx-4 px-4 -mb-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
         <button
           onClick={onClose}
           className="text-xs px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"

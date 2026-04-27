@@ -258,7 +258,7 @@ export async function* executeChat(
       const ALLOWED_PREFIXES = ['/tmp', '/dev/null', '/usr', '/bin', '/sbin', '/lib', '/etc', '/var', '/proc', '/sys', '/opt']
 
       // 提取命令中所有绝对路径
-      const absPaths = [...command.matchAll(/(?:^|[\s;|&()'"`])(\/[a-zA-Z0-9_.\/-]+)/g)].map(m => m[1])
+      const absPaths = [...command.matchAll(/(?:^|[\s;|&()'"`])(\/[^\s;|&()'"`]+)/g)].map(m => m[1])
       for (const rawPath of absPaths) {
         const resolved = path.resolve(rawPath)
         // 跳过允许的系统路径

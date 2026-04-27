@@ -296,7 +296,7 @@ jobs:
   sync-gitee:
     needs: [release, generate-delta]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 1200
     if: github.event_name == 'push'
     steps:
       - name: Sync release to Gitee
