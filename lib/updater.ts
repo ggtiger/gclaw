@@ -303,6 +303,7 @@ export async function downloadAndApplyDelta(
   delta: ServerDelta,
   serverVersion: string,
   onProgress?: (progress: UpdateProgress) => void,
+  autoRestart: boolean = true,
 ): Promise<string> {
   if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
 
@@ -370,14 +371,18 @@ export async function downloadAndApplyDelta(
 
   console.log(`[Delta] 应用成功: server version = ${newVersion}`)
 
-  // 应用 delta 成功后，重启 server 进程使新代码生效
-  console.log(`[Delta] 应用成功，正在重启 server 进程...`)
-  try {
-    const serverUrl = await invoke<string>('restart_server')
-    console.log(`[Delta] Server 已重启: ${serverUrl}`)
-  } catch (restartErr) {
-    console.error('[Delta] Server 重启失败:', restartErr)
-    // 重启失败不影响更新结果，下次启动会使用新代码
+  // 应用 delta 成功后，根据 autoRestart 决定是否自动重启 server 进程
+  if (autoRestart) {
+    console.log(`[Delta] 应用成功，正在重启 server 进程...`)
+    try {
+      const serverUrl = await invoke<string>('restart_server')
+      console.log(`[Delta] Server 已重启: ${serverUrl}`)
+    } catch (restartErr) {
+      console.error('[Delta] Server 重启失败:', restartErr)
+      // 重启失败不影响更新结果，下次启动会使用新代码
+    }
+  } else {
+    console.log(`[Delta] 应用成功，等待用户手动重启 server`)
   }
 
   return newVersion

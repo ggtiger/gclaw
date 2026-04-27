@@ -18,6 +18,7 @@ export function AboutPanel() {
   const [serverUpdate, setServerUpdate] = useState<ServerUpdateInfo | null>(null)
   const [progress, setProgress] = useState<UpdateProgress>({ downloaded: 0, total: 0, percent: 0 })
   const [errorMsg, setErrorMsg] = useState('')
+  const [serverNeedsRestart, setServerNeedsRestart] = useState(false)
 
   // 获取版本号
   useEffect(() => {
@@ -97,9 +98,10 @@ export function AboutPanel() {
     try {
       const newVersion = await downloadAndApplyDelta(serverUpdate.delta, serverUpdate.version, (p) => {
         setProgress(p)
-      })
+      }, false)
       setServerVersion(newVersion)
       setServerUpdate(null)
+      setServerNeedsRestart(true)
       setStatus('downloaded')
     } catch (err) {
       const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
@@ -107,6 +109,18 @@ export function AboutPanel() {
       setStatus('error')
     }
   }, [serverUpdate])
+
+  const handleRestartServer = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('restart_server')
+      setServerNeedsRestart(false)
+      setStatus('idle')
+    } catch (err: any) {
+      setErrorMsg('重启失败，请手动重启应用')
+      setStatus('error')
+    }
+  }, [])
 
   if (!isTauri()) return null
 
@@ -226,6 +240,21 @@ export function AboutPanel() {
             <div className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
               {updateInfo.body}
             </div>
+          </div>
+        )}
+
+        {/* 热更新完成重启提示 */}
+        {status === 'downloaded' && serverNeedsRestart && (
+          <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center justify-between">
+            <span className="text-sm text-emerald-700 dark:text-emerald-300">
+              ✅ 热更新完成，重启后生效
+            </span>
+            <button
+              onClick={handleRestartServer}
+              className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer font-medium"
+            >
+              立即重启
+            </button>
           </div>
         )}
 
