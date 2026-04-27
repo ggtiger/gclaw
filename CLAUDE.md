@@ -113,6 +113,62 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 - `data/schedules.json` — 全局定时任务
 - `data/projects/{id}/` — 每个项目的设置、消息、技能、智能体、渠道配置
 
+## 版本管理与发布
+
+### 双版本体系
+
+| 版本 | 文件 | 含义 | 更新时机 |
+|------|------|------|----------|
+| Server 版本 | `package.json` → `version` | Web/Node.js 侧代码版本 | 任何 Web 代码变更 |
+| Tauri 壳版本 | `tauri.conf.json` + `Cargo.toml` → `version` | Rust 客户端壳版本 | Rust/Tauri 代码变更 |
+
+### 发布方式（双 Tag 策略）
+
+**场景 A：只改了 Web 代码（最常见）**
+
+```bash
+# 1. 升 server 版本
+# package.json: version "0.2.7" → "0.2.8"
+
+# 2. 提交推送
+git add -A && git commit -m "feat: 描述改动"
+git push
+
+# 3. 打 server tag 触发轻量 CI（~2分钟，只构建 Next.js）
+git tag server-v0.2.8
+git push origin server-v0.2.8
+```
+
+**场景 B：改了 Rust/Tauri 代码**
+
+```bash
+# 1. 两个版本都升
+# package.json: version → 新版本
+# tauri.conf.json + Cargo.toml: version → 新版本
+
+# 2. 提交推送
+git add -A && git commit -m "feat: 描述改动"
+git push
+
+# 3. 打 Tauri tag 触发完整 CI（~10分钟，编译 Rust + 构建 Next.js）
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+### CI 工作流
+
+| 工作流 | 触发 Tag | 构建内容 |
+|--------|----------|----------|
+| `release.yml` | `v*` | 完整 Tauri 应用 + server tar + delta |
+| `server-release.yml` | `server-v*` | 仅 Next.js server bundle + delta |
+
+### 更新机制
+
+- **Delta 热更新**：bsdiff 二进制差分，自动下载并替换 server 目录，无需重启应用
+- **全量更新**：Tauri plugin-updater 下载安装包，需用户确认重启
+- **latest.json**：同时包含 `version`（server）、`serverVersion`（向后兼容）和 `serverDeltas`（各平台 delta 信息）
+- **多端点容错**：优先走 Gitee API 预检，失败回退 GitHub
+
 ## 开发注意事项
 
 - 修改 `lib/claude/` 下的文件时注意 HMR 热替换问题：事件总线使用 `globalThis` 单例防止 HMR 丢失状态
