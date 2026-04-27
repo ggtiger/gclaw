@@ -269,8 +269,20 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     const platformKey = await getPlatformKey()
     const platformDeltas = deltas?.[platformKey]
 
-    // 查找匹配当前版本的 delta
-    const matchedDelta = platformDeltas?.find(d => d.from === currentVersion) ?? null
+    // 查找可用的 delta（文件级补丁是覆盖式的，from <= 当前版本即可使用，优先选最近的）
+    const matchedDelta = platformDeltas
+      ?.filter(d => {
+        const parts = (v: string) => v.split('.').map(Number)
+        const [fa, fb, fc] = parts(d.from)
+        const [ca, cb, cc] = parts(currentVersion)
+        return fa < ca || (fa === ca && fb < cb) || (fa === ca && fb === cb && fc <= cc)
+      })
+      ?.sort((a, b) => {
+        const parts = (v: string) => v.split('.').map(Number)
+        const [aa, ab, ac] = parts(a.from)
+        const [ba, bb, bc] = parts(b.from)
+        return (ba - aa) || (bb - ab) || (bc - ac)  // 降序，优先选 from 最大的
+      })[0] ?? null
 
     const sizeLabel = matchedDelta
       ? (matchedDelta.size >= 1024 * 1024
