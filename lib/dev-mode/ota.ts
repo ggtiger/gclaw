@@ -5,10 +5,9 @@ import { getGlobalSettings } from '@/lib/store/settings'
 
 const PROJECT_ROOT = process.cwd()
 
-// OTA 检查更新用的镜像源（与 worktree.ts 保持一致）
+// OTA 检查更新用的仓库地址
 const REPO_URLS = [
   'https://github.com/ggtiger/gclaw.git',
-  'https://gitee.com/laohu2022/gclaw.git',
 ]
 
 function exec(cmd: string, args: string[], cwd?: string): Promise<string> {

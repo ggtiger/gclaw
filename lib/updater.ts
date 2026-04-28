@@ -71,7 +71,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     const currentVersion = await getVersion()
     console.log(`[Updater] 当前版本: ${currentVersion}, 开始检查更新...`)
 
-    // 先通过自定义的多端点重试获取 latest.json（Gitee API + GitHub，更可靠）
+    // 先通过自定义的多端点重试获取 latest.json（七牛云 CDN + GitHub，更可靠）
     const latestJson = await fetchLatestJsonWithRetry()
     if (latestJson) {
       const remoteVersion = (latestJson.version as string) || ''
@@ -99,7 +99,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Updater] checkForUpdate 失败:', msg)
     // 不再直接 throw，让调用方通过 allSettled 处理
-    throw new Error(`全量更新检查失败: ${msg.includes('github.com') || msg.includes('gitee.com') ? '网络连接失败，无法访问更新服务器' : msg}`)
+    throw new Error(`全量更新检查失败: ${msg.includes('github.com') ? '网络连接失败，无法访问更新服务器' : msg}`)
   }
 }
 
@@ -186,28 +186,6 @@ async function fetchJsonViaRust(url: string): Promise<Record<string, unknown> | 
   }
 }
 
-/**
- * 通过 Gitee API 获取 latest.json
- */
-async function fetchLatestJsonFromGitee(): Promise<Record<string, unknown> | null> {
-  try {
-    // 1. 通过 API 获取最新 release
-    const apiResult = await fetchJsonViaRust(
-      'https://gitee.com/api/v5/repos/laohu2022/gclaw/releases/latest',
-    )
-    if (!apiResult) return null
-
-    const assets = apiResult.assets as Array<{ name: string; browser_download_url: string }> | undefined
-    const asset = assets?.find(a => a.name === 'latest.json')
-    if (!asset) return null
-
-    // 2. 下载 latest.json
-    return await fetchJsonViaRust(asset.browser_download_url)
-  } catch {
-    return null
-  }
-}
-
 /** 比较两个 semver 版本号，返回 true 表示 remote 比 local 更新 */
 function isVersionNewer(remote: string, local: string): boolean {
   const rParts = remote.split('.').map(Number)
@@ -226,12 +204,11 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * 带重试的 latest.json 获取，依次尝试七牛云 CDN、Gitee 和 GitHub，每个端点支持指数退避重试
+ * 带重试的 latest.json 获取，依次尝试七牛云 CDN 和 GitHub，每个端点支持指数退避重试
  */
 async function fetchLatestJsonWithRetry(maxRetries = 2): Promise<Record<string, unknown> | null> {
   const endpoints: Array<() => Promise<Record<string, unknown> | null>> = [
     () => fetchJsonViaRust(`https://o09u11p5v.qnssl.com/gclaw/latest.json?t=${Date.now()}`),
-    () => fetchLatestJsonFromGitee(),
     () => fetchJsonViaRust('https://github.com/ggtiger/gclaw/releases/latest/download/latest.json'),
   ]
   for (const fetchFn of endpoints) {
@@ -257,7 +234,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     const currentVersion = await getCurrentServerVersion()
     console.log(`[Delta] 当前 server 版本: ${currentVersion}`)
 
-    // 通过带重试的方式获取 latest.json（依次尝试 Gitee、GitHub，支持指数退避）
+    // 通过带重试的方式获取 latest.json（依次尝试七牛云 CDN、GitHub，支持指数退避）
     const latestJson = await fetchLatestJsonWithRetry()
 
     if (!latestJson) {

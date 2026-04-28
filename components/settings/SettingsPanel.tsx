@@ -696,11 +696,11 @@ function SettingsTabContent({
           type="text"
           value={settings.devRepoUrl || ''}
           onChange={e => updateField('devRepoUrl', e.target.value)}
-          placeholder="https://gitee.com/ggtiger/gclaw.git"
+          placeholder="https://github.com/ggtiger/gclaw.git"
           className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
         />
         <div className="text-xs mt-1 text-gray-400">
-          留空自动使用 GitHub + Gitee 镜像切换，自定义后仅使用指定地址
+          留空自动使用 GitHub 默认地址，自定义后仅使用指定地址
         </div>
       </div>
 

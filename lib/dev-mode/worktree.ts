@@ -6,10 +6,9 @@ import { getGlobalSettings } from '@/lib/store/settings'
 
 const PROJECT_ROOT = process.cwd()
 
-// 默认远程仓库地址 + 镜像（GitHub 不稳定时自动 fallback）
+// 默认远程仓库地址
 const REPO_URLS = [
   'https://github.com/ggtiger/gclaw.git',
-  'https://gitee.com/laohu2022/gclaw.git',
 ]
 
 export interface WorktreeInfo {
