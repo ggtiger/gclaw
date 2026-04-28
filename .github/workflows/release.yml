@@ -512,11 +512,26 @@ jobs:
             exit 1
           fi
 
-          # Gitee 上传函数（带重试）
+          # 删除 Gitee Release 中同名旧资产（Gitee 不支持覆盖，必须先删再传）
+          delete_gitee_asset() {
+            local filename="$1"
+            ASSETS=$(curl -s --max-time 30 \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}" \
+              | jq -r ".assets // [] | .[] | select(.name == \"${filename}\") | .id" 2>/dev/null || true)
+            for AID in $ASSETS; do
+              echo "  Deleting old asset: ${filename} (id=${AID})"
+              curl -s --max-time 30 -X DELETE \
+                "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files/${AID}?access_token=${GITEE_TOKEN}" >/dev/null 2>&1 || true
+            done
+          }
+
+          # Gitee 上传函数（先删旧文件再上传，带重试）
           upload_to_gitee() {
             local file=$1 max_time=$2 retries=3 delay=10
+            local FNAME=$(basename "$file")
             local SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
-            echo "  Uploading: ${file} ($(( SIZE / 1024 )) KB)"
+            delete_gitee_asset "$FNAME"
+            echo "  Uploading: ${FNAME} ($(( SIZE / 1024 )) KB)"
             for i in $(seq 1 $retries); do
               RESP=$(curl -s --max-time "$max_time" --connect-timeout 30 --retry 2 --retry-delay 5 \
                 -w "\n%{http_code}" -X POST \
@@ -525,15 +540,15 @@ jobs:
                 -F "file=@${file}" 2>&1)
               HTTP_CODE=$(echo "$RESP" | tail -1)
               BODY=$(echo "$RESP" | sed '$d')
-              FNAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
-              if [ -n "$FNAME" ]; then
-                echo "    OK: ${FNAME}"
+              RESULT_NAME=$(echo "$BODY" | jq -r '(.file_name // .name) // empty' 2>/dev/null || true)
+              if [ -n "$RESULT_NAME" ]; then
+                echo "    OK: ${RESULT_NAME}"
                 return 0
               fi
               echo "    Attempt ${i}/${retries} failed (HTTP ${HTTP_CODE}): $(echo "$BODY" | head -c 200)"
               [ $i -lt $retries ] && sleep $delay
             done
-            echo "    FAIL: ${file}"
+            echo "    FAIL: ${FNAME}"
             return 1
           }
 
