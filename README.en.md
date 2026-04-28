@@ -27,8 +27,9 @@ English | **[中文](./README.md)**
 - Markdown rendering + syntax highlighting (CodeMirror, 20+ languages)
 - Mermaid diagrams, Office/PDF file preview
 - Multimodal messages: upload files and images for Claude to analyze
-- Message search, export, and branch switching
+- Message search, export, branch switching, and feedback
 - Command palette and scheduled sending
+- API proxy: support third-party API forwarding (OpenAI/Anthropic, etc.)
 
 ### Multi-Project Management
 
@@ -36,12 +37,22 @@ English | **[中文](./README.md)**
 - Concurrent conversations across projects — background streams never interrupt
 - Per-project channel and member permission management
 - Agent definitions and template system
+- Project-level file management and Git integration
+
+### User Authentication
+
+- JWT (jose) + bcryptjs authentication system
+- Register / Login / Password change
+- OAuth third-party login (extensible)
+- User management and avatar settings
+- Audit logs and security settings
 
 ### Channel Integration
 
 - **DingTalk** — Stream mode WebSocket long connection, real-time bot messaging
 - **Feishu (Lark)** — Stream mode WebSocket long connection, no public IP required, supports text/image/file/audio
 - **WeChat** — Customer service message integration (QR code login)
+- **API** — HTTP webhook integration, supports both streaming and non-streaming modes
 - Unified message routing with automatic sync to Web UI
 - Message source tracking: each message labeled with its channel and name, distinguishing Web / Feishu / DingTalk / WeChat / API / Scheduled task
 
@@ -58,6 +69,7 @@ English | **[中文](./README.md)**
 - LLM-driven automatic extraction and consolidation
 - Cross-layer unified retrieval with keyword + tag + time-decay scoring
 - Access frequency tracking and verification status management
+- Overview auto-generation and injection into project CLAUDE.md
 
 ### Scheduled Tasks
 
@@ -78,6 +90,13 @@ English | **[中文](./README.md)**
 - Three data providers: File, Skill, and API
 - Configurable data source management
 
+### Dev Mode
+
+- Self-modifying dev loop: code changes → auto build → deploy → test verification
+- Git Worktree isolation — independent branches without affecting main project
+- Dev Server live preview
+- OTA update detection and deployment management
+
 ### Prompt Templates
 
 - 32 system prompts centrally managed in the settings panel
@@ -91,7 +110,11 @@ English | **[中文](./README.md)**
 - Smart detection of system-installed runtimes (nvm-windows / fnm / Homebrew, etc.)
 - System tray: minimize to tray on window close, tray icon flashes on new messages
 - Desktop notifications: auto-push system notifications when window is hidden (channel messages / AI reply completed)
-- Auto-update detection via GitHub Releases
+- **Dual-track update mechanism**:
+  - **Server hot update** — bsdiff binary diff, downloads only changed parts (~few MB), no app restart required, Node process auto-restarts to apply
+  - **Tauri full update** — `tauri-plugin-updater` detects Rust client shell version, requires user confirmation to restart
+  - CDN fallback: CDN acceleration first, fallback to GitHub direct
+  - Auto background check: first check 30s after launch, then every 2 hours
 - Next.js standalone bundled as a sidecar process
 
 ---
@@ -179,33 +202,64 @@ npm run tauri:build
 ```
 gclaw/
 ├── app/                          # Next.js App Router pages and API
-│   ├── api/chat/                 # Chat (stream / messages / abort / permission)
-│   ├── api/projects/             # Project CRUD
+│   ├── api/chat/                 # Chat (stream / messages / abort / permission / branches / search / export / attachments)
+│   ├── api/projects/             # Project CRUD + file management + Git + members
 │   ├── api/agents/               # Agent CRUD
+│   ├── api/agent-templates/      # Agent templates
+│   ├── api/templates/            # Message templates
 │   ├── api/skills/               # Skill management + marketplace
-│   ├── api/channels/             # Channel management + webhook + SSE
+│   ├── api/channels/             # Channel management + webhook + SSE + API channel
 │   ├── api/schedules/            # Scheduled tasks CRUD + manual trigger
-│   ├── api/settings/             # Global / project settings
-│   └── api/auth/                 # Authentication
+│   ├── api/settings/             # Global / project / model / prompt settings
+│   ├── api/auth/                 # Authentication (login / register / oauth / password)
+│   ├── api/users/                # User management and avatar
+│   ├── api/uploads/              # File upload and access
+│   ├── api/memory/               # Memory system (remember / recall / consolidate / overview)
+│   ├── api/focus/                # Focus mode data and settings
+│   ├── api/dev-mode/             # Dev mode management
+│   ├── api/proxy/                # API proxy forwarding
+│   ├── api/logs/                 # System logs
+│   ├── api/audit-log/            # Audit logs
+│   ├── api/security/             # Security settings
+│   ├── api/convert/              # Document conversion (Word → Markdown)
+│   ├── api/llm/                  # LLM configuration
 ├── components/
-│   ├── chat/                     # Chat panel (messages, input, tool summary, approval)
+│   ├── chat/                     # Chat panel (messages, input, tool summary, approval, search, export, branches)
 │   ├── channels/                 # Channel management panel
 │   ├── projects/                 # Project sidebar, mode selector, members
 │   ├── agents/                   # Agent management and templates
 │   ├── skills/                   # Skill management and marketplace
 │   ├── schedules/                # Scheduled tasks (with visual Cron builder)
-│   ├── panels/                   # Focus mode (Todo / Notes / Calendar)
-│   │   └── files/                # File panel (CodeMirror editor + preview)
-│   └── settings/                 # Settings (account / security / logs / skills)
+│   ├── panels/                   # Focus mode (Todo / Notes / Calendar) + Files + Git + Memory
+│   │   ├── files/                # File panel (CodeMirror editor + preview)
+│   │   ├── focus/                # Focus mode sub-panels
+│   │   └── memory/               # Memory system panel
+│   ├── auth/                     # Login / Register / Auth page
+│   ├── dev-mode/                 # Dev mode panel
+│   ├── ui/                       # UI basics (Toast / Modal / WindowControls)
+│   ├── settings/                 # Settings (account / security / logs / skills)
+│   └── Providers.tsx             # Global Provider composition
 ├── hooks/                        # React Hooks
 │   ├── useChat.ts                # Chat core (SSE parsing, StreamBuffer)
-│   └── useAuth.ts                # Auth state
+│   ├── useAuth.ts                # Auth state
+│   ├── useProject.ts             # Project state
+│   ├── useKeyboardShortcuts.ts   # Keyboard shortcuts
+│   ├── useFocusData.ts           # Focus mode data
+│   ├── useMemoryData.ts          # Memory system data
+│   └── useAssistantIdentity.ts   # Agent identity
+├── types/                        # TypeScript type definitions
+│   ├── chat.ts                   # Chat-related types
+│   ├── memory.ts                 # Memory system types
+│   ├── focus.ts                  # Focus mode types
+│   ├── git.ts                    # Git operation types
+│   └── channels.ts               # Channel types
 ├── lib/
 │   ├── claude/                   # Claude SDK integration
 │   │   ├── process-manager.ts    # Core orchestration: query() + AbortController
 │   │   ├── stream-parser.ts      # SDKMessage → ParsedEvent conversion
 │   │   ├── skills-dir.ts         # Skill directory scanning and symlink management
 │   │   ├── skill-hooks.ts        # Skill Hook system (gclaw-hooks.json)
+│   │   ├── claude-md.ts          # Project CLAUDE.md generation and injection
 │   │   └── gclaw-events.ts       # Global event bus
 │   ├── channels/                 # Channel adapters
 │   │   ├── channel-service.ts    # Unified message routing
@@ -213,22 +267,52 @@ gclaw/
 │   │   ├── dingtalk.ts           # DingTalk API
 │   │   ├── feishu.ts             # Feishu (Lark) API
 │   │   ├── feishu-stream.ts      # Feishu Stream WebSocket long connection
-│   │   └── wechat-poller.ts      # WeChat long connection
+│   │   ├── wechat-poller.ts      # WeChat long connection
+│   │   ├── wechat.ts             # WeChat API
+│   │   ├── api-service.ts        # API channel service
+│   │   └── api-events.ts         # API channel events
 │   ├── memory/                   # Four-layer memory system
 │   │   ├── store.ts              # Storage layer
 │   │   ├── retrieval.ts          # Unified retrieval orchestration
 │   │   ├── consolidation.ts      # Memory consolidation engine
 │   │   ├── llm-extractor.ts      # LLM-driven memory extraction
 │   │   ├── semantic-manager.ts   # Semantic memory management
-│   │   └── procedural-manager.ts # Procedural memory management
+│   │   ├── procedural-manager.ts # Procedural memory management
+│   │   ├── overview-generator.ts # Overview generator
+│   │   ├── injection.ts          # Overview caching and refresh injection
+│   │   └── episodic-writer.ts    # Episodic memory writer
 │   ├── scheduler/                # Scheduled task dispatching
 │   │   ├── scheduler.ts          # Core scheduler (globalThis singleton)
 │   │   ├── executors.ts          # Executor registry
 │   │   └── cron-parser.ts        # Cron expression parser
-│   └── store/                    # Data persistence (file-system JSON)
+│   ├── auth/                     # Auth helpers
+│   │   ├── helpers.ts            # Auth helper functions
+│   │   └── jwt.ts                # JWT utilities
+│   ├── dev-mode/                 # Dev mode
+│   │   ├── manager.ts            # DevMode state machine
+│   │   ├── worktree.ts           # Git Worktree operations
+│   │   ├── dev-server.ts         # Dev server management
+│   │   ├── deploy.ts             # Build + deploy
+│   │   └── ota.ts                # OTA update detection
+│   ├── focus/                    # Focus mode
+│   │   ├── store.ts              # Data storage
+│   │   └── providers/            # Data providers (Skill)
+│   ├── prompts/                  # Prompt template management
+│   ├── modes/                    # Mode definitions
+│   ├── services/                 # Service layer (skill marketplace, etc.)
+│   ├── store/                    # Data persistence (file-system JSON)
+│   ├── crypto.ts                 # Encryption utilities
+│   ├── logger.ts                 # Logger
+│   ├── llm.ts                    # LLM config management
+│   ├── tauri.ts                  # Tauri API adapter
+│   ├── updater.ts                # Hot update management
+│   ├── validators.ts             # Input validation
+│   ├── theme-color.ts            # Theme color utilities
 ├── skills/                       # Built-in skills
 ├── scripts/                      # Build / deploy scripts
 ├── src-tauri/                    # Tauri desktop app (Rust)
+├── middleware.ts                  # Next.js middleware
+├── instrumentation.ts            # Next.js instrumentation
 └── data/                         # Runtime data (gitignored)
 ```
 
@@ -298,8 +382,20 @@ Supported build targets: macOS (DMG / App), Windows (MSI / NSIS), Linux (AppImag
 
 ### CI/CD
 
-- **CI** — Automatic triple-platform build check on PRs and pushes to main
-- **Release** — Automatic quad-platform build and GitHub Release on `v*` tag push
+| Workflow | Trigger Tag | Build Content |
+|----------|-------------|---------------|
+| `release.yml` | `v*` | Full Tauri app + server tar + delta |
+| `server-release.yml` | `server-v*` | Next.js server bundle only + delta |
+
+**Dual-track version system**:
+
+| Version | File | Meaning | Update Timing |
+|---------|------|---------|---------------|
+| Server version | `package.json` → `version` | Web/Node.js code version | Any Web code change |
+| Tauri shell version | `tauri.conf.json` + `Cargo.toml` → `version` | Rust client shell version | Rust/Tauri code change |
+
+- **Delta generation** — Auto-generate bsdiff incremental patches for the last 3 old versions, injected into `latest.json`
+- **CDN acceleration** — Qiniu Cloud CDN distributes Release artifacts with auto cache purge
 
 ---
 

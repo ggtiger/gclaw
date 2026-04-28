@@ -27,8 +27,9 @@
 - Markdown 渲染 + 代码高亮（CodeMirror，支持 20+ 语言）
 - Mermaid 图表、Office/PDF 文件在线预览
 - 多模态消息：支持文件和图片上传，Claude 自动分析
-- 消息搜索、导出、分支切换
+- 消息搜索、导出、分支切换与反馈
 - 命令面板与定时发送
+- API 代理：支持第三方 API 转发（OpenAI/Anthropic 等）
 
 ### 多项目管理
 
@@ -36,12 +37,22 @@
 - 多项目并发对话，后台流不中断
 - 项目级渠道、成员权限管理
 - 智能体定义与模板系统
+- 项目级文件管理与 Git 集成
+
+### 用户认证
+
+- JWT（jose）+ bcryptjs 认证体系
+- 注册 / 登录 / 密码修改
+- OAuth 第三方登录（支持扩展）
+- 用户管理与头像设置
+- 审计日志与安全设置
 
 ### 渠道集成
 
 - **钉钉** — Stream 模式 WebSocket 长连接，机器人消息实时收发
 - **飞书** — Stream 模式 WebSocket 长连接，无需公网 IP，支持文本/图片/文件/语音
 - **微信** — 客服消息接入（扫码登录）
+- **API** — HTTP webhook 接入，支持流式和非流式两种模式
 - 统一消息路由，渠道消息自动同步到 Web UI
 - 消息来源追踪：每条消息标注来源渠道与名称，区分 Web / 飞书 / 钉钉 / 微信 / API / 定时任务
 
@@ -58,6 +69,7 @@
 - LLM 驱动的自动提取与巩固
 - 跨层级统一检索，支持关键词 + 标签 + 时间衰减排序
 - 访问频率追踪与验证状态管理
+- 总纲自动生成并注入项目 CLAUDE.md
 
 ### 定时任务
 
@@ -78,6 +90,13 @@
 - 支持文件、Skill、API 三种数据提供者
 - 可配置数据源管理
 
+### 开发模式
+
+- 自修改开发循环：代码变更 → 自动构建 → 部署 → 测试验证
+- Git Worktree 隔离开发，独立分支不影响主项目
+- Dev Server 实时预览
+- OTA 更新检测与部署管理
+
 ### 提示词模板
 
 - 32 个系统提示词集中管理（设置面板统一配置）
@@ -94,7 +113,7 @@
 - **双轨更新机制**：
   - **Server 热更新** — bsdiff 增量差分，仅下载变更部分（~几 MB），无需重启应用，自动重启 Node 进程生效
   - **Tauri 全量更新** — `tauri-plugin-updater` 检测 Rust 客户端壳版本，需用户确认重启
-  - 双端点容错：优先 Gitee（国内加速），回退 GitHub
+  - 双端点容错：优先 CDN 加速，回退 GitHub 直连
   - 自动后台检查：启动 30s 后首次检查，之后每 2 小时自动检测
 - Next.js standalone 打包为 sidecar 进程
 
@@ -183,33 +202,65 @@ npm run tauri:build
 ```
 gclaw/
 ├── app/                          # Next.js App Router 页面与 API
-│   ├── api/chat/                 # 对话（stream / messages / abort / permission）
-│   ├── api/projects/             # 项目 CRUD
+│   ├── api/chat/                 # 对话（stream / messages / abort / permission / branches / search / export / attachments）
+│   ├── api/projects/             # 项目 CRUD + 文件管理 + Git + 成员
 │   ├── api/agents/               # 智能体 CRUD
+│   ├── api/agent-templates/      # 智能体模板
+│   ├── api/templates/            # 消息模板
 │   ├── api/skills/               # 技能管理 + 市场
-│   ├── api/channels/             # 渠道管理 + webhook + SSE
+│   ├── api/channels/             # 渠道管理 + webhook + SSE + API渠道
 │   ├── api/schedules/            # 定时任务 CRUD + 手动触发
-│   ├── api/settings/             # 全局 / 项目设置
+│   ├── api/settings/             # 全局 / 项目 / 模型 / 提示词设置
+│   ├── api/auth/                 # 用户认证（login / register / oauth / password）
+│   ├── api/users/                # 用户管理与头像
+│   ├── api/uploads/              # 文件上传与访问
+│   ├── api/memory/               # 记忆系统（remember / recall / consolidate / overview）
+│   ├── api/focus/                # 专注模式数据与设置
+│   ├── api/dev-mode/             # 开发模式管理
+│   ├── api/proxy/                # API 代理转发
+│   ├── api/logs/                 # 系统日志
+│   ├── api/audit-log/            # 审计日志
+│   ├── api/security/             # 安全设置
+│   ├── api/convert/              # 文档转换（Word → Markdown）
+│   ├── api/llm/                  # LLM 配置
 │   └── api/auth/                 # 用户认证
 ├── components/
-│   ├── chat/                     # 聊天面板（消息、输入、工具摘要、权限审批）
+│   ├── chat/                     # 聊天面板（消息、输入、工具摘要、权限审批、搜索、导出、分支）
 │   ├── channels/                 # 渠道管理面板
 │   ├── projects/                 # 项目侧栏、模式选择、成员管理
 │   ├── agents/                   # 智能体管理与模板
 │   ├── skills/                   # 技能管理与市场
 │   ├── schedules/                # 定时任务（含可视化 Cron 构建器）
-│   ├── panels/                   # 专注模式（Todo / Notes / Calendar）
-│   │   └── files/                # 文件面板（CodeMirror 编辑器 + 预览）
-│   └── settings/                 # 设置面板（账户 / 安全 / 日志 / 技能）
+│   ├── panels/                   # 专注模式（Todo / Notes / Calendar）+ 文件 + Git + 记忆
+│   │   ├── files/                # 文件面板（CodeMirror 编辑器 + 预览）
+│   │   ├── focus/                # 专注模式子面板
+│   │   └── memory/               # 记忆系统面板
+│   ├── auth/                     # 登录 / 注册 / 认证页面
+│   ├── dev-mode/                 # 开发模式面板
+│   ├── ui/                       # UI 基础组件（Toast / Modal / WindowControls）
+│   ├── settings/                 # 设置面板（账户 / 安全 / 日志 / 技能）
+│   └── Providers.tsx             # 全局 Provider 组合
 ├── hooks/                        # React Hooks
 │   ├── useChat.ts                # 聊天核心（SSE 解析、StreamBuffer）
-│   └── useAuth.ts                # 认证状态
+│   ├── useAuth.ts                # 认证状态
+│   ├── useProject.ts             # 项目状态
+│   ├── useKeyboardShortcuts.ts   # 键盘快捷键
+│   ├── useFocusData.ts           # 专注模式数据
+│   ├── useMemoryData.ts          # 记忆系统数据
+│   └── useAssistantIdentity.ts   # 智能体身份
+├── types/                        # TypeScript 类型定义
+│   ├── chat.ts                   # 聊天相关类型
+│   ├── memory.ts                 # 记忆系统类型
+│   ├── focus.ts                  # 专注模式类型
+│   ├── git.ts                    # Git 操作类型
+│   └── channels.ts               # 渠道类型
 ├── lib/
 │   ├── claude/                   # Claude SDK 集成
 │   │   ├── process-manager.ts    # 核心调度：query() + AbortController
 │   │   ├── stream-parser.ts      # SDKMessage → ParsedEvent 转换
 │   │   ├── skills-dir.ts         # 技能目录扫描与 symlink 管理
 │   │   ├── skill-hooks.ts        # 技能 Hook 系统（gclaw-hooks.json）
+│   │   ├── claude-md.ts          # 项目 CLAUDE.md 生成与注入
 │   │   └── gclaw-events.ts       # 全局事件总线
 │   ├── channels/                 # 渠道适配器
 │   │   ├── channel-service.ts    # 统一消息路由
@@ -217,22 +268,52 @@ gclaw/
 │   │   ├── dingtalk.ts           # 钉钉 API
 │   │   ├── feishu.ts             # 飞书 API
 │   │   ├── feishu-stream.ts      # 飞书 Stream WebSocket 长连接
-│   │   └── wechat-poller.ts      # 微信长连接
+│   │   ├── wechat-poller.ts      # 微信长连接
+│   │   ├── wechat.ts             # 微信 API
+│   │   ├── api-service.ts        # API 渠道服务
+│   │   └── api-events.ts         # API 渠道事件
 │   ├── memory/                   # 四层记忆系统
 │   │   ├── store.ts              # 存储层
 │   │   ├── retrieval.ts          # 统一检索编排
 │   │   ├── consolidation.ts      # 记忆巩固引擎
 │   │   ├── llm-extractor.ts      # LLM 驱动的记忆提取
 │   │   ├── semantic-manager.ts   # 语义记忆管理
-│   │   └── procedural-manager.ts # 程序记忆管理
+│   │   ├── procedural-manager.ts # 程序记忆管理
+│   │   ├── overview-generator.ts # 总纲生成器
+│   │   ├── injection.ts          # 总纲缓存与刷新
+│   │   └── episodic-writer.ts    # 情节记忆写入
 │   ├── scheduler/                # 定时任务调度
 │   │   ├── scheduler.ts          # 核心调度器（globalThis 单例）
 │   │   ├── executors.ts          # 执行器注册表
 │   │   └── cron-parser.ts        # Cron 表达式解析
-│   └── store/                    # 数据持久化（文件系统 JSON）
+│   ├── auth/                     # 认证辅助
+│   │   ├── helpers.ts            # 认证辅助函数
+│   │   └── jwt.ts                # JWT 工具
+│   ├── dev-mode/                 # 开发模式
+│   │   ├── manager.ts            # DevMode 状态机
+│   │   ├── worktree.ts           # Git Worktree 操作
+│   │   ├── dev-server.ts         # 开发服务器管理
+│   │   ├── deploy.ts             # 构建与部署
+│   │   └── ota.ts                # OTA 更新检测
+│   ├── focus/                    # 专注模式
+│   │   ├── store.ts              # 数据存储
+│   │   └── providers/            # 数据提供者（Skill）
+│   ├── prompts/                  # 提示词模板管理
+│   ├── modes/                    # 模式定义
+│   ├── services/                 # 服务层（技能市场等）
+│   ├── store/                    # 数据持久化（文件系统 JSON）
+│   ├── crypto.ts                 # 加密工具
+│   ├── logger.ts                 # 日志工具
+│   ├── llm.ts                    # LLM 配置管理
+│   ├── tauri.ts                  # Tauri API 适配
+│   ├── updater.ts                # 热更新管理
+│   ├── validators.ts             # 输入校验
+│   └── theme-color.ts            # 主题色彩工具
 ├── skills/                       # 内置技能
 ├── scripts/                      # 构建 / 部署脚本
 ├── src-tauri/                    # Tauri 桌面端（Rust）
+├── middleware.ts                  # Next.js 中间件
+├── instrumentation.ts            # Next.js instrumentation
 └── data/                         # 运行时数据（gitignore）
 ```
 
@@ -311,11 +392,11 @@ npm run tauri:build    # 构建当前平台安装包
 
 | 版本 | 文件 | 含义 | 更新时机 |
 |------|------|------|----------|
-| Server 版本 | `package.json` → `serverVersion` | Web/Node.js 侧代码版本 | 任何 Web 代码变更 |
+| Server 版本 | `package.json` → `version` | Web/Node.js 侧代码版本 | 任何 Web 代码变更 |
 | Tauri 壳版本 | `tauri.conf.json` + `Cargo.toml` → `version` | Rust 客户端壳版本 | Rust/Tauri 代码变更 |
 
 - **Delta 生成** — 自动对最近 3 个旧版本生成 bsdiff 增量包，注入 `latest.json`
-- **Gitee 同步** — 自动同步 Release 到 Gitee 镜像（优先上传 delta + latest.json，再传大文件）
+- **CDN 加速** — 七牛云 CDN 分发 Release 产物，自动缓存刷新
 
 ---
 

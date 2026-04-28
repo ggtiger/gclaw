@@ -46,12 +46,32 @@ npx tsc --noEmit # TypeScript 类型检查（无测试框架，用此验证编�
 | 流解析器 | `lib/claude/stream-parser.ts` | SDKMessage → ParsedEvent 转换 |
 | 技能目录管理 | `lib/claude/skills-dir.ts` | 扫描技能、创建 symlink 到项目 `.claude/skills/` |
 | 技能 Hook 系统 | `lib/claude/skill-hooks.ts` | 声明式 Hook（gclaw-hooks.json），支持 notify/script/log 三种 action |
+| CLAUDE.md 生成 | `lib/claude/claude-md.ts` | 项目 CLAUDE.md 生成与注入 |
 | 事件总线 | `lib/claude/gclaw-events.ts` | 全局单例 GClawEventBus，连接 SDK Hook、技能通知和 Web UI |
 | 聊天状态 | `hooks/useChat.ts` | 前端核心 hook：SSE 解析、多项目 StreamBuffer、消息管理 |
-| 渠道服务 | `lib/channels/channel-service.ts` | 统一处理钉钉/飞书/微信消息，调用 executeChat 后回复渠道 |
+| 渠道服务 | `lib/channels/channel-service.ts` | 统一处理钉钉/飞书/微信/API消息，调用 executeChat 后回复渠道 |
+| API 渠道服务 | `lib/channels/api-service.ts` | HTTP webhook 渠道接入（流式 + 非流式） |
+| 记忆存储层 | `lib/memory/store.ts` | 记忆数据持久化（情节/语义/程序/总纲） |
+| 记忆检索 | `lib/memory/retrieval.ts` | 统一检索与评分（关键词+标签+时间衰减） |
+| 记忆巩固引擎 | `lib/memory/consolidation.ts` | 情节→语义/程序记忆转换 |
+| LLM 提取器 | `lib/memory/llm-extractor.ts` | LLM 辅助记忆提取 |
+| 语义记忆管理 | `lib/memory/semantic-manager.ts` | 语义记忆 CRUD |
+| 程序记忆管理 | `lib/memory/procedural-manager.ts` | 程序记忆 CRUD |
+| 总纲生成器 | `lib/memory/overview-generator.ts` | 总纲 Markdown 生成 |
+| 总纲注入 | `lib/memory/injection.ts` | 总纲缓存与刷新注入 CLAUDE.md |
+| 情节写入 | `lib/memory/episodic-writer.ts` | 情节记忆写入接口 |
+| 认证辅助 | `lib/auth/helpers.ts` | 认证辅助函数（密码哈希、用户查找） |
+| JWT 工具 | `lib/auth/jwt.ts` | JWT 签发与验证（jose） |
 | 定时任务调度器 | `lib/scheduler/scheduler.ts` | globalThis 单例，每秒扫描到期任务，懒启动 |
 | 任务执行器 | `lib/scheduler/executors.ts` | 注册表 + 5 种内置执行器（chat-message/script/webhook/execute-skill/custom） |
 | Cron 解析器 | `lib/scheduler/cron-parser.ts` | 简易 5 位 cron 表达式解析 |
+| 开发模式管理 | `lib/dev-mode/manager.ts` | DevMode 状态机与生命周期 |
+| Git Worktree | `lib/dev-mode/worktree.ts` | Worktree 创建/切换/清理 |
+| Dev Server | `lib/dev-mode/dev-server.ts` | 开发服务器启动与管理 |
+| 部署管理 | `lib/dev-mode/deploy.ts` | 构建 + 部署流程 |
+| OTA 更新 | `lib/dev-mode/ota.ts` | 远程更新检测 |
+| 专注模式存储 | `lib/focus/store.ts` | 专注模式数据存储 |
+| 热更新管理 | `lib/updater.ts` | bsdiff 增量差分下载与替换 |
 
 ### 多项目并发
 
@@ -71,7 +91,7 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 
 ### 渠道集成
 
-三种渠道适配器：`lib/channels/dingtalk.ts`、`lib/channels/feishu.ts`、`lib/channels/wechat.ts`。渠道消息经 `channel-service.ts` 统一处理后调用 `executeChat()`，回复推送到渠道同时通过 SSE 推送到前端。
+四种渠道适配器：`lib/channels/dingtalk.ts`、`lib/channels/feishu.ts`、`lib/channels/wechat.ts`、`lib/channels/api-service.ts`。渠道消息经 `channel-service.ts` 统一处理后调用 `executeChat()`，回复推送到渠道同时通过 SSE 推送到前端。
 
 ### 定时任务调度
 
@@ -92,26 +112,62 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 ### API 路由
 
 ```
-/api/chat/stream     — SSE 流式对话（POST）
-/api/chat/messages   — 历史消息 CRUD
-/api/chat/abort      — 终止查询
-/api/chat/permission — 权限审批
-/api/projects        — 项目 CRUD
-/api/agents          — 智能体 CRUD
-/api/channels/*      — 渠道管理 + webhook + SSE 事件
-/api/skills/*        — 技能管理 + 市场
-/api/schedules       — 定时任务 CRUD
+/api/chat/stream       — SSE 流式对话（POST）
+/api/chat/messages     — 历史消息 CRUD + 搜索 + 反馈
+/api/chat/abort        — 终止查询
+/api/chat/permission   — 权限审批
+/api/chat/branches     — 消息分支切换
+/api/chat/attachments  — 附件管理
+/api/chat/export       — 对话导出
+/api/projects          — 项目 CRUD
+/api/projects/[id]/files — 项目文件管理
+/api/projects/[id]/git — 项目 Git 操作
+/api/projects/members  — 项目成员管理
+/api/agents            — 智能体 CRUD
+/api/agent-templates   — 智能体模板
+/api/templates         — 消息模板
+/api/channels/*        — 渠道管理 + webhook + SSE 事件 + API渠道
+/api/skills/*          — 技能管理 + 市场
+/api/schedules         — 定时任务 CRUD
 /api/schedules/trigger — 定时任务手动触发
-/api/settings        — 全局/项目设置
+/api/settings          — 全局/项目设置
+/api/settings/models   — 模型配置
+/api/settings/prompts  — 提示词配置
+/api/auth/login        — 登录
+/api/auth/register     — 注册
+/api/auth/logout       — 登出
+/api/auth/me           — 当前用户信息
+/api/auth/password     — 密码修改
+/api/auth/oauth        — OAuth 第三方登录
+/api/users             — 用户管理
+/api/uploads           — 文件上传与访问
+/api/memory/remember   — 记忆写入
+/api/memory/recall     — 记忆检索
+/api/memory/consolidate — 记忆巩固
+/api/memory/overview   — 总纲查看
+/api/focus             — 专注模式数据
+/api/focus/settings    — 专注模式设置
+/api/dev-mode          — 开发模式状态
+/api/dev-mode/deploy   — 开发模式部署
+/api/proxy             — API 代理转发
+/api/logs              — 系统日志
+/api/audit-log         — 审计日志
+/api/security          — 安全设置
+/api/convert           — 文档转换（Word → Markdown）
+/api/llm               — LLM 配置
 ```
 
 ### 数据持久化
 
 所有数据存储在 `data/` 目录（已 gitignore），无数据库：
 - `data/global.json` — 全局设置
+- `data/users.json` — 用户数据（含密码哈希）
 - `data/projects.json` — 项目列表
 - `data/schedules.json` — 全局定时任务
+- `data/templates.json` — 消息模板
+- `data/audit-log.json` — 审计日志
 - `data/projects/{id}/` — 每个项目的设置、消息、技能、智能体、渠道配置
+- `data/memory/{userId}/` — 用户级记忆数据（episodic/semantic/procedures/overview）
 
 ## 版本管理与发布
 
@@ -167,7 +223,7 @@ git push origin v0.3.0
 - **Delta 热更新**：bsdiff 二进制差分，自动下载并替换 server 目录，无需重启应用
 - **全量更新**：Tauri plugin-updater 下载安装包，需用户确认重启
 - **latest.json**：同时包含 `version`（server）、`serverVersion`（向后兼容）和 `serverDeltas`（各平台 delta 信息）
-- **多端点容错**：优先走 Gitee API 预检，失败回退 GitHub
+- **CDN 加速**：七牛云 CDN 分发 Release 产物，客户端优先走 CDN，回退 GitHub 直连
 
 ## 开发注意事项
 
