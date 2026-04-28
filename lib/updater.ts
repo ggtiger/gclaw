@@ -434,6 +434,17 @@ export async function applyServerUpdate(
     try {
       const serverUrl = await invoke<string>('restart_server')
       console.log(`[Delta] Server 已重启: ${serverUrl}`)
+
+      // 刷新 webview 以加载新代码（解决旧 JS 与新 server 不匹配的问题）
+      // Rust 端 restart_server 已处理端口变化时的 webview 导航
+      // 这里用 location.href 确保页面刷新，加载新的 JavaScript 资源
+      try {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        console.log('[Delta] 刷新 webview 以加载新代码...')
+        window.location.href = serverUrl
+      } catch {
+        // location.href 赋值会触发页面跳转，不会到这里
+      }
     } catch (restartErr) {
       console.error('[Delta] Server 重启失败:', restartErr)
     }
@@ -492,7 +503,26 @@ export async function startupUpdateCheck(
   onProgress?: (status: string, progress: number, detail: string) => void,
 ): Promise<boolean> {
   try {
-    onProgress?.('loading', 82, '检查更新...')
+    onProgress?.('loading', 80, '检查更新...')
+
+    // 1. 优先检查 Tauri 壳全量更新
+    try {
+      const tauriUpdate = await checkForUpdate()
+      if (tauriUpdate) {
+        // 发现全量更新，提示用户但不阻塞启动
+        onProgress?.('loading', 85, `发现新版本 v${tauriUpdate.version}，请前往设置重新安装`)
+        console.log(`[Startup] 发现 Tauri 全量更新 v${tauriUpdate.version}，跳过 server 热更新`)
+        // 给用户一点时间看到提示
+        await delay(2000)
+        onProgress?.('loading', 100, '启动中...')
+        return false
+      }
+    } catch (tauriErr) {
+      console.warn('[Startup] Tauri 全量更新检查失败，继续检查 server 热更新:', tauriErr)
+    }
+
+    // 2. 无全量更新，再检查 server 热更新
+    onProgress?.('loading', 82, '检查热更新...')
     const info = await checkServerDelta()
     if (!info) {
       onProgress?.('loading', 100, '已是最新版本')
@@ -564,7 +594,19 @@ export class AutoUpdater {
     if (this.checking) return
     this.checking = true
     try {
-      // 1. 检查 server 更新（delta 或全量），下载后等待用户操作
+      // 1. 优先检查 Tauri 壳全量更新
+      try {
+        const tauriUpdate = await checkForUpdate()
+        if (tauriUpdate) {
+          console.log(`[AutoUpdater] 发现全量更新: ${tauriUpdate.version}，跳过 server 热更新`)
+          callbacks.onTauriUpdate?.(tauriUpdate)
+          return // 需要全量更新，不再检查 server 热更新
+        }
+      } catch (tauriErr) {
+        console.warn('[AutoUpdater] Tauri 全量更新检查失败，继续检查 server 热更新:', tauriErr)
+      }
+
+      // 2. 无全量更新，再检查 server 热更新
       try {
         const serverUpdate = await checkServerDelta()
         if (serverUpdate) {
@@ -575,18 +617,7 @@ export class AutoUpdater {
           return
         }
       } catch (deltaErr) {
-        console.warn('[AutoUpdater] server 更新检查/下载失败，降级到全量更新:', deltaErr)
-      }
-
-      // 2. 检查 Tauri 全量更新（需用户确认重启）
-      try {
-        const tauriUpdate = await checkForUpdate()
-        if (tauriUpdate) {
-          console.log(`[AutoUpdater] 发现全量更新: ${tauriUpdate.version}`)
-          callbacks.onTauriUpdate?.(tauriUpdate)
-        }
-      } catch (tauriErr) {
-        console.warn('[AutoUpdater] Tauri 更新检查失败:', tauriErr)
+        console.warn('[AutoUpdater] server 更新检查/下载失败:', deltaErr)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

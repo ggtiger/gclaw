@@ -290,9 +290,10 @@ jobs:
             MODIFIED=""
             DELETED=""
 
+            # 注意：使用 grep -F 固定字符串匹配，避免路径中的 [id] 等方括号被当作正则字符类
             while IFS=' ' read -r hash filepath; do
               filepath="${filepath#./}"
-              old_hash=$(grep " \./${filepath}$" /tmp/old_hashes.txt | cut -d' ' -f1 || true)
+              old_hash=$(grep -F " ./${filepath}" /tmp/old_hashes.txt | cut -d' ' -f1 || true)
               if [ -z "$old_hash" ]; then
                 ADDED="${ADDED}\"${filepath}\","
                 mkdir -p "$PATCH_DIR/$(dirname "$filepath")"
@@ -306,7 +307,7 @@ jobs:
 
             while IFS=' ' read -r hash filepath; do
               filepath="${filepath#./}"
-              if ! grep -q " \./${filepath}$" /tmp/new_hashes.txt; then
+              if ! grep -qF " ./${filepath}" /tmp/new_hashes.txt; then
                 DELETED="${DELETED}\"${filepath}\","
               fi
             done < /tmp/old_hashes.txt

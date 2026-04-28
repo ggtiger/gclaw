@@ -9,6 +9,10 @@ interface UpdateState {
   downloadedPath: string | null
   progress: number // 0-100
   errorMsg: string | null
+  /** Tauri 壳全量更新可用 */
+  tauriUpdateAvailable: boolean
+  /** Tauri 壳全量更新版本号 */
+  tauriUpdateVersion: string | null
 
   // Actions
   setChecking: () => void
@@ -16,6 +20,8 @@ interface UpdateState {
   setReady: (version: string, path: string) => void
   setApplying: () => void
   setError: (msg: string) => void
+  setTauriUpdate: (version: string) => void
+  clearTauriUpdate: () => void
   reset: () => void
   applyAndRelaunch: () => Promise<void>
 }
@@ -26,6 +32,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   downloadedPath: null,
   progress: 0,
   errorMsg: null,
+  tauriUpdateAvailable: false,
+  tauriUpdateVersion: null,
 
   setChecking: () => set({ status: 'checking', progress: 0, errorMsg: null }),
   setDownloading: (progress) => set({ status: 'downloading', progress }),
@@ -33,8 +41,10 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     set({ status: 'ready', updateVersion: version, downloadedPath: path, progress: 100 }),
   setApplying: () => set({ status: 'applying' }),
   setError: (msg) => set({ status: 'error', errorMsg: msg }),
+  setTauriUpdate: (version) => set({ tauriUpdateAvailable: true, tauriUpdateVersion: version }),
+  clearTauriUpdate: () => set({ tauriUpdateAvailable: false, tauriUpdateVersion: null }),
   reset: () =>
-    set({ status: 'idle', updateVersion: null, downloadedPath: null, progress: 0, errorMsg: null }),
+    set({ status: 'idle', updateVersion: null, downloadedPath: null, progress: 0, errorMsg: null, tauriUpdateAvailable: false, tauriUpdateVersion: null }),
 
   applyAndRelaunch: async () => {
     const { downloadedPath, updateVersion } = get()

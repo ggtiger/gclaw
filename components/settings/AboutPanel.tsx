@@ -37,34 +37,32 @@ export function AboutPanel() {
     setServerUpdate(null)
 
     try {
-      // 并行检查 Tauri 全量更新和 Server 热更新
-      const [tauriResult, serverResult] = await Promise.allSettled([
-        checkForUpdate(),
-        checkServerDelta(),
-      ])
-
-      const tauriInfo = tauriResult.status === 'fulfilled' ? tauriResult.value : null
-      const serverInfo = serverResult.status === 'fulfilled' ? serverResult.value : null
-
-      if (tauriResult.status === 'rejected') {
-        console.warn('[AboutPanel] Tauri 更新检查失败:', tauriResult.reason)
+      // 1. 优先检查 Tauri 全量更新
+      let tauriInfo: UpdateInfo | null = null
+      try {
+        tauriInfo = await checkForUpdate()
+      } catch (tauriErr) {
+        console.warn('[AboutPanel] Tauri 更新检查失败:', tauriErr)
       }
 
       if (tauriInfo) {
+        // 发现全量更新，不再检查 server 热更新
         setUpdateInfo(tauriInfo)
-      }
-      if (serverInfo) {
-        setServerUpdate(serverInfo)
+        setStatus('available')
+        return
       }
 
-      if (tauriInfo || serverInfo) {
+      // 2. 无全量更新，再检查 server 热更新
+      let serverInfo: ServerUpdateInfo | null = null
+      try {
+        serverInfo = await checkServerDelta()
+      } catch (serverErr) {
+        console.warn('[AboutPanel] Server 更新检查失败:', serverErr)
+      }
+
+      if (serverInfo) {
+        setServerUpdate(serverInfo)
         setStatus('available')
-      } else if (tauriResult.status === 'rejected' && (!serverInfo)) {
-        // Tauri 检查失败，且 server delta 也没有结果 → 显示网络错误
-        const reason = tauriResult.reason
-        const msg = reason instanceof Error ? reason.message : String(reason)
-        setErrorMsg(msg || '更新检查失败，请检查网络后重试')
-        setStatus('error')
       } else {
         setStatus('idle')
       }

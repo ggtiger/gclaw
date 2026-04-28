@@ -85,7 +85,8 @@ function useAutoUpdater() {
           console.log(`Server 已热更新到 ${newVersion}`)
         },
         onTauriUpdate: (info) => {
-          console.log(`发现全量更新: ${info.version}`)
+          console.log(`发现全量更新: ${info.version}，需要重新安装`)
+          useUpdateStore.getState().setTauriUpdate(info.version)
         },
         onError: (err) => {
           console.warn(`更新检查失败: ${err}`)
