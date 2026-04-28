@@ -263,6 +263,13 @@ pub async fn apply_server_patch(
     let _ = fs::remove_dir_all(&tmp_dir);
     let _ = fs::remove_dir_all(&backup_dir);
 
+    // 8. 清理 .next 编译缓存，强制 server 重启时重新加载
+    let cache_dir = server_dir.join(".next").join("cache");
+    if cache_dir.exists() {
+        let _ = fs::remove_dir_all(&cache_dir);
+        println!("[Delta] Cleaned .next/cache directory");
+    }
+
     println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
     Ok(new_version)
 }

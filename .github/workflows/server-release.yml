@@ -262,6 +262,19 @@ jobs:
               fi
             done < /tmp/old_hashes.txt
 
+            # 强制将 manifest 文件加入 delta 包（即使 hash 没变）
+            FORCE_MANIFESTS=".next/routes-manifest.json .next/build-manifest.json .next/app-build-manifest.json .next/server/middleware-manifest.json .next/server/app-paths-manifest.json .next/prerender-manifest.json"
+            for mf in $FORCE_MANIFESTS; do
+              if [ -f "$NEW_SERVER_DIR/$mf" ]; then
+                # 检查是否已在 MODIFIED 或 ADDED 中
+                if ! echo "$MODIFIED$ADDED" | grep -q "\"${mf}\""; then
+                  MODIFIED="${MODIFIED}\"${mf}\","
+                  mkdir -p "$PATCH_DIR/$(dirname "$mf")"
+                  cp "$NEW_SERVER_DIR/$mf" "$PATCH_DIR/$mf"
+                fi
+              fi
+            done
+
             # 去掉尾部逗号，构造 JSON
             ADDED=$(echo "[$ADDED]" | sed 's/,]/]/')
             MODIFIED=$(echo "[$MODIFIED]" | sed 's/,]/]/')

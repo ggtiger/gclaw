@@ -167,8 +167,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     url = new URL(request.url)
   } catch (err) {
-    console.error('[GitAPI] URL parse error:', err)
-    return NextResponse.json({ error: '请求 URL 解析失败' }, { status: 400 })
+    console.error('[GitAPI] URL parse failed:', request.url, err)
+    try {
+      url = (request as any).nextUrl ?? new URL(request.url, 'http://localhost:3100')
+    } catch {
+      return NextResponse.json({ error: 'URL 解析失败', debug: String(request.url) }, { status: 400 })
+    }
   }
   const dirParam = url.searchParams.get('dir') // 相对路径，如 'my-project'
 

@@ -257,8 +257,16 @@ export async function* executeChat(
       // 允许的系统/临时路径前缀（只读或安全的写入目标）
       const ALLOWED_PREFIXES = ['/tmp', '/dev/null', '/usr', '/bin', '/sbin', '/lib', '/etc', '/var', '/proc', '/sys', '/opt']
 
-      // 提取命令中所有绝对路径
-      const absPaths = [...command.matchAll(/(?:^|[\s;|&()'"`])(\/[^\s;|&()'"`]+)/g)].map(m => m[1])
+      // 提取命令中所有绝对路径（支持引号内含空格的路径）
+      const absPaths: string[] = []
+      // 1. 提取单引号/双引号内的绝对路径
+      const quotedPaths = [...command.matchAll(/["'](\s*\/[^"']+)/g)].map(m => m[1].trim())
+      absPaths.push(...quotedPaths)
+      // 2. 提取无引号的绝对路径（去掉已匹配的引号内路径，避免重复）
+      let stripped = command.replace(/"[^"]*"/g, ' ').replace(/'[^']*'/g, ' ')
+      const unquotedPaths = [...stripped.matchAll(/(?:^|[\s;|&()`])(\/[^\s;|&()`]+)/g)].map(m => m[1])
+      absPaths.push(...unquotedPaths)
+
       for (const rawPath of absPaths) {
         const resolved = path.resolve(rawPath)
         // 跳过允许的系统路径

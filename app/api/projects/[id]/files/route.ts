@@ -147,8 +147,13 @@ export async function GET(
   try {
     url = new URL(request.url)
   } catch (err) {
-    console.error('[FilesAPI] URL parse error:', err)
-    return Response.json({ error: '请求 URL 解析失败' }, { status: 400 })
+    console.error('[FilesAPI] URL parse failed:', request.url, err)
+    // fallback: 尝试用 request.nextUrl 或手动加 base 解析
+    try {
+      url = (request as any).nextUrl ?? new URL(request.url, 'http://localhost:3100')
+    } catch {
+      return Response.json({ error: 'URL 解析失败', debug: String(request.url) }, { status: 400 })
+    }
   }
   const subPath = url.searchParams.get('path') || ''
   const action = url.searchParams.get('action')
