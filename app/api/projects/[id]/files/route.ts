@@ -276,6 +276,8 @@ export async function GET(
 
     for (const name of entries) {
       if (name.startsWith('.')) continue
+      // 跳过包含控制字符的文件名（增量更新可能产生）
+      if (/[\x00-\x1F\x7F]/.test(name)) continue
       const fullPath = path.join(resolvedTarget, name)
       try {
         const stat = fs.statSync(fullPath)
