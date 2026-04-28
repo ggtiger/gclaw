@@ -626,7 +626,7 @@ jobs:
         run: |
           set -e
           echo "--- Installing qshell ---"
-          curl -fSL -o qshell.tar.gz https://devtools.qiniu.com/qshell-v2.14.0-linux-amd64.tar.gz
+          curl -fSL -o qshell.tar.gz https://github.com/qiniu/qshell/releases/download/v2.19.4/qshell-v2.19.4-linux-amd64.tar.gz
           tar xzf qshell.tar.gz
           chmod +x qshell
           sudo mv qshell /usr/local/bin/qshell
