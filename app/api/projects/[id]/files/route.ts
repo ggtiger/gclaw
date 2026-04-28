@@ -109,15 +109,18 @@ function buildTree(dir: string, projectDir: string, depth: number): TreeEntry[] 
   for (const name of items) {
     if (name.startsWith('.')) continue
     if (name === 'node_modules' || name === '.git') continue
-    const fullPath = path.join(dir, name)
+    // 跳过包含控制字符的文件名（增量更新可能产生）
+    if (/[\x00-\x1F\x7F]/.test(name)) continue
+    const sanitizedName = name.replace(/\\/g, '/')
+    const fullPath = path.join(dir, sanitizedName)
     try {
       const stat = fs.statSync(fullPath)
       const relativePath = path.relative(projectDir, fullPath)
       if (stat.isDirectory()) {
         const children = buildTree(fullPath, projectDir, depth + 1)
-        entries.push({ name, path: relativePath, type: 'directory', children })
+        entries.push({ name: sanitizedName, path: relativePath, type: 'directory', children })
       } else {
-        entries.push({ name, path: relativePath, type: 'file' })
+        entries.push({ name: sanitizedName, path: relativePath, type: 'file' })
       }
     } catch {
       continue
@@ -140,7 +143,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const url = new URL(request.url)
+  let url: URL
+  try {
+    url = new URL(request.url)
+  } catch (err) {
+    console.error('[FilesAPI] URL parse error:', err)
+    return Response.json({ error: '请求 URL 解析失败' }, { status: 400 })
+  }
   const subPath = url.searchParams.get('path') || ''
   const action = url.searchParams.get('action')
 

@@ -163,7 +163,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params
   const fileRoot = getFileRoot(id)
-  const url = new URL(request.url)
+  let url: URL
+  try {
+    url = new URL(request.url)
+  } catch (err) {
+    console.error('[GitAPI] URL parse error:', err)
+    return NextResponse.json({ error: '请求 URL 解析失败' }, { status: 400 })
+  }
   const dirParam = url.searchParams.get('dir') // 相对路径，如 'my-project'
 
   // scan 模式：返回所有 git 目录 + 分支
