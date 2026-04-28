@@ -379,15 +379,33 @@ jobs:
             exit 0
           fi
 
-          # 6. 更新 latest.json 注入 serverDeltas
+          # 6. 更新 latest.json 注入 serverDeltas 和 serverFullUrl
           echo "--- Updating latest.json ---"
           gh release download "$TAG" --pattern "latest.json" --repo ggtiger/gclaw --clobber
 
+          # 计算 server 全量包的 hash 和 size，用于 serverFullUrl
+          SERVER_FULL_SIZE=$(stat -c%s "$TMPDIR/${SERVER_TAR_NAME}" 2>/dev/null || stat -f%z "$TMPDIR/${SERVER_TAR_NAME}")
+          SERVER_FULL_HASH=$(sha256sum "$TMPDIR/${SERVER_TAR_NAME}" | cut -d' ' -f1)
+          GH_BASE="https://github.com/ggtiger/gclaw/releases/download/${TAG}"
+          SERVER_FULL_GH_URL="${GH_BASE}/${SERVER_TAR_NAME}"
+          SERVER_FULL_CDN_URL="https://${{ secrets.QINIU_CDN_DOMAIN }}/gclaw/releases/${TAG}/${SERVER_TAR_NAME}"
+          echo "Server full tar: size=${SERVER_FULL_SIZE}, hash=${SERVER_FULL_HASH}"
+
           jq --arg sv "$NEW_VERSION" \
              --argjson deltas "$DELTAS_JSON" \
+             --arg sfu_url "$SERVER_FULL_GH_URL" \
+             --arg sfu_cdn "$SERVER_FULL_CDN_URL" \
+             --argjson sfu_size "$SERVER_FULL_SIZE" \
+             --arg sfu_hash "sha256:${SERVER_FULL_HASH}" \
              '
              .version = $sv |
              .serverVersion = $sv |
+             .serverFullUrl = {
+               url: $sfu_url,
+               cdnUrl: $sfu_cdn,
+               size: $sfu_size,
+               hash: $sfu_hash
+             } |
              .serverDeltas = {
                "darwin-aarch64": $deltas,
                "darwin-x86_64": $deltas,

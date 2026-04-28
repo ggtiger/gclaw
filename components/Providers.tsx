@@ -3,8 +3,7 @@
 import { useEffect } from 'react'
 import { ToastProvider } from '@/components/ui/Toast'
 import { usePreferencesStore } from '@/lib/store/usePreferencesStore'
-import { AutoUpdater } from '@/lib/updater'
-import type { UpdateInfo } from '@/lib/updater'
+// AutoUpdater & startupUpdateCheck 通过动态 import 加载，避免 SSR 问题
 
 /**
  * 全局渠道连接：应用启动时自动连接所有项目的已启用渠道
@@ -69,19 +68,37 @@ function useGlobalChannelConnect() {
  */
 function useAutoUpdater() {
   useEffect(() => {
-    const updater = new AutoUpdater()
-    updater.start({
-      onServerUpdated: (newVersion) => {
-        console.log(`[AutoUpdater] Server 已热更新到 ${newVersion}`)
-      },
-      onTauriUpdate: (info: UpdateInfo) => {
-        console.log(`[AutoUpdater] 发现全量更新: ${info.version}`)
-      },
-      onError: (err) => {
-        console.warn('[AutoUpdater] 更新检查失败:', err)
-      },
-    })
-    return () => updater.stop()
+    // 检查是否在 Tauri 环境
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+
+    const initUpdater = async () => {
+      const { AutoUpdater } = await import('@/lib/updater')
+      const { useUpdateStore } = await import('@/lib/store/update-store')
+
+      const updater = new AutoUpdater()
+      updater.start({
+        onUpdateReady: (version, localPath) => {
+          // 更新下载完成，通知 UI 显示重启按钮
+          useUpdateStore.getState().setReady(version, localPath)
+        },
+        onServerUpdated: (newVersion) => {
+          console.log(`Server 已热更新到 ${newVersion}`)
+        },
+        onTauriUpdate: (info) => {
+          console.log(`发现全量更新: ${info.version}`)
+        },
+        onError: (err) => {
+          console.warn(`更新检查失败: ${err}`)
+        },
+      })
+
+      return () => updater.stop()
+    }
+
+    let cleanup: (() => void) | undefined
+    initUpdater().then(c => { cleanup = c })
+
+    return () => { cleanup?.() }
   }, [])
 }
 
@@ -97,14 +114,44 @@ export function Providers({ children }: { children: React.ReactNode }) {
     usePreferencesStore.getState().init()
   }, [])
 
-  // Tauri 桌面端：标记环境 + 通知 splash 关闭
+  // Tauri 桌面端：标记环境 + 启动更新检查 + 通知 splash 关闭
   useEffect(() => {
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      // 添加 tauri-app 类，用于 CSS 禁用 WebView2 性能杀手（backdrop-filter 等）
-      document.documentElement.classList.add('tauri-app')
-      ;(window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<unknown> } })
-        .__TAURI_INTERNALS__.invoke('app_ready').catch(() => {})
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+
+    document.documentElement.classList.add('tauri-app')
+
+    const doStartup = async () => {
+      try {
+        const { startupUpdateCheck } = await import('@/lib/updater')
+        const { invoke } = await import('@tauri-apps/api/core')
+
+        // 带 15 秒超时的启动更新检查
+        const timeoutPromise = new Promise<boolean>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 15000)
+        )
+
+        await Promise.race([
+          startupUpdateCheck(async (status, progress, detail) => {
+            // 将进度转发到 splash 窗口
+            try {
+              await invoke('update_splash', { status, progress, detail })
+            } catch {}
+          }),
+          timeoutPromise
+        ])
+      } catch (err) {
+        // 超时或失败，不阻塞启动
+        console.warn('Startup update check skipped:', err)
+      }
+
+      // 无论成功失败都调用 app_ready
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('app_ready')
+      } catch {}
     }
+
+    doStartup()
   }, [])
 
   return (

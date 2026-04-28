@@ -7,6 +7,7 @@ import type { ProjectInfo, ProjectMode, ProjectType } from '@/types/skills'
 import { ModeSelector } from './ModeSelector'
 import appIcon from '@/public/icon.png'
 import { version } from '@/package.json'
+import { useUpdateStore } from '@/lib/store/update-store'
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[]
@@ -41,6 +42,10 @@ export function ProjectSidebar({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const updateStatus = useUpdateStore(s => s.status)
+  const updateVersion = useUpdateStore(s => s.updateVersion)
+  const applyAndRelaunch = useUpdateStore(s => s.applyAndRelaunch)
 
   const handleCreate = () => {
     if (newName.trim()) {
@@ -115,6 +120,18 @@ export function ProjectSidebar({
           <Image src={appIcon} alt="GClaw" width={20} height={20} className="w-5 h-5 rounded" />
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">GClaw</span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v{version}</span>
+          {updateStatus === 'ready' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                applyAndRelaunch()
+              }}
+              className="ml-1 px-1.5 py-0.5 text-[10px] bg-blue-500 hover:bg-blue-600 text-white rounded animate-pulse cursor-pointer transition-colors"
+              title={`更新到 v${updateVersion}`}
+            >
+              重启更新
+            </button>
+          )}
           <div className="flex-1" />
           <button
             onClick={onHide}

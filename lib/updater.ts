@@ -41,11 +41,20 @@ export interface ServerDelta {
   hash: string
 }
 
+export interface ServerFullPackage {
+  url: string
+  cdnUrl?: string
+  size: number
+  hash: string
+}
+
 export interface ServerUpdateInfo {
   /** 新 server 版本号 */
   version: string
   /** 匹配的 delta（null 表示无可用 delta，需走全量更新） */
   delta: ServerDelta | null
+  /** 全量 server 包信息（delta 不可用时的 fallback） */
+  serverFull: ServerFullPackage | null
   /** 更新类型标签 */
   label: string
 }
@@ -219,7 +228,7 @@ function delay(ms: number): Promise<void> {
  */
 async function fetchLatestJsonWithRetry(maxRetries = 2): Promise<Record<string, unknown> | null> {
   const endpoints: Array<() => Promise<Record<string, unknown> | null>> = [
-    () => fetchJsonViaRust('https://o09u11p5v.qnssl.com/gclaw/latest.json'),
+    () => fetchJsonViaRust(`https://o09u11p5v.qnssl.com/gclaw/latest.json?t=${Date.now()}`),
     () => fetchLatestJsonFromGitee(),
     () => fetchJsonViaRust('https://github.com/ggtiger/gclaw/releases/latest/download/latest.json'),
   ]
@@ -261,45 +270,46 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     }
 
     const deltas = latestJson.serverDeltas as Record<string, ServerDelta[]> | undefined
-    if (!deltas || typeof deltas !== 'object') {
-      console.log('[Delta] latest.json 缺少 serverDeltas 字段，跳过 delta 检查')
-      return null
+
+    let matchedDelta: ServerDelta | null = null
+    if (deltas && typeof deltas === 'object') {
+      const platformKey = await getPlatformKey()
+      const platformDeltas = deltas[platformKey]
+
+      // 查找可用的 delta（文件级补丁是覆盖式的，from <= 当前版本即可使用，优先选最近的）
+      matchedDelta = platformDeltas
+        ?.filter(d => {
+          const parts = (v: string) => v.split('.').map(Number)
+          const [fa, fb, fc] = parts(d.from)
+          const [ca, cb, cc] = parts(currentVersion)
+          return fa < ca || (fa === ca && fb < cb) || (fa === ca && fb === cb && fc <= cc)
+        })
+        ?.sort((a, b) => {
+          const parts = (v: string) => v.split('.').map(Number)
+          const [aa, ab, ac] = parts(a.from)
+          const [ba, bb, bc] = parts(b.from)
+          return (ba - aa) || (bb - ab) || (bc - ac)  // 降序，优先选 from 最大的
+        })[0] ?? null
     }
 
-    const platformKey = await getPlatformKey()
-    const platformDeltas = deltas?.[platformKey]
-
-    // 查找可用的 delta（文件级补丁是覆盖式的，from <= 当前版本即可使用，优先选最近的）
-    const matchedDelta = platformDeltas
-      ?.filter(d => {
-        const parts = (v: string) => v.split('.').map(Number)
-        const [fa, fb, fc] = parts(d.from)
-        const [ca, cb, cc] = parts(currentVersion)
-        return fa < ca || (fa === ca && fb < cb) || (fa === ca && fb === cb && fc <= cc)
-      })
-      ?.sort((a, b) => {
-        const parts = (v: string) => v.split('.').map(Number)
-        const [aa, ab, ac] = parts(a.from)
-        const [ba, bb, bc] = parts(b.from)
-        return (ba - aa) || (bb - ab) || (bc - ac)  // 降序，优先选 from 最大的
-      })[0] ?? null
-
-    const sizeLabel = matchedDelta
-      ? (matchedDelta.size >= 1024 * 1024
+    if (matchedDelta) {
+      const sizeLabel = matchedDelta.size >= 1024 * 1024
         ? `~${(matchedDelta.size / 1024 / 1024).toFixed(1)} MB`
-        : `~${(matchedDelta.size / 1024).toFixed(0)} KB`)
-      : '~25 MB'
-
-    const label = matchedDelta
-      ? `热更新 ${sizeLabel}`
-      : `全量更新 ~25 MB`
-
-    console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
-
-    return {
-      version: serverVersion,
-      delta: matchedDelta,
-      label,
+        : `~${(matchedDelta.size / 1024).toFixed(0)} KB`
+      const label = `热更新 ${sizeLabel}`
+      console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
+      return { version: serverVersion, delta: matchedDelta, serverFull: null, label }
+    } else {
+      const serverFull = latestJson.serverFullUrl as ServerFullPackage | undefined
+      if (serverFull) {
+        const sizeMB = (serverFull.size / 1024 / 1024).toFixed(1)
+        const label = `全量更新 ~${sizeMB} MB`
+        console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
+        return { version: serverVersion, delta: null, serverFull, label }
+      }
+      const label = '全量更新 ~25 MB'
+      console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
+      return { version: serverVersion, delta: null, serverFull: null, label }
     }
   } catch (err) {
     console.error('[Delta] 检查 server delta 失败:', err)
@@ -308,8 +318,131 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
 }
 
 /**
- * 下载并应用 server delta 更新
- * 通过 Rust 端 curl 下载（绕过 CORS），成功后应用 delta
+ * 下载 server 更新包（delta 或全量），仅下载 + hash 校验，返回本地路径
+ */
+export async function downloadServerUpdate(
+  info: ServerUpdateInfo,
+  onProgress?: (percent: number) => void,
+): Promise<{ localPath: string; version: string }> {
+  if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
+
+  const { invoke } = await import('@tauri-apps/api/core')
+  const { appDataDir, join } = await import('@tauri-apps/api/path')
+  const dataDir = await appDataDir()
+
+  let downloadUrl: string
+  let fallbackUrl: string | undefined
+  let expectedHash: string | undefined
+  let fileName: string
+
+  if (info.delta) {
+    downloadUrl = info.delta.url
+    expectedHash = info.delta.hash
+    fileName = info.delta.url.split('/').pop() ?? 'server.delta'
+  } else if (info.serverFull) {
+    // 全量包：优先 cdnUrl，回退 url
+    downloadUrl = info.serverFull.cdnUrl ?? info.serverFull.url
+    fallbackUrl = info.serverFull.cdnUrl ? info.serverFull.url : undefined
+    expectedHash = info.serverFull.hash
+    fileName = info.serverFull.url.split('/').pop() ?? 'server-full.tar.gz'
+  } else {
+    throw new Error('无可用的更新包（delta 和全量包均不可用）')
+  }
+
+  const localPath = await join(dataDir, fileName)
+  console.log(`[Delta] 开始下载: ${downloadUrl}`)
+  onProgress?.(0)
+
+  // 下载文件（如有 cdnUrl 先尝试，失败回退）
+  let downloaded = false
+  try {
+    await invoke('download_file', { url: downloadUrl, path: localPath })
+    downloaded = true
+  } catch (err) {
+    if (fallbackUrl) {
+      console.warn(`[Delta] CDN 下载失败，回退到源地址: ${fallbackUrl}`)
+      await invoke('download_file', { url: fallbackUrl, path: localPath })
+      downloaded = true
+    } else {
+      const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
+      if (msg.includes('文件过小') || msg.includes('过小')) {
+        throw new Error('下载的更新包无效（可能是网络返回了错误页面），请稍后重试')
+      }
+      throw new Error(`下载更新包失败: ${msg}`)
+    }
+  }
+
+  if (!downloaded) throw new Error('下载更新包失败')
+  onProgress?.(50)
+
+  // hash 校验
+  if (expectedHash) {
+    const hashValid = await invoke<boolean>('verify_file_hash', {
+      path: localPath,
+      expectedHash,
+    })
+    if (!hashValid) {
+      throw new Error('更新包 hash 校验失败，文件可能损坏')
+    }
+  }
+
+  onProgress?.(100)
+  console.log(`[Delta] 下载完成: ${localPath}`)
+  return { localPath, version: info.version }
+}
+
+/**
+ * 应用已下载的 server 更新包
+ */
+export async function applyServerUpdate(
+  localPath: string,
+  version: string,
+  restartServer: boolean = true,
+): Promise<void> {
+  if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
+
+  const { invoke } = await import('@tauri-apps/api/core')
+
+  // 应用补丁
+  try {
+    const newVersion = await invoke<string>('apply_server_patch', {
+      patchPath: localPath,
+      expectedVersion: version,
+    })
+    console.log(`[Delta] 应用成功: server version = ${newVersion}`)
+  } catch (err) {
+    const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
+    if (msg.includes('文件过小') || msg.includes('delta 文件过小')) {
+      throw new Error('更新包无效（可能下载失败），请稍后重试或等待全量更新')
+    }
+    throw new Error(`应用更新失败: ${msg}`)
+  }
+
+  // 重启 server
+  if (restartServer) {
+    console.log(`[Delta] 正在重启 server 进程...`)
+    try {
+      const serverUrl = await invoke<string>('restart_server')
+      console.log(`[Delta] Server 已重启: ${serverUrl}`)
+    } catch (restartErr) {
+      console.error('[Delta] Server 重启失败:', restartErr)
+    }
+  } else {
+    console.log(`[Delta] 应用成功，等待用户手动重启 server`)
+  }
+
+  // 清理下载文件
+  try {
+    const { invoke: inv } = await import('@tauri-apps/api/core')
+    await inv('plugin:fs|remove', { path: localPath })
+  } catch {
+    // 清理失败不阻塞
+  }
+}
+
+/**
+ * 兼容旧接口：下载并应用 server delta 更新
+ * @deprecated 请使用 downloadServerUpdate + applyServerUpdate
  */
 export async function downloadAndApplyDelta(
   delta: ServerDelta,
@@ -317,84 +450,71 @@ export async function downloadAndApplyDelta(
   onProgress?: (progress: UpdateProgress) => void,
   autoRestart: boolean = true,
 ): Promise<string> {
-  if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
-
-  const { invoke } = await import('@tauri-apps/api/core')
-  const { appDataDir, join } = await import('@tauri-apps/api/path')
-
-  console.log(`[Delta] 开始下载 delta: ${delta.url}`)
-
-  const dataDir = await appDataDir()
-  const deltaFileName = delta.url.split('/').pop() ?? 'server.delta'
-  const deltaPath = await join(dataDir, deltaFileName)
+  const info: ServerUpdateInfo = {
+    version: serverVersion,
+    delta,
+    serverFull: null,
+    label: '热更新',
+  }
 
   onProgress?.({ downloaded: 0, total: delta.size || 0, percent: 0 })
 
-  // 通过 Rust 端 curl 下载（绕过 CORS）
-  try {
-    await invoke('download_file', { url: delta.url, path: deltaPath })
-  } catch (err) {
-    const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
-    // 检查是否是文件过小的错误（来自 Rust 端新增的检查）
-    if (msg.includes('文件过小') || msg.includes('过小')) {
-      throw new Error('下载的更新包无效（可能是网络返回了错误页面），请稍后重试')
-    }
-    throw new Error(`下载更新包失败: ${msg}`)
-  }
-
-  onProgress?.({ downloaded: delta.size || 0, total: delta.size || 0, percent: 50 })
-
-  // 下载完成后，校验 delta 文件 hash
-  if (delta.hash) {
-    const hashValid = await invoke<boolean>('verify_file_hash', {
-      path: deltaPath,
-      expectedHash: delta.hash,
+  const result = await downloadServerUpdate(info, (percent) => {
+    onProgress?.({
+      downloaded: Math.floor((delta.size || 0) * percent / 100),
+      total: delta.size || 0,
+      percent: Math.floor(percent * 0.7),
     })
-    if (!hashValid) {
-      throw new Error('delta 文件 hash 校验失败，文件可能损坏')
-    }
-  }
+  })
 
-  // 调用 Rust 端应用文件级补丁
   onProgress?.({ downloaded: delta.size || 0, total: delta.size || 0, percent: 70 })
-  let newVersion: string
+  await applyServerUpdate(result.localPath, result.version, autoRestart)
+  onProgress?.({ downloaded: delta.size || 0, total: delta.size || 0, percent: 100 })
+
+  return result.version
+}
+
+/**
+ * 启动时更新检查：检查 → 下载 → 应用，一站式完成
+ * 超时由调用方控制，此函数不设超时
+ */
+export async function startupUpdateCheck(
+  onProgress?: (status: string, progress: number, detail: string) => void,
+): Promise<boolean> {
   try {
-    newVersion = await invoke<string>('apply_server_patch', {
-      patchPath: deltaPath,
-      expectedVersion: serverVersion,
+    onProgress?.('loading', 82, '检查更新...')
+    const info = await checkServerDelta()
+    if (!info) {
+      onProgress?.('loading', 100, '已是最新版本')
+      return false
+    }
+
+    onProgress?.('loading', 85, `发现新版本 v${info.version}`)
+
+    // 下载
+    const result = await downloadServerUpdate(info, (percent) => {
+      const progress = 85 + Math.floor(percent * 0.1) // 85-95%
+      onProgress?.('loading', progress, `下载更新 ${percent}%`)
     })
+
+    // 应用
+    onProgress?.('loading', 96, '正在应用更新...')
+    await applyServerUpdate(result.localPath, result.version, true)
+
+    onProgress?.('loading', 100, '更新完成')
+    return true
   } catch (err) {
-    const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
-    if (msg.includes('文件过小') || msg.includes('delta 文件过小')) {
-      throw new Error('增量更新包无效（可能下载失败），请稍后重试或等待全量更新')
-    }
-    throw new Error(`应用更新失败: ${msg}`)
+    console.warn('Startup update check failed:', err)
+    onProgress?.('loading', 100, '启动中...')
+    return false
   }
-
-  // 补丁文件留在 appDataDir，下次更新会覆盖同名文件
-
-  console.log(`[Delta] 应用成功: server version = ${newVersion}`)
-
-  // 应用 delta 成功后，根据 autoRestart 决定是否自动重启 server 进程
-  if (autoRestart) {
-    console.log(`[Delta] 应用成功，正在重启 server 进程...`)
-    try {
-      const serverUrl = await invoke<string>('restart_server')
-      console.log(`[Delta] Server 已重启: ${serverUrl}`)
-    } catch (restartErr) {
-      console.error('[Delta] Server 重启失败:', restartErr)
-      // 重启失败不影响更新结果，下次启动会使用新代码
-    }
-  } else {
-    console.log(`[Delta] 应用成功，等待用户手动重启 server`)
-  }
-
-  return newVersion
 }
 
 // ============ 自动更新调度 ============
 
 export interface AutoUpdateCallbacks {
+  /** 下载完成，等待用户操作（新增） */
+  onUpdateReady?: (version: string, localPath: string) => void
   /** server 热更新成功后的回调（通知 UI 刷新版本号） */
   onServerUpdated?: (newVersion: string) => void
   /** 发现 Tauri 全量更新时的回调（需要用户确认重启） */
@@ -434,17 +554,18 @@ export class AutoUpdater {
     if (this.checking) return
     this.checking = true
     try {
-      // 1. 优先检查 server delta（可静默热更新，无需用户交互）
+      // 1. 检查 server 更新（delta 或全量），下载后等待用户操作
       try {
         const serverUpdate = await checkServerDelta()
-        if (serverUpdate?.delta) {
-          console.log('[AutoUpdater] 发现 server 增量更新，静默应用...')
-          const newVersion = await downloadAndApplyDelta(serverUpdate.delta, serverUpdate.version)
-          callbacks.onServerUpdated?.(newVersion)
+        if (serverUpdate) {
+          console.log(`[AutoUpdater] 发现 server 更新: ${serverUpdate.label}`)
+          const result = await downloadServerUpdate(serverUpdate)
+          console.log(`[AutoUpdater] 更新下载完成: ${result.localPath}`)
+          callbacks.onUpdateReady?.(result.version, result.localPath)
           return
         }
       } catch (deltaErr) {
-        console.warn('[AutoUpdater] server delta 检查/应用失败，降级到全量更新:', deltaErr)
+        console.warn('[AutoUpdater] server 更新检查/下载失败，降级到全量更新:', deltaErr)
       }
 
       // 2. 检查 Tauri 全量更新（需用户确认重启）

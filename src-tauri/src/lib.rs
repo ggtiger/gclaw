@@ -1105,6 +1105,12 @@ fn save_file_content(path: String, content: Vec<u8>) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+/// 前端调用：更新 splash 进度（用于前端接管 80-100% 进度段）
+#[tauri::command]
+async fn update_splash(app: tauri::AppHandle, status: String, progress: i32, detail: String) {
+    splash_update(&app, &status, progress, &detail);
+}
+
 /// splash 重试按钮调用：重新执行启动流程
 #[tauri::command]
 fn retry_startup(app: tauri::AppHandle) {
@@ -1225,7 +1231,7 @@ fn run_production_startup(handle: &tauri::AppHandle) {
 
     startup_log("All runtimes ready");
     splash_update(handle, "环境就绪", 70, "");
-    splash_update(handle, "正在启动服务...", 85, "");
+    splash_update(handle, "正在启动服务...", 75, "");
 
     let (child, port) = start_server(handle);
 
@@ -1248,7 +1254,7 @@ fn run_production_startup(handle: &tauri::AppHandle) {
 
     wait_for_server(port);
 
-    splash_update(handle, "即将就绪...", 100, "");
+    splash_update(handle, "即将就绪...", 80, "");
     if let Some(main) = handle.get_webview_window("main") {
         let url = format!("http://127.0.0.1:{}", port);
         let _ = main.navigate(url.parse().unwrap());
@@ -1415,7 +1421,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .invoke_handler(tauri::generate_handler![
             get_server_url, navigate_to, app_ready, save_file_content,
-            retry_startup, flash_tray_icon,
+            retry_startup, update_splash, flash_tray_icon,
             delta::apply_server_patch, delta::get_current_server_version, delta::fetch_url, delta::download_file,
             delta::restart_server, delta::verify_file_hash,
         ])

@@ -1546,4 +1546,7 @@
 ---[2026-04-21T09:05:10.635Z] PostToolUse
   tool: Bash
   response(500): {"stdout":"","stderr":"","interrupted":false,"isImage":false}
+---[2026-04-28T01:00:29.472Z] PostToolUse
+  tool: Bash
+  response(500): {"stdout":"{\"success\":true,\"result\":{\"episodic\":[{\"projectId\":\"3f33ebee\",\"type\":\"decision\",\"summary\":\"决定将前四章的自测改为一个综合项目实战，新项目需间接涵盖四章全部内容。\",\"detail\":\"用户决定调整课程结构：增加一个项目实战来替代原有章节自测，该项目需要包含前四章的所有内容（可以间接性包含），将原自测部分替换为此项目实战。\",\"tags\":[\"课程设计\",\"项目实战\",\"教学调整\",\"自测\"],\"source\":\"hook\",\"title\":\"项目实战替代自测\",\"id\":\"EP-20260427-001\",\"timestamp\":\"2026-04-27T10:39:35.822Z\",\"promotedTo\":\"SEM-20260427-001\"},{\"projectId\":\"98959cf2\",\"type\":\"decision\",\"summary\":\
 ---
