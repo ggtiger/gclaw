@@ -53,6 +53,8 @@ export interface ServerUpdateInfo {
   version: string
   /** 匹配的 delta（null 表示无可用 delta，需走全量更新） */
   delta: ServerDelta | null
+  /** 所有匹配的 delta 候选（用于 hash 校验失败时依次重试） */
+  allDeltas?: ServerDelta[]
   /** 全量 server 包信息（delta 不可用时的 fallback） */
   serverFull: ServerFullPackage | null
   /** 更新类型标签 */
@@ -272,12 +274,13 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     const deltas = latestJson.serverDeltas as Record<string, ServerDelta[]> | undefined
 
     let matchedDelta: ServerDelta | null = null
+    let allMatchedDeltas: ServerDelta[] = []
     if (deltas && typeof deltas === 'object') {
       const platformKey = await getPlatformKey()
       const platformDeltas = deltas[platformKey]
 
       // 查找可用的 delta（文件级补丁是覆盖式的，from <= 当前版本即可使用，优先选最近的）
-      matchedDelta = platformDeltas
+      allMatchedDeltas = (platformDeltas
         ?.filter(d => {
           const parts = (v: string) => v.split('.').map(Number)
           const [fa, fb, fc] = parts(d.from)
@@ -289,7 +292,8 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
           const [aa, ab, ac] = parts(a.from)
           const [ba, bb, bc] = parts(b.from)
           return (ba - aa) || (bb - ab) || (bc - ac)  // 降序，优先选 from 最大的
-        })[0] ?? null
+        })) ?? []
+      matchedDelta = allMatchedDeltas[0] ?? null
     }
 
     if (matchedDelta) {
@@ -298,7 +302,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
         : `~${(matchedDelta.size / 1024).toFixed(0)} KB`
       const label = `热更新 ${sizeLabel}`
       console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
-      return { version: serverVersion, delta: matchedDelta, serverFull: null, label }
+      return { version: serverVersion, delta: matchedDelta, allDeltas: allMatchedDeltas, serverFull: null, label }
     } else {
       const serverFull = latestJson.serverFullUrl as ServerFullPackage | undefined
       if (serverFull) {
@@ -330,65 +334,94 @@ export async function downloadServerUpdate(
   const { appDataDir, join } = await import('@tauri-apps/api/path')
   const dataDir = await appDataDir()
 
-  let downloadUrl: string
-  let fallbackUrl: string | undefined
-  let expectedHash: string | undefined
-  let fileName: string
+  // 收集所有候选 delta（allDeltas 优先，回退到单个 delta）
+  const deltaCandidates = info.allDeltas?.length
+    ? info.allDeltas
+    : (info.delta ? [info.delta] : [])
 
-  if (info.delta) {
-    downloadUrl = info.delta.url
-    expectedHash = info.delta.hash
-    fileName = info.delta.url.split('/').pop() ?? 'server.delta'
-  } else if (info.serverFull) {
-    // 全量包：优先 cdnUrl，回退 url
-    downloadUrl = info.serverFull.cdnUrl ?? info.serverFull.url
-    fallbackUrl = info.serverFull.cdnUrl ? info.serverFull.url : undefined
-    expectedHash = info.serverFull.hash
-    fileName = info.serverFull.url.split('/').pop() ?? 'server-full.tar.gz'
-  } else {
-    throw new Error('无可用的更新包（delta 和全量包均不可用）')
-  }
-
-  const localPath = await join(dataDir, fileName)
-  console.log(`[Delta] 开始下载: ${downloadUrl}`)
   onProgress?.(0)
 
-  // 下载文件（如有 cdnUrl 先尝试，失败回退）
-  let downloaded = false
-  try {
-    await invoke('download_file', { url: downloadUrl, path: localPath })
-    downloaded = true
-  } catch (err) {
-    if (fallbackUrl) {
-      console.warn(`[Delta] CDN 下载失败，回退到源地址: ${fallbackUrl}`)
-      await invoke('download_file', { url: fallbackUrl, path: localPath })
-      downloaded = true
-    } else {
-      const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
-      if (msg.includes('文件过小') || msg.includes('过小')) {
-        throw new Error('下载的更新包无效（可能是网络返回了错误页面），请稍后重试')
+  // 依次尝试每个 delta 候选
+  for (let i = 0; i < deltaCandidates.length; i++) {
+    const candidate = deltaCandidates[i]
+    const fileName = candidate.url.split('/').pop() ?? 'server.delta'
+    const localPath = await join(dataDir, fileName)
+
+    try {
+      console.log(`[Delta] 尝试候选 ${i + 1}/${deltaCandidates.length}: from=${candidate.from}, url=${candidate.url}`)
+      await invoke('download_file', { url: candidate.url, path: localPath })
+
+      // hash 校验
+      if (candidate.hash) {
+        const hashValid = await invoke<boolean>('verify_file_hash', {
+          path: localPath,
+          expectedHash: candidate.hash,
+        })
+        if (!hashValid) {
+          console.warn(`[Delta] hash 校验失败 (from=${candidate.from})，尝试下一个候选...`)
+          // 清理失败文件
+          try { await invoke('plugin:fs|remove', { path: localPath }) } catch { /* ignore */ }
+          continue
+        }
       }
-      throw new Error(`下载更新包失败: ${msg}`)
+
+      onProgress?.(100)
+      console.log(`[Delta] 下载完成: ${localPath}`)
+      return { localPath, version: info.version }
+    } catch (err) {
+      console.warn(`[Delta] 候选 ${i + 1} 下载失败 (from=${candidate.from}):`, err)
+      // 清理失败文件
+      try { await invoke('plugin:fs|remove', { path: localPath }) } catch { /* ignore */ }
     }
   }
 
-  if (!downloaded) throw new Error('下载更新包失败')
-  onProgress?.(50)
+  // 所有 delta 失败，尝试全量包
+  if (info.serverFull) {
+    console.log('[Delta] 所有 delta 候选失败，回退到全量包')
+    const downloadUrl = info.serverFull.cdnUrl ?? info.serverFull.url
+    const fallbackUrl = info.serverFull.cdnUrl ? info.serverFull.url : undefined
+    const expectedHash = info.serverFull.hash
+    const fileName = info.serverFull.url.split('/').pop() ?? 'server-full.tar.gz'
+    const localPath = await join(dataDir, fileName)
 
-  // hash 校验
-  if (expectedHash) {
-    const hashValid = await invoke<boolean>('verify_file_hash', {
-      path: localPath,
-      expectedHash,
-    })
-    if (!hashValid) {
-      throw new Error('更新包 hash 校验失败，文件可能损坏')
+    onProgress?.(0)
+    let downloaded = false
+    try {
+      await invoke('download_file', { url: downloadUrl, path: localPath })
+      downloaded = true
+    } catch (err) {
+      if (fallbackUrl) {
+        console.warn(`[Delta] CDN 下载失败，回退到源地址: ${fallbackUrl}`)
+        await invoke('download_file', { url: fallbackUrl, path: localPath })
+        downloaded = true
+      } else {
+        const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
+        if (msg.includes('文件过小') || msg.includes('过小')) {
+          throw new Error('下载的更新包无效（可能是网络返回了错误页面），请稍后重试')
+        }
+        throw new Error(`下载更新包失败: ${msg}`)
+      }
     }
+
+    if (!downloaded) throw new Error('下载更新包失败')
+    onProgress?.(50)
+
+    if (expectedHash) {
+      const hashValid = await invoke<boolean>('verify_file_hash', {
+        path: localPath,
+        expectedHash,
+      })
+      if (!hashValid) {
+        throw new Error('全量更新包 hash 校验失败，文件可能损坏')
+      }
+    }
+
+    onProgress?.(100)
+    console.log(`[Delta] 全量包下载完成: ${localPath}`)
+    return { localPath, version: info.version }
   }
 
-  onProgress?.(100)
-  console.log(`[Delta] 下载完成: ${localPath}`)
-  return { localPath, version: info.version }
+  throw new Error('所有下载源均校验失败')
 }
 
 /**

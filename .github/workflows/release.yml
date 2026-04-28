@@ -361,7 +361,7 @@ jobs:
                 --arg url "${GH_BASE}/${PATCH_NAME}" \
                 --argjson size "$PATCH_SIZE" \
                 --arg hash "sha256:${PATCH_HASH}" \
-                '. + [{ from: $from, url: $url, size: $size, hash: $hash }]')
+                '[.[] | select(.from != $from)] + [{ from: $from, url: $url, size: $size, hash: $hash }]')
             else
               echo "No changes detected between ${OLD_VERSION} and ${NEW_VERSION}, skipping"
             fi

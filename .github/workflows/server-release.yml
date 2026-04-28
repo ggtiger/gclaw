@@ -307,7 +307,7 @@ jobs:
                 --arg patchName "${PATCH_NAME}" \
                 --argjson size "$PATCH_SIZE" \
                 --arg hash "sha256:${PATCH_HASH}" \
-                '. + [{ from: $from, patchName: $patchName, size: $size, hash: $hash }]')
+                '[.[] | select(.from != $from)] + [{ from: $from, patchName: $patchName, size: $size, hash: $hash }]')
 
               PATCH_COUNT=$((PATCH_COUNT + 1))
             else
