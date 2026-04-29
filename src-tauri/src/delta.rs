@@ -253,6 +253,15 @@ fn apply_server_patch_unix(
         return Err(format!("版本验证失败: 期望 {} 实际 {}", expected_version, new_version));
     }
 
+    // 6.5 验证 build-manifest 引用的 static 资源都存在
+    if let Err(e) = verify_build_manifest_assets(server_dir) {
+        println!("[Delta] 静态资源验证失败，回滚...");
+        let _ = fs::remove_dir_all(server_dir);
+        let _ = rename_or_copy_dir(backup_dir, server_dir);
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(e);
+    }
+
     // 7. 清理
     let _ = fs::remove_dir_all(&tmp_dir);
     let _ = fs::remove_dir_all(backup_dir);
@@ -431,6 +440,9 @@ fn do_windows_patch(
     }
     println!("[Delta] 补丁后文件完整性验证通过");
 
+    // 6.6 验证 build-manifest 引用的 static 资源都存在
+    verify_build_manifest_assets(server_dir)?;
+
     // 7. 清理临时目录（备份留给外层健康检查后删除）
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(new_version)
@@ -493,6 +505,65 @@ fn clean_next_cache(server_dir: &Path) {
     if cache_dir.exists() {
         let _ = fs::remove_dir_all(&cache_dir);
         println!("[Delta] Cleaned .next/cache directory");
+    }
+}
+
+/// 验证 build-manifest.json 引用的所有 static 资源在 server 目录中存在
+fn verify_build_manifest_assets(server_dir: &Path) -> Result<(), String> {
+    let mut missing_assets = Vec::new();
+
+    // 检查 build-manifest.json（pages router）
+    let build_manifest = server_dir.join(".next").join("build-manifest.json");
+    if build_manifest.exists() {
+        if let Ok(content) = fs::read_to_string(&build_manifest) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                collect_manifest_assets(&json, server_dir, ".next/", &mut missing_assets);
+            }
+        }
+    }
+
+    // 检查 app-build-manifest.json（app router）
+    let app_manifest = server_dir.join(".next").join("app-build-manifest.json");
+    if app_manifest.exists() {
+        if let Ok(content) = fs::read_to_string(&app_manifest) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                collect_manifest_assets(&json, server_dir, ".next/", &mut missing_assets);
+            }
+        }
+    }
+
+    if missing_assets.is_empty() {
+        println!("[Delta] ✓ build-manifest 资源完整性验证通过");
+        Ok(())
+    } else {
+        println!("[Delta] ✗ build-manifest 引用的 {} 个 static 资源缺失: {:?}", missing_assets.len(), missing_assets);
+        Err(format!("build-manifest 引用的 {} 个 static 资源缺失（页面将无法加载）: {:?}", missing_assets.len(), missing_assets))
+    }
+}
+
+/// 递归收集 manifest JSON 中所有 static/ 开头的资源路径，检查是否存在
+fn collect_manifest_assets(value: &serde_json::Value, server_dir: &Path, prefix: &str, missing: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(s) => {
+            // manifest 中的路径形如 "static/chunks/webpack-xxx.js"
+            if s.starts_with("static/") {
+                let full_path = server_dir.join(".next").join(s);
+                if !full_path.exists() {
+                    missing.push(format!("{}{}", prefix, s));
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                collect_manifest_assets(item, server_dir, prefix, missing);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_key, val) in map {
+                collect_manifest_assets(val, server_dir, prefix, missing);
+            }
+        }
+        _ => {}
     }
 }
 
