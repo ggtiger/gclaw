@@ -19,9 +19,11 @@ export function AboutPanel() {
   const [progress, setProgress] = useState<UpdateProgress>({ downloaded: 0, total: 0, percent: 0 })
   const [errorMsg, setErrorMsg] = useState('')
   const [serverNeedsRestart, setServerNeedsRestart] = useState(false)
+  const [isTauriEnv, setIsTauriEnv] = useState(false)
 
   // 获取版本号
   useEffect(() => {
+    setIsTauriEnv(isTauri())
     if (!isTauri()) return
     import('@tauri-apps/api/app').then(({ getVersion }) => {
       getVersion().then(setVersion)
@@ -127,17 +129,6 @@ export function AboutPanel() {
     }
   }, [])
 
-  const [isTauriEnv, setIsTauriEnv] = useState(false)
-  useEffect(() => {
-    setIsTauriEnv(isTauri())
-  }, [])
-
-  if (!isTauriEnv) return null
-
-  const hasServerDelta = serverUpdate?.delta != null
-  const hasTauriUpdate = updateInfo != null
-  const canAutoInstall = updateInfo?.canAutoInstall !== false
-
   const handleManualDownload = useCallback(async () => {
     if (!updateInfo?.downloadUrl) return
     try {
@@ -147,6 +138,12 @@ export function AboutPanel() {
       window.open(updateInfo.downloadUrl, '_blank')
     }
   }, [updateInfo])
+
+  if (!isTauriEnv) return null
+
+  const hasServerDelta = serverUpdate?.delta != null
+  const hasTauriUpdate = updateInfo != null
+  const canAutoInstall = updateInfo?.canAutoInstall !== false
 
   return (
     <div className="p-4 space-y-4">

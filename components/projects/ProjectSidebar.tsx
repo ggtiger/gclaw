@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings, Settings2 } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, Loader2, Bot, Monitor, FileText, Settings, Settings2, Download, ExternalLink } from 'lucide-react'
 import type { ProjectInfo, ProjectMode, ProjectType } from '@/types/skills'
 import { ModeSelector } from './ModeSelector'
 import appIcon from '@/public/icon.png'
@@ -45,7 +45,29 @@ export function ProjectSidebar({
 
   const updateStatus = useUpdateStore(s => s.status)
   const updateVersion = useUpdateStore(s => s.updateVersion)
+  const updateError = useUpdateStore(s => s.errorMsg)
   const applyAndRelaunch = useUpdateStore(s => s.applyAndRelaunch)
+  const tauriUpdateAvailable = useUpdateStore(s => s.tauriUpdateAvailable)
+  const tauriUpdateVersion = useUpdateStore(s => s.tauriUpdateVersion)
+  const tauriCanAutoInstall = useUpdateStore(s => s.tauriCanAutoInstall)
+  const tauriDownloadUrl = useUpdateStore(s => s.tauriDownloadUrl)
+
+  const handleTauriUpdate = async () => {
+    if (tauriCanAutoInstall) {
+      // 跳转到设置页安装
+      onOpenSettings?.()
+    } else if (tauriDownloadUrl) {
+      // 打开浏览器下载
+      try {
+        const { openUrl } = await import('@tauri-apps/plugin-opener')
+        await openUrl(tauriDownloadUrl)
+      } catch {
+        window.open(tauriDownloadUrl, '_blank')
+      }
+    } else {
+      onOpenSettings?.()
+    }
+  }
 
   const handleCreate = () => {
     if (newName.trim()) {
@@ -122,14 +144,36 @@ export function ProjectSidebar({
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">v{version}</span>
           {updateStatus === 'ready' && (
             <button
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation()
                 applyAndRelaunch()
               }}
-              className="ml-1 px-1.5 py-0.5 text-[10px] bg-blue-500 hover:bg-blue-600 text-white rounded animate-pulse cursor-pointer transition-colors"
+              className="ml-1 px-1.5 py-0.5 text-[10px] bg-blue-500 hover:bg-blue-600 text-white rounded animate-pulse cursor-pointer transition-colors whitespace-nowrap shrink-0"
               title={`更新到 v${updateVersion}`}
             >
               重启更新
+            </button>
+          )}
+          {updateStatus === 'applying' && (
+            <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-500 text-white rounded whitespace-nowrap shrink-0 animate-pulse">
+              更新中...
+            </span>
+          )}
+          {updateStatus === 'error' && (
+            <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded whitespace-nowrap shrink-0 cursor-help" title={updateError || '更新失败'}>
+              更新失败
+            </span>
+          )}
+          {tauriUpdateAvailable && updateStatus !== 'ready' && updateStatus !== 'applying' && (
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); handleTauriUpdate() }}
+              className="ml-1 px-1.5 py-0.5 text-[10px] bg-purple-600 hover:bg-purple-700 text-white rounded animate-pulse cursor-pointer transition-colors whitespace-nowrap shrink-0 flex items-center gap-0.5"
+              title={`新版本 v${tauriUpdateVersion} 可用`}
+            >
+              {tauriCanAutoInstall ? <Download size={10} /> : <ExternalLink size={10} />}
+              v{tauriUpdateVersion}
             </button>
           )}
           <div className="flex-1" />
