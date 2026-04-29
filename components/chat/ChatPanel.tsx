@@ -137,6 +137,12 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
 
   // ─── 助理身份设置（从 store 响应式读取）───
   const projectSettings = useSettingsStore(state => state.projectSettings)
+  const fetchSettings = useSettingsStore(state => state.fetchSettings)
+
+  // 切换项目时加载设置（含模型配置）
+  useEffect(() => {
+    if (projectId) fetchSettings(projectId)
+  }, [projectId, fetchSettings])
   const assistantIdentity = useMemo(() => ({
     assistantName: projectSettings?.assistantName,
     assistantIcon: projectSettings?.assistantIcon,
