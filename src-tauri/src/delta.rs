@@ -231,12 +231,45 @@ pub async fn apply_server_patch(
     // 3. 备份 server/ → server.bak/
     println!("[Delta] 备份 server/ → server.bak/...");
     if backup_dir.exists() {
-        fs::remove_dir_all(&backup_dir)
-            .map_err(|e| format!("删除旧备份失败: {}", e))?;
+        if let Err(e) = fs::remove_dir_all(&backup_dir) {
+            println!("[Delta] 警告: 删除旧备份失败: {}, 尝试继续...", e);
+        }
     }
-    rename_or_copy_dir(&server_dir, &backup_dir)?;
+    if let Err(e) = rename_or_copy_dir(&server_dir, &backup_dir) {
+        println!("[Delta] 备份 server 目录失败: {}", e);
+        let _ = fs::remove_dir_all(&tmp_dir);
+        // Windows: 备份失败，需要恢复 server 进程
+        #[cfg(target_os = "windows")]
+        {
+            println!("[Delta] [Windows] 备份失败，恢复 server 进程...");
+            let (child, port) = crate::start_server_process(&app);
+            let state = app.state::<crate::ServerState>();
+            if let Ok(mut guard) = state.child.lock() {
+                *guard = Some(child);
+            }
+            crate::wait_for_server(port);
+            println!("[Delta] [Windows] Server 恢复完成: port {}", port);
+        }
+        return Err(format!("备份 server 目录失败: {}", e));
+    }
     // 复制备份回 server/（在备份基础上做增量修改）
-    copy_dir_recursive(&backup_dir, &server_dir)?;
+    if let Err(e) = copy_dir_recursive(&backup_dir, &server_dir) {
+        println!("[Delta] 复制备份回 server 失败: {}", e);
+        // 尝试回滚
+        let _ = rename_or_copy_dir(&backup_dir, &server_dir);
+        let _ = fs::remove_dir_all(&tmp_dir);
+        #[cfg(target_os = "windows")]
+        {
+            println!("[Delta] [Windows] 应用失败，恢复 server 进程...");
+            let (child, port) = crate::start_server_process(&app);
+            let state = app.state::<crate::ServerState>();
+            if let Ok(mut guard) = state.child.lock() {
+                *guard = Some(child);
+            }
+            crate::wait_for_server(port);
+        }
+        return Err(format!("复制备份回 server 失败: {}", e));
+    }
 
     // 4. 遍历 modified + added：从临时目录复制到 server/
     let files_to_copy: Vec<&String> = manifest.modified.iter().chain(manifest.added.iter()).collect();
@@ -269,8 +302,19 @@ pub async fn apply_server_patch(
     if new_version != expected_version {
         println!("[Delta] 版本验证失败: 期望 {} 实际 {}, 回滚...", expected_version, new_version);
         let _ = fs::remove_dir_all(&server_dir);
-        rename_or_copy_dir(&backup_dir, &server_dir)?;
+        let _ = rename_or_copy_dir(&backup_dir, &server_dir);
         let _ = fs::remove_dir_all(&tmp_dir);
+        // Windows: 回滚后恢复 server 进程
+        #[cfg(target_os = "windows")]
+        {
+            println!("[Delta] [Windows] 版本验证失败，恢复 server 进程...");
+            let (child, port) = crate::start_server_process(&app);
+            let state = app.state::<crate::ServerState>();
+            if let Ok(mut guard) = state.child.lock() {
+                *guard = Some(child);
+            }
+            crate::wait_for_server(port);
+        }
         return Err(format!(
             "版本验证失败: 期望 {} 实际 {}",
             expected_version, new_version

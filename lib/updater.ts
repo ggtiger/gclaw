@@ -569,13 +569,17 @@ export async function startupUpdateCheck(
     try {
       const tauriUpdate = await checkForUpdate()
       if (tauriUpdate) {
-        // 发现全量更新，提示用户但不阻塞启动
-        onProgress?.('loading', 85, `发现新版本 v${tauriUpdate.version}，请前往设置重新安装`)
-        console.log(`[Startup] 发现 Tauri 全量更新 v${tauriUpdate.version}，跳过 server 热更新`)
-        // 给用户一点时间看到提示
-        await delay(2000)
-        onProgress?.('loading', 100, '启动中...')
-        return false
+        if (tauriUpdate.canAutoInstall) {
+          // Tauri updater 可自动安装 → 提示用户，跳过 server 热更新
+          onProgress?.('loading', 85, `发现新版本 v${tauriUpdate.version}，请前往设置重新安装`)
+          console.log(`[Startup] 发现 Tauri 全量更新 v${tauriUpdate.version}（可自动安装），跳过 server 热更新`)
+          await delay(2000)
+          onProgress?.('loading', 100, '启动中...')
+          return false
+        } else {
+          // canAutoInstall=false → 仅手动下载，不跳过 server 热更新
+          console.log(`[Startup] 发现 Tauri 全量更新 v${tauriUpdate.version}（仅手动下载），继续检查 server 热更新`)
+        }
       }
     } catch (tauriErr) {
       console.warn('[Startup] Tauri 全量更新检查失败，继续检查 server 热更新:', tauriErr)
@@ -658,9 +662,14 @@ export class AutoUpdater {
       try {
         const tauriUpdate = await checkForUpdate()
         if (tauriUpdate) {
-          console.log(`[AutoUpdater] 发现全量更新: ${tauriUpdate.version}，跳过 server 热更新`)
           callbacks.onTauriUpdate?.(tauriUpdate)
-          return // 需要全量更新，不再检查 server 热更新
+          if (tauriUpdate.canAutoInstall) {
+            // Tauri updater 可自动安装 → 跳过 server 热更新
+            console.log(`[AutoUpdater] 发现全量更新: ${tauriUpdate.version}（可自动安装），跳过 server 热更新`)
+            return
+          }
+          // canAutoInstall=false → 仅通知 UI，继续检查 server 热更新
+          console.log(`[AutoUpdater] 发现全量更新: ${tauriUpdate.version}（仅手动下载），继续检查 server 热更新`)
         }
       } catch (tauriErr) {
         console.warn('[AutoUpdater] Tauri 全量更新检查失败，继续检查 server 热更新:', tauriErr)

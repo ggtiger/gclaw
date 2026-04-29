@@ -126,9 +126,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         const { startupUpdateCheck } = await import('@/lib/updater')
         const { invoke } = await import('@tauri-apps/api/core')
 
-        // 带 15 秒超时的启动更新检查
+        // Windows 上 apply 需要停 server + 等待句柄释放 + 重启，时间更长
+        const isWindows = navigator.userAgent.includes('Windows')
+        const timeoutMs = isWindows ? 45000 : 20000
         const timeoutPromise = new Promise<boolean>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 15000)
+          setTimeout(() => reject(new Error('timeout')), timeoutMs)
         )
 
         await Promise.race([
