@@ -479,16 +479,14 @@ export async function applyServerUpdate(
     throw new Error(`应用更新失败: ${msg}`)
   }
 
-  // 重启 server（Windows 上 apply_server_patch 已自动重启，跳过）
+  // 重启 server（Windows 上 apply_server_patch 已自动重启 + 导航 webview，跳过）
   if (restartServer && !alreadyRestarted) {
     console.log(`[Delta] 正在重启 server 进程...`)
     try {
       const serverUrl = await invoke<string>('restart_server')
       console.log(`[Delta] Server 已重启: ${serverUrl}`)
 
-      // 刷新 webview 以加载新代码（解决旧 JS 与新 server 不匹配的问题）
-      // Rust 端 restart_server 已处理端口变化时的 webview 导航
-      // 这里用 location.href 确保页面刷新，加载新的 JavaScript 资源
+      // 刷新 webview 以加载新代码
       try {
         await new Promise(resolve => setTimeout(resolve, 500))
         console.log('[Delta] 刷新 webview 以加载新代码...')
@@ -500,14 +498,8 @@ export async function applyServerUpdate(
       console.error('[Delta] Server 重启失败:', restartErr)
     }
   } else if (alreadyRestarted) {
-    // Windows: server 已在 Rust 端重启，只需刷新 webview
-    console.log(`[Delta] Windows 已自动重启，刷新页面: ${restartedUrl}`)
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      window.location.href = restartedUrl
-    } catch {
-      // location.href 赋值会触发页面跳转
-    }
+    // Windows: Rust 端已自动重启 server 并导航 webview，无需 JS 操作
+    console.log(`[Delta] Windows 已自动重启并导航 webview: ${restartedUrl}`)
   } else {
     console.log(`[Delta] 应用成功，等待用户手动重启 server`)
   }

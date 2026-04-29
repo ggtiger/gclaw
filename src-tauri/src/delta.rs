@@ -297,6 +297,14 @@ async fn apply_server_patch_windows(
             }
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server restarted at port {}", port);
+
+            // 从 Rust 端直接导航 webview 到新 server（不依赖 JS 的 window.location.href）
+            let new_url = format!("http://127.0.0.1:{}", port);
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.navigate(new_url.parse().unwrap());
+                println!("[Delta] [Windows] Webview navigated to {}", new_url);
+            }
+
             println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
             Ok(format!("{}|restarted:http://127.0.0.1:{}", new_version, port))
         }
@@ -316,6 +324,14 @@ async fn apply_server_patch_windows(
             }
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server 恢复完成: port {}", port);
+
+            // 失败时也导航 webview 到新 server（防止白屏）
+            let new_url = format!("http://127.0.0.1:{}", port);
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.navigate(new_url.parse().unwrap());
+                println!("[Delta] [Windows] Webview navigated to {} (recovery)", new_url);
+            }
+
             Err(format!("补丁应用失败（已恢复server）: {}", err))
         }
     }

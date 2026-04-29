@@ -110,8 +110,15 @@ export function AboutPanel() {
       }, false)
       setServerVersion(newVersion)
       setServerUpdate(null)
-      setServerNeedsRestart(true)
       setStatus('downloaded')
+      // Windows: Rust 端已自动重启 server 并导航 webview，无需手动操作
+      // 非 Windows: relaunch 整个应用以加载新代码
+      try {
+        const { relaunch } = await import('@tauri-apps/plugin-process')
+        await relaunch()
+      } catch {
+        setServerNeedsRestart(true)
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
       setErrorMsg(msg || '热更新失败')
