@@ -414,12 +414,22 @@ export async function applyServerUpdate(
   const { invoke } = await import('@tauri-apps/api/core')
 
   // 应用补丁
+  let alreadyRestarted = false
+  let restartedUrl = ''
   try {
-    const newVersion = await invoke<string>('apply_server_patch', {
+    const result = await invoke<string>('apply_server_patch', {
       patchPath: localPath,
       expectedVersion: version,
     })
-    console.log(`[Delta] 应用成功: server version = ${newVersion}`)
+    // Windows 上 Rust 会在补丁后自动重启 server，返回 "版本号|restarted:url"
+    if (result.includes('|restarted:')) {
+      const [newVersion, restartInfo] = result.split('|restarted:')
+      console.log(`[Delta] 应用成功: server version = ${newVersion}, Windows 已自动重启: ${restartInfo}`)
+      alreadyRestarted = true
+      restartedUrl = restartInfo
+    } else {
+      console.log(`[Delta] 应用成功: server version = ${result}`)
+    }
   } catch (err) {
     const msg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err))
     if (msg.includes('文件过小') || msg.includes('delta 文件过小')) {
@@ -428,8 +438,8 @@ export async function applyServerUpdate(
     throw new Error(`应用更新失败: ${msg}`)
   }
 
-  // 重启 server
-  if (restartServer) {
+  // 重启 server（Windows 上 apply_server_patch 已自动重启，跳过）
+  if (restartServer && !alreadyRestarted) {
     console.log(`[Delta] 正在重启 server 进程...`)
     try {
       const serverUrl = await invoke<string>('restart_server')
@@ -447,6 +457,15 @@ export async function applyServerUpdate(
       }
     } catch (restartErr) {
       console.error('[Delta] Server 重启失败:', restartErr)
+    }
+  } else if (alreadyRestarted) {
+    // Windows: server 已在 Rust 端重启，只需刷新 webview
+    console.log(`[Delta] Windows 已自动重启，刷新页面: ${restartedUrl}`)
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500))
+      window.location.href = restartedUrl
+    } catch {
+      // location.href 赋值会触发页面跳转
     }
   } else {
     console.log(`[Delta] 应用成功，等待用户手动重启 server`)

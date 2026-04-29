@@ -188,6 +188,24 @@ pub async fn apply_server_patch(
     println!("[Delta] 补丁文件大小: {} bytes", patch_size);
     println!("[Delta] 开始应用文件级补丁...");
 
+    // 0. Windows 上必须先停掉 server 进程，否则目录/文件被锁无法重命名
+    //    macOS/Linux 的 POSIX 语义允许重命名被占用的文件，无需此步骤
+    #[cfg(target_os = "windows")]
+    {
+        let state = app.state::<crate::ServerState>();
+        if let Ok(mut guard) = state.child.lock() {
+            if let Some(old) = guard.as_mut() {
+                println!("[Delta] [Windows] Stopping server before patch...");
+                let _ = old.kill();
+                let _ = old.wait();
+            }
+            *guard = None;
+        }
+        // 等待文件句柄完全释放
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        println!("[Delta] [Windows] Server stopped, file handles released");
+    }
+
     // 1. 解压 patch tar.gz 到临时目录
     let tmp_dir = resource_dir.join("server-patch-tmp");
     if tmp_dir.exists() {
@@ -268,6 +286,22 @@ pub async fn apply_server_patch(
     if cache_dir.exists() {
         let _ = fs::remove_dir_all(&cache_dir);
         println!("[Delta] Cleaned .next/cache directory");
+    }
+
+    // 9. Windows 上补丁完成后自动重启 server（步骤 0 已停掉）
+    #[cfg(target_os = "windows")]
+    {
+        println!("[Delta] [Windows] Restarting server after patch...");
+        let (child, port) = crate::start_server_process(&app);
+        let state = app.state::<crate::ServerState>();
+        if let Ok(mut guard) = state.child.lock() {
+            *guard = Some(child);
+        }
+        crate::wait_for_server(port);
+        println!("[Delta] [Windows] Server restarted at port {}", port);
+        // 返回版本号 + 重启标记，告知前端无需再调 restart_server
+        println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
+        return Ok(format!("{}|restarted:http://127.0.0.1:{}", new_version, port));
     }
 
     println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);

@@ -284,13 +284,19 @@ export async function* executeChat(
   // PreToolUse hook：路径边界检查 + 权限审批
   // 路径检查始终启用（独立于 skipPermissions 设置）
   const preToolUseHook: HookCallback = async (input) => {
+    const hookStart = Date.now()
     if (input.hook_event_name !== 'PreToolUse') return {}
     const { tool_name, tool_input } = input as { tool_name: string; tool_input: unknown; hook_event_name: string }
 
     const toolInput = (tool_input ?? {}) as Record<string, unknown>
 
     // 路径边界检查：所有写/删除操作必须在项目 cwd 内（始终启用）
+    const validateStart = Date.now()
     const pathError = validateToolPath(tool_name, toolInput)
+    const validateMs = Date.now() - validateStart
+    if (validateMs > 5) {
+      logger.warn(`[GClaw] ⏱ validateToolPath took ${validateMs}ms for ${tool_name}`)
+    }
     if (pathError) {
       logger.warn(`[GClaw] Blocked operation outside project dir: ${pathError}`)
       return {
@@ -304,6 +310,10 @@ export async function* executeChat(
 
     // 非危险工具或跳过权限模式时直接放行
     if (!DANGEROUS_TOOLS.has(tool_name) || skipPermissions) {
+      const totalMs = Date.now() - hookStart
+      if (totalMs > 10) {
+        logger.warn(`[GClaw] ⏱ PreToolUse hook took ${totalMs}ms for ${tool_name} (skipPermissions path)`)
+      }
       return {}
     }
 
@@ -559,6 +569,9 @@ export async function* executeChat(
 
     const qi = sdkQuery({ prompt, options: buildSdkOptions(resumeId) })
     let msgIdx = 0
+    // 工具调用计时：记录每个工具从 tool_use → tool_result 的耗时
+    const toolTimers = new Map<string, { toolName: string; startMs: number }>()
+    let lastLLMOutputMs = Date.now() // 记录 LLM 最后一次输出时间，用于判断 pre-flight 耗时
 
     for await (const msg of qi) {
       if (abortController.signal.aborted) break
@@ -579,6 +592,7 @@ export async function* executeChat(
 
           case 'delta':
             fullContent += parsed.content
+            lastLLMOutputMs = Date.now()
             yield { event: 'delta', data: { content: parsed.content } }
             break
 
@@ -587,6 +601,10 @@ export async function* executeChat(
             break
 
           case 'tool_use': {
+            // 记录工具调用开始时间
+            const toolUseGap = Date.now() - lastLLMOutputMs
+            toolTimers.set(parsed.toolUseId, { toolName: parsed.toolName, startMs: Date.now() })
+            logger.info(`[GClaw] ⏱ tool_use: ${parsed.toolName} (id=${parsed.toolUseId.slice(0,8)}) | LLM→tool_use gap: ${toolUseGap}ms`)
             // 对于 Edit/MultiEdit/Write 工具，计算 old_string 在原文件中的起始行号
             let startLine: number | undefined
             let writeOverwrite: { fileExists: boolean; oldContent?: string } | undefined
@@ -630,7 +648,14 @@ export async function* executeChat(
             break
           }
 
-          case 'tool_result':
+          case 'tool_result': {
+            const timer = toolTimers.get(parsed.toolUseId)
+            if (timer) {
+              const execMs = Date.now() - timer.startMs
+              logger.info(`[GClaw] ⏱ tool_result: ${timer.toolName} (id=${parsed.toolUseId.slice(0,8)}) | execution: ${execMs}ms (${(execMs/1000).toFixed(1)}s)`)
+              toolTimers.delete(parsed.toolUseId)
+            }
+            lastLLMOutputMs = Date.now()
             yield {
               event: 'tool_result',
               data: {
@@ -640,6 +665,7 @@ export async function* executeChat(
               },
             }
             break
+          }
 
           case 'tool_progress':
             yield {

@@ -1264,6 +1264,16 @@ export default function FilesPanel({
           </div>
         )}
 
+        {/* 刷新目录 */}
+        <button
+          onClick={() => { fetchTree(); fetchGitStatus() }}
+          className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+          style={{ color: 'var(--color-text-muted)' }}
+          title="刷新目录"
+        >
+          <RefreshCw size={11} />
+        </button>
+
         {/* 打开目录所在位置 */}
         {isTauri() && (
           <button
