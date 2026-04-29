@@ -69,24 +69,29 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   try {
     const { getVersion } = await import('@tauri-apps/api/app')
     const currentVersion = await getVersion()
-    console.log(`[Updater] 当前版本: ${currentVersion}, 开始检查更新...`)
+    console.log(`[Updater] 🔍 checkForUpdate 开始 | 当前 Tauri 壳版本: ${currentVersion}`)
 
     // 先通过自定义的多端点重试获取 latest.json（七牛云 CDN + GitHub，更可靠）
     const latestJson = await fetchLatestJsonWithRetry()
     if (latestJson) {
       const remoteVersion = (latestJson.version as string) || ''
+      const remoteServerVersion = (latestJson.serverVersion as string) || ''
+      console.log(`[Updater] 📦 latest.json | version(壳)=${remoteVersion}, serverVersion=${remoteServerVersion}`)
       // 如果 latest.json 显示的 Tauri 壳版本没有更新，直接返回
       if (!remoteVersion || !isVersionNewer(remoteVersion, currentVersion)) {
-        console.log(`[Updater] 已是最新版本 (本地=${currentVersion}, 远程=${remoteVersion})`)
+        console.log(`[Updater] ⏭️ 壳版本无更新 (本地=${currentVersion}, 远程=${remoteVersion})`)
         return null
       }
-      console.log(`[Updater] 发现新版本 ${remoteVersion}，通过 Tauri updater 获取详情...`)
+      console.log(`[Updater] ✅ 发现壳新版本 ${remoteVersion} > ${currentVersion}，调用 Tauri updater...`)
+    } else {
+      console.warn(`[Updater] ⚠️ fetchLatestJsonWithRetry 返回 null，无法获取 latest.json`)
     }
 
     // 调用 Tauri updater 获取完整更新信息（包含下载 URL、签名等）
     const { check } = await import('@tauri-apps/plugin-updater')
+    console.log('[Updater] 🔄 调用 Tauri plugin-updater check()...')
     const update = await check({ timeout: 15000 })
-    console.log('[Updater] 检查结果:', update ? `发现新版本 ${update.version}` : '已是最新')
+    console.log('[Updater] 📋 Tauri updater 结果:', update ? `发现 v${update.version}, date=${update.date}` : '返回 null（已是最新）')
 
     if (!update) return null
 
@@ -97,7 +102,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('[Updater] checkForUpdate 失败:', msg)
+    console.error('[Updater] ❌ checkForUpdate 异常:', msg, err)
     // 不再直接 throw，让调用方通过 allSettled 处理
     throw new Error(`全量更新检查失败: ${msg.includes('github.com') ? '网络连接失败，无法访问更新服务器' : msg}`)
   }
@@ -232,21 +237,23 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
 
   try {
     const currentVersion = await getCurrentServerVersion()
-    console.log(`[Delta] 当前 server 版本: ${currentVersion}`)
+    console.log(`[Delta] 🔍 checkServerDelta 开始 | 当前 server 版本: ${currentVersion}`)
 
     // 通过带重试的方式获取 latest.json（依次尝试七牛云 CDN、GitHub，支持指数退避）
     const latestJson = await fetchLatestJsonWithRetry()
 
     if (!latestJson) {
-      console.log('[Delta] 无法获取 latest.json')
+      console.log('[Delta] ⚠️ 无法获取 latest.json')
       return null
     }
 
     const serverVersion = latestJson.serverVersion as string | undefined
+    console.log(`[Delta] 📦 latest.json | serverVersion=${serverVersion}, version(壳)=${latestJson.version}`)
     if (!serverVersion || !isVersionNewer(serverVersion, currentVersion)) {
-      console.log(`[Delta] server 已是最新或无需更新 (本地=${currentVersion}, 远程=${serverVersion})`)
+      console.log(`[Delta] ⏭️ server 已是最新 (本地=${currentVersion}, 远程=${serverVersion})`)
       return null
     }
+    console.log(`[Delta] ✅ 发现 server 新版本: ${currentVersion} → ${serverVersion}`)
 
     const deltas = latestJson.serverDeltas as Record<string, ServerDelta[]> | undefined
 
@@ -255,6 +262,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     if (deltas && typeof deltas === 'object') {
       const platformKey = await getPlatformKey()
       const platformDeltas = deltas[platformKey]
+      console.log(`[Delta] 🖥️ 平台=${platformKey}, 可用delta数=${platformDeltas?.length ?? 0}`)
 
       // 查找可用的 delta（文件级补丁是覆盖式的，from <= 当前版本即可使用，优先选最近的）
       allMatchedDeltas = (platformDeltas

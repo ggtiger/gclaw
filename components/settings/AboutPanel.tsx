@@ -30,7 +30,11 @@ export function AboutPanel() {
   }, [])
 
   const handleCheck = useCallback(async () => {
-    if (!isTauri()) return
+    console.log('[AboutPanel] 👉 handleCheck 被调用, isTauri()=', isTauri(), 'window.__TAURI_INTERNALS__=', typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window)
+    if (!isTauri()) {
+      console.warn('[AboutPanel] ⚠️ isTauri() 返回 false，跳过检查')
+      return
+    }
     setStatus('checking')
     setErrorMsg('')
     setUpdateInfo(null)
@@ -40,13 +44,16 @@ export function AboutPanel() {
       // 1. 优先检查 Tauri 全量更新
       let tauriInfo: UpdateInfo | null = null
       try {
+        console.log('[AboutPanel] 🔍 Step1: 检查 Tauri 壳全量更新...')
         tauriInfo = await checkForUpdate()
+        console.log('[AboutPanel] Step1 结果:', tauriInfo ? `发现 v${tauriInfo.version}` : 'null (无壳更新)')
       } catch (tauriErr) {
-        console.warn('[AboutPanel] Tauri 更新检查失败:', tauriErr)
+        console.warn('[AboutPanel] ❌ Step1 Tauri 更新检查异常:', tauriErr)
       }
 
       if (tauriInfo) {
         // 发现全量更新，不再检查 server 热更新
+        console.log('[AboutPanel] ✅ 显示壳全量更新按钮')
         setUpdateInfo(tauriInfo)
         setStatus('available')
         return
@@ -55,9 +62,11 @@ export function AboutPanel() {
       // 2. 无全量更新，再检查 server 热更新
       let serverInfo: ServerUpdateInfo | null = null
       try {
+        console.log('[AboutPanel] 🔍 Step2: 检查 server 热更新...')
         serverInfo = await checkServerDelta()
+        console.log('[AboutPanel] Step2 结果:', serverInfo ? `${serverInfo.label} (v${serverInfo.version}, delta=${!!serverInfo.delta})` : 'null (无server更新)')
       } catch (serverErr) {
-        console.warn('[AboutPanel] Server 更新检查失败:', serverErr)
+        console.warn('[AboutPanel] ❌ Step2 Server 更新检查异常:', serverErr)
       }
 
       if (serverInfo) {
@@ -118,7 +127,12 @@ export function AboutPanel() {
     }
   }, [])
 
-  if (!isTauri()) return null
+  const [isTauriEnv, setIsTauriEnv] = useState(false)
+  useEffect(() => {
+    setIsTauriEnv(isTauri())
+  }, [])
+
+  if (!isTauriEnv) return null
 
   const hasServerDelta = serverUpdate?.delta != null
   const hasTauriUpdate = updateInfo != null

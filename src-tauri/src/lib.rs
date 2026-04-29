@@ -1388,6 +1388,12 @@ pub fn run() {
                         port: 3100,
                     });
 
+                    // Dev 模式自动打开 DevTools
+                    #[cfg(debug_assertions)]
+                    if let Some(main) = app.get_webview_window("main") {
+                        main.open_devtools();
+                    }
+
                     let h = handle.clone();
                     std::thread::spawn(move || {
                         splash_update(&h, "正在连接服务...", 30, "");
