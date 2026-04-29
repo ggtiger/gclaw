@@ -188,103 +188,210 @@ pub async fn apply_server_patch(
     println!("[Delta] 补丁文件大小: {} bytes", patch_size);
     println!("[Delta] 开始应用文件级补丁...");
 
-    // 0. Windows 上必须先停掉 server 进程，否则目录/文件被锁无法重命名
-    //    macOS/Linux 的 POSIX 语义允许重命名被占用的文件，无需此步骤
+    // Windows: 将步骤 0-9 包装为内部函数，统一 error recovery
+    // 任何步骤失败都保证 server 进程恢复（避免白屏）
     #[cfg(target_os = "windows")]
     {
-        let state = app.state::<crate::ServerState>();
-        if let Ok(mut guard) = state.child.lock() {
-            if let Some(old) = guard.as_mut() {
-                println!("[Delta] [Windows] Stopping server before patch...");
-                let _ = old.kill();
-                let _ = old.wait();
-            }
-            *guard = None;
-        }
-        // 等待文件句柄完全释放
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        println!("[Delta] [Windows] Server stopped, file handles released");
+        return apply_server_patch_windows(&app, patch, &server_dir, &backup_dir, &resource_dir, &expected_version).await;
     }
 
-    // 1. 解压 patch tar.gz 到临时目录
-    let tmp_dir = resource_dir.join("server-patch-tmp");
-    if tmp_dir.exists() {
-        fs::remove_dir_all(&tmp_dir)
-            .map_err(|e| format!("清理旧临时目录失败: {}", e))?;
+    // macOS/Linux: POSIX 语义允许操作被占用的文件，无需停 server
+    #[cfg(not(target_os = "windows"))]
+    {
+        return apply_server_patch_unix(patch, &server_dir, &backup_dir, &resource_dir, &expected_version);
     }
+}
+
+/// macOS/Linux 补丁应用（POSIX 语义，无需停 server）
+#[cfg(not(target_os = "windows"))]
+fn apply_server_patch_unix(
+    patch: &Path,
+    server_dir: &Path,
+    backup_dir: &Path,
+    resource_dir: &Path,
+    expected_version: &str,
+) -> Result<String, String> {
+    // 1. 解压
+    let tmp_dir = resource_dir.join("server-patch-tmp");
+    if tmp_dir.exists() { let _ = fs::remove_dir_all(&tmp_dir); }
     extract_tar_gz(patch, &tmp_dir)?;
 
-    // 2. 读取 __manifest.json
-    let manifest_path = tmp_dir.join("__manifest.json");
-    if !manifest_path.exists() {
-        let _ = fs::remove_dir_all(&tmp_dir);
-        return Err("补丁包中缺少 __manifest.json".into());
-    }
-    let manifest_content = fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("读取 manifest 失败: {}", e))?;
-    let manifest: PatchManifest = serde_json::from_str(&manifest_content)
-        .map_err(|e| format!("解析 manifest 失败: {}", e))?;
-
+    // 2. 读取 manifest
+    let manifest = read_patch_manifest(&tmp_dir)?;
     println!("[Delta] manifest: modified={}, added={}, deleted={}",
         manifest.modified.len(), manifest.added.len(), manifest.deleted.len());
 
     // 3. 备份 server/ → server.bak/
-    //    Windows: 复制备份（不 rename，避免文件锁导致重命名失败）
-    //    macOS/Linux: rename 更高效
     println!("[Delta] 备份 server/ → server.bak/...");
-    if backup_dir.exists() {
-        if let Err(e) = fs::remove_dir_all(&backup_dir) {
-            println!("[Delta] 警告: 删除旧备份失败: {}, 尝试继续...", e);
-        }
+    if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
+    if let Err(e) = rename_or_copy_dir(server_dir, backup_dir) {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(format!("备份 server 目录失败: {}", e));
+    }
+    if let Err(e) = copy_dir_recursive(backup_dir, server_dir) {
+        let _ = rename_or_copy_dir(backup_dir, server_dir);
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(format!("复制备份回 server 失败: {}", e));
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: 直接复制备份，不移动原目录（避免文件锁问题）
-        // 然后在 server/ 上就地应用补丁
-        if let Err(e) = copy_dir_recursive(&server_dir, &backup_dir) {
-            println!("[Delta] 备份 server 目录失败: {}", e);
-            let _ = fs::remove_dir_all(&tmp_dir);
-            println!("[Delta] [Windows] 备份失败，恢复 server 进程...");
-            let (child, port) = crate::start_server_process(&app);
+    // 4. 应用补丁文件
+    apply_patch_files(&manifest, &tmp_dir, server_dir)?;
+
+    // 5. 删除文件
+    delete_patch_files(&manifest, server_dir);
+
+    // 6. 验证版本
+    let new_version = read_server_version(server_dir);
+    if new_version != expected_version {
+        println!("[Delta] 版本验证失败: 期望 {} 实际 {}, 回滚...", expected_version, new_version);
+        let _ = fs::remove_dir_all(server_dir);
+        let _ = rename_or_copy_dir(backup_dir, server_dir);
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(format!("版本验证失败: 期望 {} 实际 {}", expected_version, new_version));
+    }
+
+    // 7. 清理
+    let _ = fs::remove_dir_all(&tmp_dir);
+    let _ = fs::remove_dir_all(backup_dir);
+    clean_next_cache(server_dir);
+
+    println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
+    Ok(new_version)
+}
+
+/// Windows 补丁应用 — 任何失败都保证 server 恢复（防止白屏）
+#[cfg(target_os = "windows")]
+async fn apply_server_patch_windows(
+    app: &tauri::AppHandle,
+    patch: &Path,
+    server_dir: &Path,
+    backup_dir: &Path,
+    resource_dir: &Path,
+    expected_version: &str,
+) -> Result<String, String> {
+    // 0. 停掉 server 进程
+    let state = app.state::<crate::ServerState>();
+    if let Ok(mut guard) = state.child.lock() {
+        if let Some(old) = guard.as_mut() {
+            println!("[Delta] [Windows] Stopping server before patch...");
+            let _ = old.kill();
+            let _ = old.wait();
+        }
+        *guard = None;
+    }
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    println!("[Delta] [Windows] Server stopped, file handles released");
+
+    // 执行补丁（任何失败都走 recovery）
+    let patch_result = do_windows_patch(patch, server_dir, backup_dir, resource_dir, expected_version);
+
+    match patch_result {
+        Ok(new_version) => {
+            // 补丁成功，清理并重启
+            clean_next_cache(server_dir);
+            println!("[Delta] [Windows] Restarting server after patch...");
+            let (child, port) = crate::start_server_process(app);
+            let state = app.state::<crate::ServerState>();
+            if let Ok(mut guard) = state.child.lock() {
+                *guard = Some(child);
+            }
+            crate::wait_for_server(port);
+            println!("[Delta] [Windows] Server restarted at port {}", port);
+            println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
+            Ok(format!("{}|restarted:http://127.0.0.1:{}", new_version, port))
+        }
+        Err(err) => {
+            // 补丁失败 — 从备份恢复 + 重启 server（关键：防止白屏）
+            println!("[Delta] [Windows] 补丁应用失败: {}, 正在恢复...", err);
+            if backup_dir.exists() {
+                let _ = fs::remove_dir_all(server_dir);
+                let _ = rename_or_copy_dir(backup_dir, server_dir);
+                println!("[Delta] [Windows] 已从备份恢复 server 目录");
+            }
+            println!("[Delta] [Windows] 恢复 server 进程...");
+            let (child, port) = crate::start_server_process(app);
             let state = app.state::<crate::ServerState>();
             if let Ok(mut guard) = state.child.lock() {
                 *guard = Some(child);
             }
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server 恢复完成: port {}", port);
-            return Err(format!("备份 server 目录失败: {}", e));
-        }
-        println!("[Delta] [Windows] 备份完成（复制模式），直接在 server/ 上应用补丁");
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // macOS/Linux: rename 更高效，POSIX 允许重命名占用中的目录
-        if let Err(e) = rename_or_copy_dir(&server_dir, &backup_dir) {
-            println!("[Delta] 备份 server 目录失败: {}", e);
-            let _ = fs::remove_dir_all(&tmp_dir);
-            return Err(format!("备份 server 目录失败: {}", e));
-        }
-        // 复制备份回 server/（在备份基础上做增量修改）
-        if let Err(e) = copy_dir_recursive(&backup_dir, &server_dir) {
-            println!("[Delta] 复制备份回 server 失败: {}", e);
-            let _ = rename_or_copy_dir(&backup_dir, &server_dir);
-            let _ = fs::remove_dir_all(&tmp_dir);
-            return Err(format!("复制备份回 server 失败: {}", e));
+            Err(format!("补丁应用失败（已恢复server）: {}", err))
         }
     }
+}
 
-    // 4. 遍历 modified + added：从临时目录复制到 server/
-    let files_to_copy: Vec<&String> = manifest.modified.iter().chain(manifest.added.iter()).collect();
-    for rel_path in &files_to_copy {
+/// Windows: 执行实际补丁操作（纯文件操作，不涉及进程管理）
+#[cfg(target_os = "windows")]
+fn do_windows_patch(
+    patch: &Path,
+    server_dir: &Path,
+    backup_dir: &Path,
+    resource_dir: &Path,
+    expected_version: &str,
+) -> Result<String, String> {
+    // 1. 解压
+    let tmp_dir = resource_dir.join("server-patch-tmp");
+    if tmp_dir.exists() { let _ = fs::remove_dir_all(&tmp_dir); }
+    extract_tar_gz(patch, &tmp_dir)?;
+
+    // 2. 读取 manifest
+    let manifest = read_patch_manifest(&tmp_dir)?;
+    println!("[Delta] manifest: modified={}, added={}, deleted={}",
+        manifest.modified.len(), manifest.added.len(), manifest.deleted.len());
+
+    // 3. 复制备份（不 rename，避免文件锁）
+    println!("[Delta] 备份 server/ → server.bak/...");
+    if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
+    copy_dir_recursive(server_dir, backup_dir)
+        .map_err(|e| { let _ = fs::remove_dir_all(&tmp_dir); format!("备份失败: {}", e) })?;
+    println!("[Delta] [Windows] 备份完成（复制模式）");
+
+    // 4. 就地应用补丁文件
+    if let Err(e) = apply_patch_files(&manifest, &tmp_dir, server_dir) {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(format!("应用补丁文件失败: {}", e));
+    }
+
+    // 5. 删除文件
+    delete_patch_files(&manifest, server_dir);
+
+    // 6. 验证版本
+    let new_version = read_server_version(server_dir);
+    if new_version != expected_version {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(format!("版本验证失败: 期望 {} 实际 {}", expected_version, new_version));
+    }
+
+    // 7. 清理
+    let _ = fs::remove_dir_all(&tmp_dir);
+    let _ = fs::remove_dir_all(backup_dir);
+    Ok(new_version)
+}
+
+/// 读取补丁 manifest
+fn read_patch_manifest(tmp_dir: &Path) -> Result<PatchManifest, String> {
+    let manifest_path = tmp_dir.join("__manifest.json");
+    if !manifest_path.exists() {
+        let _ = fs::remove_dir_all(tmp_dir);
+        return Err("补丁包中缺少 __manifest.json".into());
+    }
+    let content = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("读取 manifest 失败: {}", e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("解析 manifest 失败: {}", e))
+}
+
+/// 应用补丁中的 modified + added 文件
+fn apply_patch_files(manifest: &PatchManifest, tmp_dir: &Path, server_dir: &Path) -> Result<(), String> {
+    let files: Vec<&String> = manifest.modified.iter().chain(manifest.added.iter()).collect();
+    for rel_path in &files {
         let src = tmp_dir.join(rel_path);
         let dest = server_dir.join(rel_path);
         if !src.exists() {
             println!("[Delta] 警告: 补丁中缺少文件 {}, 跳过", rel_path);
             continue;
         }
-        // 创建父目录
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("创建目录失败 {}: {}", parent.display(), e))?;
@@ -292,68 +399,26 @@ pub async fn apply_server_patch(
         fs::copy(&src, &dest)
             .map_err(|e| format!("复制文件失败 {}: {}", rel_path, e))?;
     }
+    Ok(())
+}
 
-    // 5. 遍历 deleted：从 server/ 删除
+/// 删除补丁中标记删除的文件
+fn delete_patch_files(manifest: &PatchManifest, server_dir: &Path) {
     for rel_path in &manifest.deleted {
         let target = server_dir.join(rel_path);
         if target.exists() {
             let _ = fs::remove_file(&target);
         }
     }
+}
 
-    // 6. 验证 server/package.json 的 version == expected_version
-    let new_version = read_server_version(&server_dir);
-    if new_version != expected_version {
-        println!("[Delta] 版本验证失败: 期望 {} 实际 {}, 回滚...", expected_version, new_version);
-        // 回滚: 删除当前 server/，从备份恢复
-        let _ = fs::remove_dir_all(&server_dir);
-        let _ = rename_or_copy_dir(&backup_dir, &server_dir);
-        let _ = fs::remove_dir_all(&tmp_dir);
-        #[cfg(target_os = "windows")]
-        {
-            println!("[Delta] [Windows] 版本验证失败，恢复 server 进程...");
-            let (child, port) = crate::start_server_process(&app);
-            let state = app.state::<crate::ServerState>();
-            if let Ok(mut guard) = state.child.lock() {
-                *guard = Some(child);
-            }
-            crate::wait_for_server(port);
-        }
-        return Err(format!(
-            "版本验证失败: 期望 {} 实际 {}",
-            expected_version, new_version
-        ));
-    }
-
-    // 7. 清理临时目录和备份
-    let _ = fs::remove_dir_all(&tmp_dir);
-    let _ = fs::remove_dir_all(&backup_dir);
-
-    // 8. 清理 .next 编译缓存，强制 server 重启时重新加载
+/// 清理 .next 编译缓存
+fn clean_next_cache(server_dir: &Path) {
     let cache_dir = server_dir.join(".next").join("cache");
     if cache_dir.exists() {
         let _ = fs::remove_dir_all(&cache_dir);
         println!("[Delta] Cleaned .next/cache directory");
     }
-
-    // 9. Windows 上补丁完成后自动重启 server（步骤 0 已停掉）
-    #[cfg(target_os = "windows")]
-    {
-        println!("[Delta] [Windows] Restarting server after patch...");
-        let (child, port) = crate::start_server_process(&app);
-        let state = app.state::<crate::ServerState>();
-        if let Ok(mut guard) = state.child.lock() {
-            *guard = Some(child);
-        }
-        crate::wait_for_server(port);
-        println!("[Delta] [Windows] Server restarted at port {}", port);
-        // 返回版本号 + 重启标记，告知前端无需再调 restart_server
-        println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
-        return Ok(format!("{}|restarted:http://127.0.0.1:{}", new_version, port));
-    }
-
-    println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
-    Ok(new_version)
 }
 
 /// 获取当前 server/ 的版本号（从 package.json 读取）
