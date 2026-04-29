@@ -159,7 +159,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
     const timer = setTimeout(() => setShowSkeleton(true), 200)
     return () => clearTimeout(timer)
   }, [initialLoading])
-  const [thinkingExpanded, setThinkingExpanded] = useState(false)
+  const [thinkingExpanded, setThinkingExpanded] = useState(true)
 
   // 加载更多历史消息
   const handleLoadMore = useCallback(async () => {
@@ -456,28 +456,8 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               </div>
             )}
 
-            {/* Thinking 思考过程（可展开/收起） */}
-            {thinkingContent && (
-              <div className="mx-4 my-1 rounded-xl overflow-hidden border animate-fade-in border-purple-500/20 bg-purple-500/5">
-                <button
-                  onClick={() => setThinkingExpanded(!thinkingExpanded)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400"
-                >
-                  <Brain size={14} />
-                  <span>思考过程</span>
-                  <div className="flex-1" />
-                  {thinkingExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                </button>
-                {thinkingExpanded && (
-                  <div className="px-3 pb-2 text-xs leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto text-slate-600 dark:text-slate-400">
-                    {thinkingContent}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* 流式输出：文本 + 工具交错渲染 */}
-            {streamingBlocks.length > 0 && (
+            {(streamingBlocks.length > 0 || thinkingContent) && (
               <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
                 <div className="flex-shrink-0">
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center overflow-hidden ${assistantAvatarUrl ? '' : 'bg-purple-500/10 dark:bg-purple-500/20'}`}>
@@ -491,12 +471,33 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                   <div className="text-xs font-medium mb-1 text-slate-500 dark:text-slate-400">
                     {assistantDisplayName}
                   </div>
-                  <StreamingBlocksRenderer
-                    blocks={streamingBlocks}
-                    isStreaming
-                    askQuestion={askQuestion}
-                    onRespondAskQuestion={onRespondAskQuestion}
-                  />
+                  {/* Thinking 思考过程（融入消息，默认展开） */}
+                  {thinkingContent && (
+                    <div className="mb-2 rounded-xl overflow-hidden border border-purple-500/20 bg-purple-500/5">
+                      <button
+                        onClick={() => setThinkingExpanded(!thinkingExpanded)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400"
+                      >
+                        <Brain size={14} />
+                        <span>思考过程</span>
+                        <div className="flex-1" />
+                        {thinkingExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                      {thinkingExpanded && (
+                        <div className="px-3 pb-2 text-xs leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto text-slate-600 dark:text-slate-400">
+                          {thinkingContent}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {streamingBlocks.length > 0 && (
+                    <StreamingBlocksRenderer
+                      blocks={streamingBlocks}
+                      isStreaming
+                      askQuestion={askQuestion}
+                      onRespondAskQuestion={onRespondAskQuestion}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -532,15 +533,17 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           </div>
       )}
 
-      {/* 权限审批对话框 */}
-      {permissionRequest && (
-        <div className="flex-shrink-0 px-3 lg:px-4 pb-2">
-          <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
-        </div>
-      )}
+      {/* 底部固定区域：权限审批 + 输入框 */}
+      <div className="absolute bottom-0 left-0 right-0 z-10">
+        {/* 权限审批对话框 */}
+        {permissionRequest && (
+          <div className="px-3 lg:px-4 pb-2">
+            <PermissionDialog request={permissionRequest} onRespond={onRespondPermission} />
+          </div>
+        )}
 
-      {/* 输入区域 - 固定在底部，四周透明 */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 px-3 lg:px-4 pb-3">
+        {/* 输入区域 */}
+        <div className="px-3 lg:px-4 pb-3">
         <ChatInput
           onSend={handleSend}
           onAbort={onAbort}
@@ -562,6 +565,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           onCompact={() => onSend('/compact')}
           onClearChat={() => onClearChat?.()}
         />
+      </div>
       </div>
 
       {/* 提示词日志弹窗 */}

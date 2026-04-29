@@ -314,7 +314,13 @@ export async function* executeChat(
       if (totalMs > 10) {
         logger.warn(`[GClaw] ⏱ PreToolUse hook took ${totalMs}ms for ${tool_name} (skipPermissions path)`)
       }
-      return {}
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse' as const,
+          permissionDecision: 'allow' ,
+          permissionDecisionReason: undefined
+        },
+      }
     }
 
     const reqId = randomUUID()

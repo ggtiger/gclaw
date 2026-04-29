@@ -87,7 +87,7 @@ export const PermissionDialog = memo(function PermissionDialog({ request, onResp
             <div
               className="text-sm font-mono break-all"
               style={{
-                color: 'var(--color-text)',
+                color: '#E2E8F0',
                 backgroundColor: 'var(--color-code-bg, #1e293b)',
                 padding: '6px 10px',
                 borderRadius: '6px',

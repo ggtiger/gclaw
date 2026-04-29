@@ -611,6 +611,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     // 立即清理 buffer（同步），防止切换项目时读到旧状态
     buf.streamingBlocks = []
     buf.textBlockCounter = 0
+    buf.thinkingContent = ''
     buf.lastStats = stats
     buf.sending = false
     setActive(pid, false)
@@ -635,6 +636,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           setMessages(prev => [...prev, assistantMsg])
           // 同步 React 状态
           setStreamingBlocks([])
+          setThinkingContent('')
           setSending(false)
           setLastStats(stats)
         }
@@ -643,6 +645,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       // 无内容，直接同步 React state
       if (currentProjectIdRef.current === pid) {
         setStreamingBlocks([])
+        setThinkingContent('')
         setSending(false)
         setLastStats(stats)
       }

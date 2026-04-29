@@ -22,6 +22,10 @@ export interface UpdateInfo {
   version: string
   date?: string
   body?: string
+  /** Tauri updater check() 是否可用（false 表示需要手动下载安装） */
+  canAutoInstall?: boolean
+  /** 手动下载 URL（当 canAutoInstall=false 时提供） */
+  downloadUrl?: string
 }
 
 export type UpdateStatus =
@@ -88,22 +92,51 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     }
 
     // 调用 Tauri updater 获取完整更新信息（包含下载 URL、签名等）
-    const { check } = await import('@tauri-apps/plugin-updater')
-    console.log('[Updater] 🔄 调用 Tauri plugin-updater check()...')
-    const update = await check({ timeout: 15000 })
-    console.log('[Updater] 📋 Tauri updater 结果:', update ? `发现 v${update.version}, date=${update.date}` : '返回 null（已是最新）')
-
-    if (!update) return null
-
-    return {
-      version: update.version,
-      date: update.date ?? undefined,
-      body: update.body ?? undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let update: any = null
+    let checkError: string | null = null
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      console.log('[Updater] 🔄 调用 Tauri plugin-updater check()...')
+      update = await check({ timeout: 15000 })
+      console.log('[Updater] 📋 Tauri updater 结果:', update ? `发现 v${update.version}, date=${update.date}` : '返回 null（已是最新）')
+    } catch (pluginErr) {
+      checkError = pluginErr instanceof Error ? pluginErr.message : String(pluginErr)
+      console.error('[Updater] ⚠️ Tauri plugin-updater check() 异常:', checkError)
     }
+
+    if (update) {
+      return {
+        version: update.version,
+        date: update.date ?? undefined,
+        body: update.body ?? undefined,
+        canAutoInstall: true,
+      }
+    }
+
+    // Tauri check() 失败或返回 null，但我们自己的版本比较发现了更新
+    // 提供手动下载回退
+    if (latestJson) {
+      const remoteVersion = (latestJson.version as string) || ''
+      if (remoteVersion && isVersionNewer(remoteVersion, currentVersion)) {
+        // 从 platforms 中提取当前平台的下载 URL
+        const platformKey = await getPlatformKey()
+        const platforms = latestJson.platforms as Record<string, { url?: string }> | undefined
+        const platEntry = platforms?.[platformKey]
+        console.warn(`[Updater] ⚠️ Tauri check() 不可用 (${checkError || 'returned null'})，回退到手动下载模式, platform=${platformKey}, url=${platEntry?.url}`)
+        return {
+          version: remoteVersion,
+          body: `检测到新版本，但自动更新不可用${checkError ? `（${checkError}）` : ''}，请手动下载安装。`,
+          canAutoInstall: false,
+          downloadUrl: platEntry?.url,
+        }
+      }
+    }
+
+    return null
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Updater] ❌ checkForUpdate 异常:', msg, err)
-    // 不再直接 throw，让调用方通过 allSettled 处理
     throw new Error(`全量更新检查失败: ${msg.includes('github.com') ? '网络连接失败，无法访问更新服务器' : msg}`)
   }
 }

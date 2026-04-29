@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Download, RotateCw, Info, Zap } from 'lucide-react'
+import { RefreshCw, Download, RotateCw, Info, Zap, ExternalLink } from 'lucide-react'
 import { isTauri } from '@/lib/tauri'
 import {
   checkForUpdate, downloadAndInstall,
@@ -136,6 +136,17 @@ export function AboutPanel() {
 
   const hasServerDelta = serverUpdate?.delta != null
   const hasTauriUpdate = updateInfo != null
+  const canAutoInstall = updateInfo?.canAutoInstall !== false
+
+  const handleManualDownload = useCallback(async () => {
+    if (!updateInfo?.downloadUrl) return
+    try {
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl(updateInfo.downloadUrl)
+    } catch {
+      window.open(updateInfo.downloadUrl, '_blank')
+    }
+  }, [updateInfo])
 
   return (
     <div className="p-4 space-y-4">
@@ -196,13 +207,23 @@ export function AboutPanel() {
                   </button>
                 )}
                 {/* Tauri 全量更新按钮 */}
-                {hasTauriUpdate && (
+                {hasTauriUpdate && canAutoInstall && (
                   <button
                     onClick={handleInstall}
                     className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors cursor-pointer"
                   >
                     <Download size={12} />
                     安装更新 v{updateInfo!.version}
+                  </button>
+                )}
+                {/* 手动下载按钮（Tauri updater 不可用时） */}
+                {hasTauriUpdate && !canAutoInstall && updateInfo?.downloadUrl && (
+                  <button
+                    onClick={handleManualDownload}
+                    className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-orange-600 text-white hover:bg-orange-700 transition-colors cursor-pointer"
+                  >
+                    <ExternalLink size={12} />
+                    下载 v{updateInfo!.version}
                   </button>
                 )}
               </>
