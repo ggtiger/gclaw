@@ -125,6 +125,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       try {
         const { startupUpdateCheck } = await import('@/lib/updater')
         const { invoke } = await import('@tauri-apps/api/core')
+        const { useUpdateStore } = await import('@/lib/store/update-store')
 
         // Windows 上 apply 需要停 server + 等待句柄释放 + 重启，时间更长
         const isWindows = navigator.userAgent.includes('Windows')
@@ -139,6 +140,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             try {
               await invoke('update_splash', { status, progress, detail })
             } catch {}
+          }, (info) => {
+            // 启动时发现全量更新，立即通知 store 显示侧边栏提醒
+            useUpdateStore.getState().setTauriUpdate(info.version, info.canAutoInstall !== false, info.downloadUrl)
           }),
           timeoutPromise
         ])

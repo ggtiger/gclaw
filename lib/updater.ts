@@ -562,6 +562,7 @@ export async function downloadAndApplyDelta(
  */
 export async function startupUpdateCheck(
   onProgress?: (status: string, progress: number, detail: string) => void,
+  onTauriUpdate?: (info: UpdateInfo) => void,
 ): Promise<boolean> {
   try {
     onProgress?.('loading', 80, '检查更新...')
@@ -571,8 +572,9 @@ export async function startupUpdateCheck(
       const tauriUpdate = await checkForUpdate()
       if (tauriUpdate) {
         if (tauriUpdate.canAutoInstall) {
-          // Tauri updater 可自动安装 → 提示用户，跳过 server 热更新
-          onProgress?.('loading', 85, `发现新版本 v${tauriUpdate.version}，请前往设置重新安装`)
+          // Tauri updater 可自动安装 → 通知 UI 显示提醒，跳过 server 热更新
+          onTauriUpdate?.(tauriUpdate)
+          onProgress?.('loading', 85, `发现新版本 v${tauriUpdate.version}，请前往设置安装`)
           console.log(`[Startup] 发现 Tauri 全量更新 v${tauriUpdate.version}（可自动安装），跳过 server 热更新`)
           await delay(2000)
           onProgress?.('loading', 100, '启动中...')
