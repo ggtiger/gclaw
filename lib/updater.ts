@@ -141,13 +141,15 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   }
 }
 
-export async function downloadAndInstall(
+// 缓存已下载的 update 对象，供 installAndRelaunch 使用
+let _pendingUpdate: any = null
+
+export async function downloadUpdate(
   onProgress?: (progress: UpdateProgress) => void,
 ): Promise<void> {
   if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
 
   const { check } = await import('@tauri-apps/plugin-updater')
-  const { relaunch } = await import('@tauri-apps/plugin-process')
 
   console.log('[Updater] 开始下载更新...')
   const update = await check({ timeout: 30000 })
@@ -155,7 +157,7 @@ export async function downloadAndInstall(
 
   let downloaded = 0
   let totalSize = 0
-  await update.downloadAndInstall((event) => {
+  await update.download((event) => {
     switch (event.event) {
       case 'Started':
         downloaded = 0
@@ -179,6 +181,13 @@ export async function downloadAndInstall(
     }
   })
 
+  _pendingUpdate = update
+}
+
+export async function installAndRelaunch(): Promise<void> {
+  if (!_pendingUpdate) throw new Error('没有已下载的更新')
+  const { relaunch } = await import('@tauri-apps/plugin-process')
+  await _pendingUpdate.install()
   await relaunch()
 }
 

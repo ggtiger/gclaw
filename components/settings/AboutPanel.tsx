@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Download, RotateCw, Info, Zap, ExternalLink } from 'lucide-react'
 import { isTauri } from '@/lib/tauri'
 import {
-  checkForUpdate, downloadAndInstall,
-  checkServerDelta, downloadAndApplyDelta, getCurrentServerVersion,
+  checkForUpdate, downloadUpdate, installAndRelaunch,
+  checkServerDelta, downloadServerUpdate, applyServerUpdate, getCurrentServerVersion,
   type UpdateInfo, type UpdateProgress, type UpdateStatus, type ServerUpdateInfo,
 } from '@/lib/updater'
 import appIcon from '@/public/icon.png'
@@ -19,6 +19,8 @@ export function AboutPanel() {
   const [progress, setProgress] = useState<UpdateProgress>({ downloaded: 0, total: 0, percent: 0 })
   const [errorMsg, setErrorMsg] = useState('')
   const [serverNeedsRestart, setServerNeedsRestart] = useState(false)
+  const [serverDownloaded, setServerDownloaded] = useState<{ localPath: string; version: string } | null>(null)
+  const [tauriDownloaded, setTauriDownloaded] = useState(false)
   const [isTauriEnv, setIsTauriEnv] = useState(false)
 
   // 获取版本号
@@ -85,34 +87,75 @@ export function AboutPanel() {
     }
   }, [])
 
-  const handleInstall = useCallback(async () => {
+  // 全量更新：第一步 - 只下载
+  const handleDownload = useCallback(async () => {
     setStatus('downloading')
     setErrorMsg('')
     try {
-      await downloadAndInstall((p) => {
+      await downloadUpdate((p) => {
         setProgress(p)
       })
+      setTauriDownloaded(true)
       setStatus('downloaded')
     } catch (err) {
       const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
-      setErrorMsg(msg || '更新失败')
+      setErrorMsg(msg || '下载失败')
       setStatus('error')
     }
   }, [])
 
-  const handleServerUpdate = useCallback(async () => {
+  // 全量更新：第二步 - 用户确认后安装并重启
+  const handleInstallAndRelaunch = useCallback(async () => {
+    setStatus('downloading')
+    setErrorMsg('')
+    try {
+      await installAndRelaunch()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
+      setErrorMsg(msg || '安装失败')
+      setStatus('error')
+    }
+  }, [])
+
+  // 第一步：只下载增量包
+  const handleServerDownload = useCallback(async () => {
     if (!serverUpdate?.delta) return
     setStatus('downloading')
     setErrorMsg('')
     try {
-      const newVersion = await downloadAndApplyDelta(serverUpdate.delta, serverUpdate.version, (p) => {
-        setProgress(p)
-      }, false)
-      setServerVersion(newVersion)
-      setServerUpdate(null)
+      const info: ServerUpdateInfo = {
+        version: serverUpdate.version,
+        delta: serverUpdate.delta,
+        serverFull: null,
+        label: '热更新',
+      }
+      const result = await downloadServerUpdate(info, (percent) => {
+        setProgress({
+          downloaded: Math.floor((serverUpdate.delta!.size || 0) * percent / 100),
+          total: serverUpdate.delta!.size || 0,
+          percent,
+        })
+      })
+      setServerDownloaded(result)
       setStatus('downloaded')
-      // Windows: Rust 端已自动重启 server 并导航 webview，无需手动操作
-      // 非 Windows: relaunch 整个应用以加载新代码
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
+      setErrorMsg(msg || '下载失败')
+      setStatus('error')
+    }
+  }, [serverUpdate])
+
+  // 第二步：用户确认后，应用补丁并重启
+  const handleApplyAndRestart = useCallback(async () => {
+    if (!serverDownloaded) return
+    setStatus('downloading')
+    setErrorMsg('')
+    try {
+      await applyServerUpdate(serverDownloaded.localPath, serverDownloaded.version, false)
+      setServerVersion(serverDownloaded.version)
+      setServerUpdate(null)
+      setServerDownloaded(null)
+      setStatus('downloaded')
       try {
         const { relaunch } = await import('@tauri-apps/plugin-process')
         await relaunch()
@@ -124,7 +167,7 @@ export function AboutPanel() {
       setErrorMsg(msg || '热更新失败')
       setStatus('error')
     }
-  }, [serverUpdate])
+  }, [serverDownloaded])
 
   const handleRestartServer = useCallback(async () => {
     try {
@@ -203,7 +246,7 @@ export function AboutPanel() {
                 {/* Server 热更新按钮 */}
                 {hasServerDelta && (
                   <button
-                    onClick={handleServerUpdate}
+                    onClick={handleServerDownload}
                     className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer"
                   >
                     <Zap size={12} />
@@ -213,11 +256,11 @@ export function AboutPanel() {
                 {/* Tauri 全量更新按钮 */}
                 {hasTauriUpdate && canAutoInstall && (
                   <button
-                    onClick={handleInstall}
+                    onClick={handleDownload}
                     className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors cursor-pointer"
                   >
                     <Download size={12} />
-                    安装更新 v{updateInfo!.version}
+                    下载更新 v{updateInfo!.version}
                   </button>
                 )}
                 {/* 手动下载按钮（Tauri updater 不可用时） */}
@@ -278,8 +321,38 @@ export function AboutPanel() {
           </div>
         )}
 
-        {/* 热更新完成重启提示 */}
-        {status === 'downloaded' && serverNeedsRestart && (
+        {/* 全量更新下载完成，等待用户确认安装 */}
+        {status === 'downloaded' && tauriDownloaded && (
+          <div className="mt-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg flex items-center justify-between">
+            <span className="text-sm text-purple-700 dark:text-purple-300">
+              下载完成 v{updateInfo?.version}
+            </span>
+            <button
+              onClick={handleInstallAndRelaunch}
+              className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors cursor-pointer font-medium"
+            >
+              确认安装并重启
+            </button>
+          </div>
+        )}
+
+        {/* 热更新下载完成，等待用户确认应用更新 */}
+        {status === 'downloaded' && serverDownloaded && (
+          <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center justify-between">
+            <span className="text-sm text-emerald-700 dark:text-emerald-300">
+              下载完成 v{serverDownloaded.version}
+            </span>
+            <button
+              onClick={handleApplyAndRestart}
+              className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer font-medium"
+            >
+              确认更新并重启
+            </button>
+          </div>
+        )}
+
+        {/* 热更新已应用，等待重启 */}
+        {status === 'downloaded' && !serverDownloaded && serverNeedsRestart && (
           <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center justify-between">
             <span className="text-sm text-emerald-700 dark:text-emerald-300">
               ✅ 热更新完成，重启后生效
