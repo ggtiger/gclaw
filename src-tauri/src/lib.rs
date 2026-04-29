@@ -940,6 +940,18 @@ pub fn start_server_process(app: &tauri::AppHandle) -> (Child, u16) {
     let port = find_available_port();
     let resource_dir = app.path().resource_dir()
         .expect("Failed to get resource dir");
+
+    // 启动时清理上次热更新残留的备份和临时目录
+    let backup_dir = resource_dir.join("server.bak");
+    if backup_dir.exists() {
+        startup_log("Cleaning up leftover server.bak from previous update");
+        let _ = std::fs::remove_dir_all(&backup_dir);
+    }
+    let patch_tmp = resource_dir.join("server-patch-tmp");
+    if patch_tmp.exists() {
+        let _ = std::fs::remove_dir_all(&patch_tmp);
+    }
+
     let server_js = resource_dir.join("server").join("server.js");
     let data_dir = app.path().app_data_dir()
         .expect("Failed to get app data dir");

@@ -516,11 +516,21 @@ interface StreamingToolCardProps {
 
 export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQuestion, onRespondAskQuestion, allTodoBlocks, taskToolsMap }: StreamingToolCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   // TodoWrite 和 AskUserQuestion 默认展开
   const isTodo = isTodoWrite(tool.toolName)
   const isAsk = isAskUserQuestion(tool.toolName)
   const autoExpand = isTodo || isAsk
+
+  // AskUserQuestion 出现时自动滚动到可见区域（确保提交按钮不被底部输入框遮挡）
+  useEffect(() => {
+    if (isAsk && askQuestion && cardRef.current) {
+      setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 100)
+    }
+  }, [isAsk, askQuestion])
 
   const statusIcon = () => {
     switch (tool.status) {
@@ -569,6 +579,7 @@ export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQues
 
   return (
     <div
+      ref={cardRef}
       className="rounded-lg border transition-colors my-1"
       style={{
         backgroundColor: 'var(--color-surface)',

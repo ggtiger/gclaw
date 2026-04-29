@@ -527,7 +527,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
             )}
 
             {/* 底部间距：为固定输入框留白 */}
-            <div className="h-32" />
+            <div className={askQuestion ? 'h-48' : 'h-32'} />
               </div>
             </div>
           </div>

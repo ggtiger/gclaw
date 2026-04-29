@@ -182,7 +182,7 @@ export function AboutPanel() {
     setStatus('downloading')
     setErrorMsg('')
     try {
-      await applyServerUpdate(serverDownloaded.localPath, serverDownloaded.version, false)
+      await applyServerUpdate(serverDownloaded.localPath, serverDownloaded.version, false, true)
       setServerVersion(serverDownloaded.version)
       setServerUpdate(null)
       setServerDownloaded(null)

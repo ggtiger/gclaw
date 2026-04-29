@@ -458,6 +458,7 @@ export async function applyServerUpdate(
   localPath: string,
   version: string,
   restartServer: boolean = true,
+  willRelaunch: boolean = false,
 ): Promise<void> {
   if (!isTauri()) throw new Error('仅 Tauri 桌面模式支持更新')
 
@@ -470,6 +471,7 @@ export async function applyServerUpdate(
     const result = await invoke<string>('apply_server_patch', {
       patchPath: localPath,
       expectedVersion: version,
+      willRelaunch,
     })
     // Windows 上 Rust 会在补丁后自动重启 server，返回 "版本号|restarted:url"
     if (result.includes('|restarted:')) {

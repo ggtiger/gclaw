@@ -166,7 +166,9 @@ pub async fn apply_server_patch(
     app: tauri::AppHandle,
     patch_path: String,
     expected_version: String,
+    will_relaunch: Option<bool>,
 ) -> Result<String, String> {
+    let _will_relaunch = will_relaunch.unwrap_or(false);
     let resource_dir = app.path().resource_dir()
         .map_err(|e| format!("获取资源目录失败: {}", e))?;
 
@@ -195,7 +197,7 @@ pub async fn apply_server_patch(
     // 任何步骤失败都保证 server 进程恢复（避免白屏）
     #[cfg(target_os = "windows")]
     {
-        return apply_server_patch_windows(&app, patch, &server_dir, &backup_dir, &resource_dir, &expected_version).await;
+        return apply_server_patch_windows(&app, patch, &server_dir, &backup_dir, &resource_dir, &expected_version, _will_relaunch).await;
     }
 
     // macOS/Linux: POSIX 语义允许操作被占用的文件，无需停 server
@@ -280,6 +282,7 @@ async fn apply_server_patch_windows(
     backup_dir: &Path,
     resource_dir: &Path,
     expected_version: &str,
+    will_relaunch: bool,
 ) -> Result<String, String> {
     // 0. 停掉 server 进程
     let state = app.state::<crate::ServerState>();
@@ -291,7 +294,17 @@ async fn apply_server_patch_windows(
         }
         *guard = None;
     }
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // 等待文件句柄释放（检测式，最多 2 秒）
+    let port = state.port;
+    for i in 0..20 {
+        if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
+            if i > 0 { println!("[Delta] [Windows] 端口 {} 已释放 ({}ms)", port, i * 100); }
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    // 额外等待 300ms 确保文件句柄释放
+    std::thread::sleep(std::time::Duration::from_millis(300));
     println!("[Delta] [Windows] Server stopped, file handles released");
 
     // 执行补丁（任何失败都走 recovery）
@@ -299,8 +312,17 @@ async fn apply_server_patch_windows(
 
     match patch_result {
         Ok(new_version) => {
-            // 补丁成功，清理并重启
             clean_next_cache(server_dir);
+
+            // 如果即将 relaunch 整个应用，跳过 server 重启和健康检查（节省 15-20 秒）
+            // relaunch 会重新启动整个 Tauri 进程，server 会在 main() 中重新启动
+            if will_relaunch {
+                println!("[Delta] [Windows] 补丁成功 (version={}), 即将 relaunch, 跳过 server 重启", new_version);
+                // 备份留着，下次启动时清理（以防 relaunch 失败可恢复）
+                return Ok(new_version);
+            }
+
+            // 非 relaunch 模式：重启 server + 健康检查
             println!("[Delta] [Windows] Restarting server after patch...");
             let (child, port) = crate::start_server_process(app);
             let state = app.state::<crate::ServerState>();
@@ -310,11 +332,10 @@ async fn apply_server_patch_windows(
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server restarted at port {}", port);
 
-            // HTTP 健康检查：验证服务器真的能响应页面，而不只是端口通
+            // HTTP 健康检查
             let healthy = check_server_health(port);
             if !healthy {
                 println!("[Delta] [Windows] ✗ 服务器健康检查失败，恢复备份...");
-                // 杀掉新启动的坏服务器
                 if let Ok(mut guard) = state.child.lock() {
                     if let Some(child) = guard.as_mut() {
                         let _ = child.kill();
@@ -323,13 +344,11 @@ async fn apply_server_patch_windows(
                     *guard = None;
                 }
                 std::thread::sleep(std::time::Duration::from_secs(1));
-                // 恢复备份
                 if backup_dir.exists() {
                     let _ = fs::remove_dir_all(server_dir);
                     let _ = rename_or_copy_dir(backup_dir, server_dir);
                     println!("[Delta] [Windows] 已从备份恢复 server 目录");
                 }
-                // 重启原版 server
                 let (child2, port2) = crate::start_server_process(app);
                 if let Ok(mut guard) = state.child.lock() {
                     *guard = Some(child2);
@@ -342,10 +361,8 @@ async fn apply_server_patch_windows(
                 return Err("补丁应用后服务器无法正常响应，已回滚".into());
             }
 
-            // 健康检查通过，现在可以安全删除备份
             let _ = fs::remove_dir_all(backup_dir);
 
-            // 从 Rust 端直接导航 webview
             let new_url = format!("http://127.0.0.1:{}", port);
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.navigate(new_url.parse().unwrap());
@@ -363,6 +380,7 @@ async fn apply_server_patch_windows(
                 let _ = rename_or_copy_dir(backup_dir, server_dir);
                 println!("[Delta] [Windows] 已从备份恢复 server 目录");
             }
+            // 补丁失败必须重启 server（不管是否 relaunch）
             println!("[Delta] [Windows] 恢复 server 进程...");
             let (child, port) = crate::start_server_process(app);
             let state = app.state::<crate::ServerState>();
@@ -372,7 +390,6 @@ async fn apply_server_patch_windows(
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server 恢复完成: port {}", port);
 
-            // 失败时也导航 webview 到新 server（防止白屏）
             let new_url = format!("http://127.0.0.1:{}", port);
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.navigate(new_url.parse().unwrap());
