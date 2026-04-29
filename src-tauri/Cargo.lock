@@ -1162,11 +1162,13 @@ dependencies = [
 
 [[package]]
 name = "gclaw"
-version = "0.2.12"
+version = "0.2.13"
 dependencies = [
+ "flate2",
  "serde",
  "serde_json",
  "sha2",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

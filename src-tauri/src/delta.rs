@@ -9,6 +9,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::Manager;
+use flate2::read::GzDecoder;
 
 /// 重启 server 进程（热更新后调用，使新代码生效）
 #[tauri::command]
@@ -137,23 +138,25 @@ struct PatchManifest {
     deleted: Vec<String>,
 }
 
-/// 解压 tar.gz 到目标目录
+/// 解压 tar.gz 到目标目录（用 Rust 原生实现，避免 Windows tar.exe 兼容性问题）
 fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| format!("创建目录失败: {}", e))?;
 
-    let tar_cmd = if cfg!(target_os = "windows") { "tar.exe" } else { "tar" };
-    let mut cmd = Command::new(tar_cmd);
-    cmd.args(&["xzf", &archive_path.to_string_lossy(), "-C", &dest.to_string_lossy()]);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
+    let file = fs::File::open(archive_path)
+        .map_err(|e| format!("打开补丁文件失败: {}", e))?;
+    let gz = GzDecoder::new(file);
+    let mut archive = tar::Archive::new(gz);
 
-    let output = cmd.output().map_err(|e| format!("执行 tar 解压失败: {}", e))?;
-    if !output.status.success() {
-        return Err(format!("tar 解压失败: {}", String::from_utf8_lossy(&output.stderr)));
+    let mut count = 0u32;
+    for entry_result in archive.entries().map_err(|e| format!("tar 读取失败: {}", e))? {
+        let mut entry = entry_result.map_err(|e| format!("tar 条目读取失败: {}", e))?;
+        entry.unpack_in(dest).map_err(|e| {
+            let path = entry.path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            format!("解压文件失败 {}: {}", path, e)
+        })?;
+        count += 1;
     }
+    println!("[Delta] Rust 原生解压完成: {} 个文件", count);
     Ok(())
 }
 
@@ -298,7 +301,42 @@ async fn apply_server_patch_windows(
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server restarted at port {}", port);
 
-            // 从 Rust 端直接导航 webview 到新 server（不依赖 JS 的 window.location.href）
+            // HTTP 健康检查：验证服务器真的能响应页面，而不只是端口通
+            let healthy = check_server_health(port);
+            if !healthy {
+                println!("[Delta] [Windows] ✗ 服务器健康检查失败，恢复备份...");
+                // 杀掉新启动的坏服务器
+                if let Ok(mut guard) = state.child.lock() {
+                    if let Some(child) = guard.as_mut() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                    *guard = None;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                // 恢复备份
+                if backup_dir.exists() {
+                    let _ = fs::remove_dir_all(server_dir);
+                    let _ = rename_or_copy_dir(backup_dir, server_dir);
+                    println!("[Delta] [Windows] 已从备份恢复 server 目录");
+                }
+                // 重启原版 server
+                let (child2, port2) = crate::start_server_process(app);
+                if let Ok(mut guard) = state.child.lock() {
+                    *guard = Some(child2);
+                }
+                crate::wait_for_server(port2);
+                let new_url = format!("http://127.0.0.1:{}", port2);
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.navigate(new_url.parse().unwrap());
+                }
+                return Err("补丁应用后服务器无法正常响应，已回滚".into());
+            }
+
+            // 健康检查通过，现在可以安全删除备份
+            let _ = fs::remove_dir_all(backup_dir);
+
+            // 从 Rust 端直接导航 webview
             let new_url = format!("http://127.0.0.1:{}", port);
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.navigate(new_url.parse().unwrap());
@@ -379,9 +417,22 @@ fn do_windows_patch(
         return Err(format!("版本验证失败: 期望 {} 实际 {}", expected_version, new_version));
     }
 
-    // 7. 清理
+    // 6.5 验证所有 modified+added 文件确实存在于 server 目录
+    let mut missing_in_server = Vec::new();
+    for rel_path in manifest.modified.iter().chain(manifest.added.iter()) {
+        let dest = server_dir.join(rel_path);
+        if !dest.exists() {
+            missing_in_server.push(rel_path.clone());
+        }
+    }
+    if !missing_in_server.is_empty() {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return Err(format!("补丁应用后 {} 个文件不存在于 server 目录: {:?}", missing_in_server.len(), missing_in_server));
+    }
+    println!("[Delta] 补丁后文件完整性验证通过");
+
+    // 7. 清理临时目录（备份留给外层健康检查后删除）
     let _ = fs::remove_dir_all(&tmp_dir);
-    let _ = fs::remove_dir_all(backup_dir);
     Ok(new_version)
 }
 
@@ -398,14 +449,17 @@ fn read_patch_manifest(tmp_dir: &Path) -> Result<PatchManifest, String> {
         .map_err(|e| format!("解析 manifest 失败: {}", e))
 }
 
-/// 应用补丁中的 modified + added 文件
+/// 应用补丁中的 modified + added 文件（严格模式：缺失文件直接报错）
 fn apply_patch_files(manifest: &PatchManifest, tmp_dir: &Path, server_dir: &Path) -> Result<(), String> {
     let files: Vec<&String> = manifest.modified.iter().chain(manifest.added.iter()).collect();
+    let mut applied = 0u32;
+    let mut missing = Vec::new();
     for rel_path in &files {
         let src = tmp_dir.join(rel_path);
         let dest = server_dir.join(rel_path);
         if !src.exists() {
-            println!("[Delta] 警告: 补丁中缺少文件 {}, 跳过", rel_path);
+            println!("[Delta] ✗ 补丁中缺失文件: {}", rel_path);
+            missing.push(rel_path.to_string());
             continue;
         }
         if let Some(parent) = dest.parent() {
@@ -414,6 +468,11 @@ fn apply_patch_files(manifest: &PatchManifest, tmp_dir: &Path, server_dir: &Path
         }
         fs::copy(&src, &dest)
             .map_err(|e| format!("复制文件失败 {}: {}", rel_path, e))?;
+        applied += 1;
+    }
+    println!("[Delta] 文件应用结果: 成功={}, 缺失={}", applied, missing.len());
+    if !missing.is_empty() {
+        return Err(format!("补丁中 {} 个文件缺失，拒绝应用: {:?}", missing.len(), missing));
     }
     Ok(())
 }
@@ -435,6 +494,51 @@ fn clean_next_cache(server_dir: &Path) {
         let _ = fs::remove_dir_all(&cache_dir);
         println!("[Delta] Cleaned .next/cache directory");
     }
+}
+
+/// HTTP 健康检查：验证 server 能真正返回页面内容
+#[cfg(target_os = "windows")]
+fn check_server_health(port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{}/", port);
+    // 重试 3 次，每次间隔 2 秒
+    for attempt in 1..=3 {
+        println!("[Delta] 健康检查尝试 {}/3: {}", attempt, url);
+        match std::net::TcpStream::connect_timeout(
+            &format!("127.0.0.1:{}", port).parse().unwrap(),
+            std::time::Duration::from_secs(5),
+        ) {
+            Ok(mut stream) => {
+                use std::io::{Write, Read};
+                let request = format!("GET / HTTP/1.0\r\nHost: 127.0.0.1:{}\r\n\r\n", port);
+                if stream.write_all(request.as_bytes()).is_ok() {
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+                    let mut response = Vec::new();
+                    let _ = stream.read_to_end(&mut response);
+                    let resp_str = String::from_utf8_lossy(&response);
+                    // 检查 HTTP 状态码是否正常（200/302/304 都算正常）
+                    let is_ok = resp_str.starts_with("HTTP/1.0 200") ||
+                                resp_str.starts_with("HTTP/1.1 200") ||
+                                resp_str.starts_with("HTTP/1.0 302") ||
+                                resp_str.starts_with("HTTP/1.1 302") ||
+                                resp_str.starts_with("HTTP/1.0 304") ||
+                                resp_str.starts_with("HTTP/1.1 304");
+                    // 额外检查响应体是否包含 HTML 内容
+                    let has_content = resp_str.contains("<html") || resp_str.contains("<!DOCTYPE") || resp_str.len() > 500;
+                    println!("[Delta] 健康检查响应: status_ok={}, has_content={}, resp_len={}", is_ok, has_content, resp_str.len());
+                    if is_ok && has_content {
+                        println!("[Delta] ✓ 服务器健康检查通过");
+                        return true;
+                    }
+                }
+            }
+            Err(e) => {
+                println!("[Delta] 健康检查连接失败: {}", e);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    println!("[Delta] ✗ 服务器健康检查 3 次均失败");
+    false
 }
 
 /// 获取当前 server/ 的版本号（从 package.json 读取）
