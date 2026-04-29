@@ -276,6 +276,24 @@ jobs:
               fi
             done
 
+            # 强制将 build-manifest 引用的 static 资源加入 delta（跨平台构建 chunk hash 不同，必须包含）
+            echo "[Delta] 强制包含 manifest 引用的 static 资源..."
+            STATIC_FORCED=0
+            for manifest_file in .next/build-manifest.json .next/app-build-manifest.json; do
+              [ -f "$NEW_SERVER_DIR/$manifest_file" ] || continue
+              while IFS= read -r sf; do
+                full=".next/$sf"
+                [ -f "$NEW_SERVER_DIR/$full" ] || continue
+                if ! echo "$MODIFIED$ADDED" | grep -qF "\"${full}\""; then
+                  MODIFIED="${MODIFIED}\"${full}\","
+                fi
+                mkdir -p "$PATCH_DIR/$(dirname "$full")"
+                cp "$NEW_SERVER_DIR/$full" "$PATCH_DIR/$full"
+                STATIC_FORCED=$((STATIC_FORCED + 1))
+              done < <(jq -r '.. | strings | select(startswith("static/"))' "$NEW_SERVER_DIR/$manifest_file" | sort -u)
+            done
+            echo "[Delta] 强制包含 manifest 引用的 static 资源: ${STATIC_FORCED} 个"
+
             # 去掉尾部逗号，构造 JSON
             ADDED=$(echo "[$ADDED]" | sed 's/,]/]/')
             MODIFIED=$(echo "[$MODIFIED]" | sed 's/,]/]/')
