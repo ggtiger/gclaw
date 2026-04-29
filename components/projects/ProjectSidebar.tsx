@@ -21,7 +21,7 @@ interface ProjectSidebarProps {
   onDelete: (id: string) => void
   glass?: boolean
   userRole?: 'admin' | 'user'
-  onOpenSettings?: () => void
+  onOpenSettings?: (tab?: string) => void
   onCycleTheme?: () => void
   themeIcon?: React.ReactNode
   user?: { username: string; role?: string; avatarUrl?: string }
@@ -54,8 +54,8 @@ export function ProjectSidebar({
 
   const handleTauriUpdate = async () => {
     if (tauriCanAutoInstall) {
-      // 跳转到设置页安装
-      onOpenSettings?.()
+      // 跳转到设置页 → 关于 tab → 自动下载
+      onOpenSettings?.('about')
     } else if (tauriDownloadUrl) {
       // 打开浏览器下载
       try {
@@ -65,7 +65,7 @@ export function ProjectSidebar({
         window.open(tauriDownloadUrl, '_blank')
       }
     } else {
-      onOpenSettings?.()
+      onOpenSettings?.('about')
     }
   }
 
@@ -108,7 +108,7 @@ export function ProjectSidebar({
         </button>
         {/* 底部工具栏 - 收起态 */}
         <div className="mt-auto  border-gray-200 dark:border-white/[0.06] py-2 flex flex-col items-center gap-1">
-          <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
+          <button onClick={() => onOpenSettings?.()} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
             <Settings size={16} />
           </button>
           <button onClick={onCycleTheme} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="切换主题">
@@ -370,7 +370,7 @@ export function ProjectSidebar({
 
       {/* 底部工具栏 - 展开态 */}
       <div className="mt-auto  border-gray-200 dark:border-white/[0.06] px-3 py-2 flex items-center gap-1">
-        <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
+        <button onClick={() => onOpenSettings?.()} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
           <Settings size={16} />
         </button>
         <button onClick={onCycleTheme} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="切换主题">

@@ -31,7 +31,7 @@ import { WindowControls } from '@/components/ui/WindowControls'
 export function ChatLayout() {
   const project = useProject()
   const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | 'schedules' | null>(null)
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'preferences' | 'settings'>('preferences')
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'preferences' | 'settings' | 'about'>('preferences')
   const chat = useChat(project.currentId, () => { setSettingsInitialTab('settings'); setModalOpen('settings') })
   const activeProjectIds = useActiveProjects()
   const { theme, setTheme, backgroundImage, setBackgroundImage } = usePreferencesStore()
@@ -358,7 +358,7 @@ export function ChatLayout() {
             onDelete={project.deleteProject}
             glass={glass}
             userRole={user?.role}
-            onOpenSettings={() => setModalOpen('settings')}
+            onOpenSettings={(tab) => { if (tab) setSettingsInitialTab(tab as 'about'); setModalOpen('settings') }}
             onCycleTheme={cycleTheme}
             themeIcon={themeIcon()}
             user={user ? { username: user.username, role: user.role, avatarUrl: user.avatarUrl } : undefined}

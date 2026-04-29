@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, Download, RotateCw, Info, Zap, ExternalLink } from 'lucide-react'
 import { isTauri } from '@/lib/tauri'
 import {
@@ -8,6 +8,7 @@ import {
   checkServerDelta, downloadServerUpdate, applyServerUpdate, getCurrentServerVersion,
   type UpdateInfo, type UpdateProgress, type UpdateStatus, type ServerUpdateInfo,
 } from '@/lib/updater'
+import { useUpdateStore } from '@/lib/store/update-store'
 import appIcon from '@/public/icon.png'
 
 export function AboutPanel() {
@@ -22,6 +23,12 @@ export function AboutPanel() {
   const [serverDownloaded, setServerDownloaded] = useState<{ localPath: string; version: string } | null>(null)
   const [tauriDownloaded, setTauriDownloaded] = useState(false)
   const [isTauriEnv, setIsTauriEnv] = useState(false)
+  const autoDownloadTriggered = useRef(false)
+
+  // 从 update store 读取 Tauri 全量更新状态
+  const tauriUpdateAvailable = useUpdateStore(s => s.tauriUpdateAvailable)
+  const tauriUpdateVersion = useUpdateStore(s => s.tauriUpdateVersion)
+  const tauriCanAutoInstall = useUpdateStore(s => s.tauriCanAutoInstall)
 
   // 获取版本号
   useEffect(() => {
@@ -32,6 +39,30 @@ export function AboutPanel() {
     })
     getCurrentServerVersion().then(setServerVersion)
   }, [])
+
+  // 自动触发 Tauri 全量更新下载（从侧边栏跳转过来时）
+  useEffect(() => {
+    if (autoDownloadTriggered.current) return
+    if (!isTauri() || !tauriUpdateAvailable || !tauriCanAutoInstall || !tauriUpdateVersion) return
+
+    autoDownloadTriggered.current = true
+    setUpdateInfo({ version: tauriUpdateVersion, canAutoInstall: true })
+    setStatus('available')
+
+    // 自动开始下载
+    setStatus('downloading')
+    setErrorMsg('')
+    downloadUpdate((p) => setProgress(p))
+      .then(() => {
+        setTauriDownloaded(true)
+        setStatus('downloaded')
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
+        setErrorMsg(msg || '下载失败')
+        setStatus('error')
+      })
+  }, [tauriUpdateAvailable, tauriCanAutoInstall, tauriUpdateVersion])
 
   const handleCheck = useCallback(async () => {
     console.log('[AboutPanel] 👉 handleCheck 被调用, isTauri()=', isTauri(), 'window.__TAURI_INTERNALS__=', typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window)
