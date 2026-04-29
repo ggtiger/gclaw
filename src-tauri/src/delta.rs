@@ -229,18 +229,22 @@ pub async fn apply_server_patch(
         manifest.modified.len(), manifest.added.len(), manifest.deleted.len());
 
     // 3. 备份 server/ → server.bak/
+    //    Windows: 复制备份（不 rename，避免文件锁导致重命名失败）
+    //    macOS/Linux: rename 更高效
     println!("[Delta] 备份 server/ → server.bak/...");
     if backup_dir.exists() {
         if let Err(e) = fs::remove_dir_all(&backup_dir) {
             println!("[Delta] 警告: 删除旧备份失败: {}, 尝试继续...", e);
         }
     }
-    if let Err(e) = rename_or_copy_dir(&server_dir, &backup_dir) {
-        println!("[Delta] 备份 server 目录失败: {}", e);
-        let _ = fs::remove_dir_all(&tmp_dir);
-        // Windows: 备份失败，需要恢复 server 进程
-        #[cfg(target_os = "windows")]
-        {
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: 直接复制备份，不移动原目录（避免文件锁问题）
+        // 然后在 server/ 上就地应用补丁
+        if let Err(e) = copy_dir_recursive(&server_dir, &backup_dir) {
+            println!("[Delta] 备份 server 目录失败: {}", e);
+            let _ = fs::remove_dir_all(&tmp_dir);
             println!("[Delta] [Windows] 备份失败，恢复 server 进程...");
             let (child, port) = crate::start_server_process(&app);
             let state = app.state::<crate::ServerState>();
@@ -249,26 +253,26 @@ pub async fn apply_server_patch(
             }
             crate::wait_for_server(port);
             println!("[Delta] [Windows] Server 恢复完成: port {}", port);
+            return Err(format!("备份 server 目录失败: {}", e));
         }
-        return Err(format!("备份 server 目录失败: {}", e));
+        println!("[Delta] [Windows] 备份完成（复制模式），直接在 server/ 上应用补丁");
     }
-    // 复制备份回 server/（在备份基础上做增量修改）
-    if let Err(e) = copy_dir_recursive(&backup_dir, &server_dir) {
-        println!("[Delta] 复制备份回 server 失败: {}", e);
-        // 尝试回滚
-        let _ = rename_or_copy_dir(&backup_dir, &server_dir);
-        let _ = fs::remove_dir_all(&tmp_dir);
-        #[cfg(target_os = "windows")]
-        {
-            println!("[Delta] [Windows] 应用失败，恢复 server 进程...");
-            let (child, port) = crate::start_server_process(&app);
-            let state = app.state::<crate::ServerState>();
-            if let Ok(mut guard) = state.child.lock() {
-                *guard = Some(child);
-            }
-            crate::wait_for_server(port);
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // macOS/Linux: rename 更高效，POSIX 允许重命名占用中的目录
+        if let Err(e) = rename_or_copy_dir(&server_dir, &backup_dir) {
+            println!("[Delta] 备份 server 目录失败: {}", e);
+            let _ = fs::remove_dir_all(&tmp_dir);
+            return Err(format!("备份 server 目录失败: {}", e));
         }
-        return Err(format!("复制备份回 server 失败: {}", e));
+        // 复制备份回 server/（在备份基础上做增量修改）
+        if let Err(e) = copy_dir_recursive(&backup_dir, &server_dir) {
+            println!("[Delta] 复制备份回 server 失败: {}", e);
+            let _ = rename_or_copy_dir(&backup_dir, &server_dir);
+            let _ = fs::remove_dir_all(&tmp_dir);
+            return Err(format!("复制备份回 server 失败: {}", e));
+        }
     }
 
     // 4. 遍历 modified + added：从临时目录复制到 server/
@@ -301,10 +305,10 @@ pub async fn apply_server_patch(
     let new_version = read_server_version(&server_dir);
     if new_version != expected_version {
         println!("[Delta] 版本验证失败: 期望 {} 实际 {}, 回滚...", expected_version, new_version);
+        // 回滚: 删除当前 server/，从备份恢复
         let _ = fs::remove_dir_all(&server_dir);
         let _ = rename_or_copy_dir(&backup_dir, &server_dir);
         let _ = fs::remove_dir_all(&tmp_dir);
-        // Windows: 回滚后恢复 server 进程
         #[cfg(target_os = "windows")]
         {
             println!("[Delta] [Windows] 版本验证失败，恢复 server 进程...");
