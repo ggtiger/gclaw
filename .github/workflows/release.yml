@@ -114,7 +114,8 @@ jobs:
           set -e
           TAG="${GITHUB_REF_NAME}"
           NEW_VERSION=$(jq -r '.version' package.json)
-          echo "=== Generating file-level patches for ${TAG} (server ${NEW_VERSION}) ==="
+          TAURI_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          echo "=== Generating file-level patches for ${TAG} (tauri ${TAURI_VERSION}, server ${NEW_VERSION}) ==="
 
           # 上传并回验函数：上传后从 GitHub 重新下载校验完整性
           upload_and_verify() {
@@ -405,14 +406,15 @@ jobs:
           SERVER_FULL_CDN_URL="https://${{ secrets.QINIU_CDN_DOMAIN }}/gclaw/releases/${TAG}/${SERVER_TAR_NAME}"
           echo "Server full tar: size=${SERVER_FULL_SIZE}, hash=${SERVER_FULL_HASH}"
 
-          jq --arg sv "$NEW_VERSION" \
+          jq --arg tv "$TAURI_VERSION" \
+             --arg sv "$NEW_VERSION" \
              --argjson deltas "$DELTAS_JSON" \
              --arg sfu_url "$SERVER_FULL_GH_URL" \
              --arg sfu_cdn "$SERVER_FULL_CDN_URL" \
              --argjson sfu_size "$SERVER_FULL_SIZE" \
              --arg sfu_hash "sha256:${SERVER_FULL_HASH}" \
              '
-             .version = $sv |
+             .version = $tv |
              .serverVersion = $sv |
              .serverFullUrl = {
                url: $sfu_url,
