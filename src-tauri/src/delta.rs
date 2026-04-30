@@ -11,6 +11,11 @@ use std::process::Command;
 use tauri::Manager;
 use flate2::read::GzDecoder;
 
+/// 写入热更新日志（复用 startup_log，写入 gclaw-startup.log）
+fn delta_log(msg: &str) {
+    crate::startup_log(msg);
+}
+
 /// 重启 server 进程（热更新后调用，使新代码生效）
 #[tauri::command]
 pub async fn restart_server(app: tauri::AppHandle) -> Result<String, String> {
@@ -19,7 +24,7 @@ pub async fn restart_server(app: tauri::AppHandle) -> Result<String, String> {
     let old_port = state.port;
     if let Ok(mut guard) = state.child.lock() {
         if let Some(old) = guard.as_mut() {
-            println!("[Delta] Stopping old server process...");
+            delta_log("[Delta] Stopping old server process...");
             let _ = old.kill();
             let _ = old.wait();
         }
@@ -34,7 +39,7 @@ pub async fn restart_server(app: tauri::AppHandle) -> Result<String, String> {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    println!("[Delta] 端口已释放，等待 1s 确保 TIME_WAIT 清理...");
+    delta_log("[Delta] 端口已释放，等待 1s 确保 TIME_WAIT 清理...");
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     // 3. 启动新 server 进程（调用 lib.rs 的公共函数）
@@ -48,7 +53,7 @@ pub async fn restart_server(app: tauri::AppHandle) -> Result<String, String> {
     // 5. 等待新 server ready
     crate::wait_for_server(port);
 
-    println!("[Delta] Server restarted at port {}", port);
+    delta_log(&format!("[Delta] Server restarted at port {}", port));
     Ok(format!("http://127.0.0.1:{}", port))
 }
 
@@ -156,7 +161,7 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<(), String> {
         })?;
         count += 1;
     }
-    println!("[Delta] Rust 原生解压完成: {} 个文件", count);
+    delta_log(&format!("[Delta] Rust 原生解压完成: {} 个文件", count));
     Ok(())
 }
 
@@ -169,6 +174,8 @@ pub async fn apply_server_patch(
     will_relaunch: Option<bool>,
 ) -> Result<String, String> {
     let _will_relaunch = will_relaunch.unwrap_or(false);
+    let t_start = std::time::Instant::now();
+    delta_log("[Delta] ====== 开始热更新 ======");
     let resource_dir = app.path().resource_dir()
         .map_err(|e| format!("获取资源目录失败: {}", e))?;
 
@@ -190,8 +197,8 @@ pub async fn apply_server_patch(
             patch_size
         ));
     }
-    println!("[Delta] 补丁文件大小: {} bytes", patch_size);
-    println!("[Delta] 开始应用文件级补丁...");
+    delta_log(&format!("[Delta] 补丁文件大小: {} bytes", patch_size));
+    delta_log(&format!("[Delta] [+{:.1}s] 开始应用文件级补丁...", t_start.elapsed().as_secs_f64()));
 
     // Windows: 将步骤 0-9 包装为内部函数，统一 error recovery
     // 任何步骤失败都保证 server 进程恢复（避免白屏）
@@ -223,11 +230,11 @@ fn apply_server_patch_unix(
 
     // 2. 读取 manifest
     let manifest = read_patch_manifest(&tmp_dir)?;
-    println!("[Delta] manifest: modified={}, added={}, deleted={}",
-        manifest.modified.len(), manifest.added.len(), manifest.deleted.len());
+    delta_log(&format!("[Delta] manifest: modified={}, added={}, deleted={}",
+        manifest.modified.len(), manifest.added.len(), manifest.deleted.len()));
 
     // 3. 备份 server/ → server.bak/
-    println!("[Delta] 备份 server/ → server.bak/...");
+    delta_log("[Delta] 备份 server/ → server.bak/...");
     if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
     if let Err(e) = rename_or_copy_dir(server_dir, backup_dir) {
         let _ = fs::remove_dir_all(&tmp_dir);
@@ -248,7 +255,7 @@ fn apply_server_patch_unix(
     // 6. 验证版本
     let new_version = read_server_version(server_dir);
     if new_version != expected_version {
-        println!("[Delta] 版本验证失败: 期望 {} 实际 {}, 回滚...", expected_version, new_version);
+        delta_log(&format!("[Delta] 版本验证失败: 期望 {} 实际 {}, 回滚...", expected_version, new_version));
         let _ = fs::remove_dir_all(server_dir);
         let _ = rename_or_copy_dir(backup_dir, server_dir);
         let _ = fs::remove_dir_all(&tmp_dir);
@@ -257,7 +264,7 @@ fn apply_server_patch_unix(
 
     // 6.5 验证 build-manifest 引用的 static 资源都存在
     if let Err(e) = verify_build_manifest_assets(server_dir) {
-        println!("[Delta] 静态资源验证失败，回滚...");
+        delta_log("[Delta] 静态资源验证失败，回滚...");
         let _ = fs::remove_dir_all(server_dir);
         let _ = rename_or_copy_dir(backup_dir, server_dir);
         let _ = fs::remove_dir_all(&tmp_dir);
@@ -268,7 +275,7 @@ fn apply_server_patch_unix(
     let _ = fs::remove_dir_all(&tmp_dir);
     let _ = fs::remove_dir_all(backup_dir);
 
-    println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
+    delta_log(&format!("[Delta] 文件级补丁应用完成: server version = {}", new_version));
     Ok(new_version)
 }
 
@@ -284,30 +291,34 @@ async fn apply_server_patch_windows(
     will_relaunch: bool,
 ) -> Result<String, String> {
     // 0. 停掉 server 进程
+    let t0 = std::time::Instant::now();
     let state = app.state::<crate::ServerState>();
     if let Ok(mut guard) = state.child.lock() {
         if let Some(old) = guard.as_mut() {
-            println!("[Delta] [Windows] Stopping server before patch...");
+            delta_log("[Delta] [Windows] [T+0ms] Stopping server before patch...");
             let _ = old.kill();
             let _ = old.wait();
         }
         *guard = None;
     }
+    delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Server process killed", t0.elapsed().as_millis()));
     // 等待文件句柄释放（检测式，最多 2 秒）
     let port = state.port;
     for i in 0..20 {
         if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
-            if i > 0 { println!("[Delta] [Windows] 端口 {} 已释放 ({}ms)", port, i * 100); }
+            if i > 0 { delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] 端口 {} 已释放 ({}ms)", t0.elapsed().as_millis(), port, i * 100)); }
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     // 额外等待 300ms 确保文件句柄释放
     std::thread::sleep(std::time::Duration::from_millis(300));
-    println!("[Delta] [Windows] Server stopped, file handles released");
+    delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Server stopped, file handles released", t0.elapsed().as_millis()));
 
     // 执行补丁（任何失败都走 recovery）
+    let t_patch = std::time::Instant::now();
     let patch_result = do_windows_patch(patch, server_dir, backup_dir, resource_dir, expected_version);
+    delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] do_windows_patch 耗时: {:.1}s", t0.elapsed().as_millis(), t_patch.elapsed().as_secs_f64()));
 
     match patch_result {
         Ok(new_version) => {
@@ -315,25 +326,30 @@ async fn apply_server_patch_windows(
             // 如果即将 relaunch 整个应用，跳过 server 重启和健康检查（节省 15-20 秒）
             // relaunch 会重新启动整个 Tauri 进程，server 会在 main() 中重新启动
             if will_relaunch {
-                println!("[Delta] [Windows] 补丁成功 (version={}), 即将 relaunch, 跳过 server 重启", new_version);
+                delta_log(&format!("[Delta] [Windows] 补丁成功 (version={}), 即将 relaunch, 跳过 server 重启", new_version));
                 // 备份留着，下次启动时清理（以防 relaunch 失败可恢复）
                 return Ok(new_version);
             }
 
             // 非 relaunch 模式：重启 server + 健康检查
-            println!("[Delta] [Windows] Restarting server after patch...");
+            delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Restarting server after patch...", t0.elapsed().as_millis()));
+            let t_restart = std::time::Instant::now();
             let (child, port) = crate::start_server_process(app);
             let state = app.state::<crate::ServerState>();
             if let Ok(mut guard) = state.child.lock() {
                 *guard = Some(child);
             }
+            delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] start_server_process 完成 (port={}), 耗时: {:.1}s", t0.elapsed().as_millis(), port, t_restart.elapsed().as_secs_f64()));
+            let t_wait = std::time::Instant::now();
             crate::wait_for_server(port);
-            println!("[Delta] [Windows] Server restarted at port {}", port);
+            delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] wait_for_server 完成, 耗时: {:.1}s", t0.elapsed().as_millis(), t_wait.elapsed().as_secs_f64()));
 
             // HTTP 健康检查
+            let t_health = std::time::Instant::now();
             let healthy = check_server_health(port);
+            delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] 健康检查完成 (healthy={}), 耗时: {:.1}s", t0.elapsed().as_millis(), healthy, t_health.elapsed().as_secs_f64()));
             if !healthy {
-                println!("[Delta] [Windows] ✗ 服务器健康检查失败，恢复备份...");
+                delta_log("[Delta] [Windows] ✗ 服务器健康检查失败，恢复备份...");
                 if let Ok(mut guard) = state.child.lock() {
                     if let Some(child) = guard.as_mut() {
                         let _ = child.kill();
@@ -345,7 +361,7 @@ async fn apply_server_patch_windows(
                 if backup_dir.exists() {
                     let _ = fs::remove_dir_all(server_dir);
                     let _ = rename_or_copy_dir(backup_dir, server_dir);
-                    println!("[Delta] [Windows] 已从备份恢复 server 目录");
+                    delta_log("[Delta] [Windows] 已从备份恢复 server 目录");
                 }
                 let (child2, port2) = crate::start_server_process(app);
                 if let Ok(mut guard) = state.child.lock() {
@@ -364,34 +380,34 @@ async fn apply_server_patch_windows(
             let new_url = format!("http://127.0.0.1:{}", port);
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.navigate(new_url.parse().unwrap());
-                println!("[Delta] [Windows] Webview navigated to {}", new_url);
+                delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Webview navigated to {}", t0.elapsed().as_millis(), new_url));
             }
 
-            println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
+            delta_log(&format!("[Delta] [Windows] ====== 热更新完成 ======  总耗时: {:.1}s", t0.elapsed().as_secs_f64()));
             Ok(format!("{}|restarted:http://127.0.0.1:{}", new_version, port))
         }
         Err(err) => {
             // 补丁失败 — 从备份恢复 + 重启 server（关键：防止白屏）
-            println!("[Delta] [Windows] 补丁应用失败: {}, 正在恢复...", err);
+            delta_log(&format!("[Delta] [Windows] 补丁应用失败: {}, 正在恢复...", err));
             if backup_dir.exists() {
                 let _ = fs::remove_dir_all(server_dir);
                 let _ = rename_or_copy_dir(backup_dir, server_dir);
-                println!("[Delta] [Windows] 已从备份恢复 server 目录");
+                delta_log("[Delta] [Windows] 已从备份恢复 server 目录");
             }
             // 补丁失败必须重启 server（不管是否 relaunch）
-            println!("[Delta] [Windows] 恢复 server 进程...");
+            delta_log("[Delta] [Windows] 恢复 server 进程...");
             let (child, port) = crate::start_server_process(app);
             let state = app.state::<crate::ServerState>();
             if let Ok(mut guard) = state.child.lock() {
                 *guard = Some(child);
             }
             crate::wait_for_server(port);
-            println!("[Delta] [Windows] Server 恢复完成: port {}", port);
+            delta_log(&format!("[Delta] [Windows] Server 恢复完成: port {}", port));
 
             let new_url = format!("http://127.0.0.1:{}", port);
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.navigate(new_url.parse().unwrap());
-                println!("[Delta] [Windows] Webview navigated to {} (recovery)", new_url);
+                delta_log(&format!("[Delta] [Windows] Webview navigated to {} (recovery)", new_url));
             }
 
             Err(format!("补丁应用失败（已恢复server）: {}", err))
@@ -409,27 +425,32 @@ fn do_windows_patch(
     expected_version: &str,
 ) -> Result<String, String> {
     // 1. 解压
+    let t_extract = std::time::Instant::now();
     let tmp_dir = resource_dir.join("server-patch-tmp");
     if tmp_dir.exists() { let _ = fs::remove_dir_all(&tmp_dir); }
     extract_tar_gz(patch, &tmp_dir)?;
+    delta_log(&format!("[Delta] [Windows] 解压耗时: {:.1}s", t_extract.elapsed().as_secs_f64()));
 
     // 2. 读取 manifest
     let manifest = read_patch_manifest(&tmp_dir)?;
-    println!("[Delta] manifest: modified={}, added={}, deleted={}",
-        manifest.modified.len(), manifest.added.len(), manifest.deleted.len());
+    delta_log(&format!("[Delta] manifest: modified={}, added={}, deleted={}",
+        manifest.modified.len(), manifest.added.len(), manifest.deleted.len()));
 
     // 3. 复制备份（不 rename，避免文件锁）
-    println!("[Delta] 备份 server/ → server.bak/...");
+    let t_backup = std::time::Instant::now();
+    delta_log("[Delta] 备份 server/ → server.bak/...");
     if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
     copy_dir_recursive(server_dir, backup_dir)
         .map_err(|e| { let _ = fs::remove_dir_all(&tmp_dir); format!("备份失败: {}", e) })?;
-    println!("[Delta] [Windows] 备份完成（复制模式）");
+    delta_log(&format!("[Delta] [Windows] 备份完成（复制模式）, 耗时: {:.1}s", t_backup.elapsed().as_secs_f64()));
 
     // 4. 就地应用补丁文件
+    let t_apply = std::time::Instant::now();
     if let Err(e) = apply_patch_files(&manifest, &tmp_dir, server_dir) {
         let _ = fs::remove_dir_all(&tmp_dir);
         return Err(format!("应用补丁文件失败: {}", e));
     }
+    delta_log(&format!("[Delta] [Windows] 补丁文件应用耗时: {:.1}s", t_apply.elapsed().as_secs_f64()));
 
     // 5. 删除文件
     delete_patch_files(&manifest, server_dir);
@@ -453,7 +474,7 @@ fn do_windows_patch(
         let _ = fs::remove_dir_all(&tmp_dir);
         return Err(format!("补丁应用后 {} 个文件不存在于 server 目录: {:?}", missing_in_server.len(), missing_in_server));
     }
-    println!("[Delta] 补丁后文件完整性验证通过");
+    delta_log("[Delta] 补丁后文件完整性验证通过");
 
     // 6.6 验证 build-manifest 引用的 static 资源都存在
     verify_build_manifest_assets(server_dir)?;
@@ -485,7 +506,7 @@ fn apply_patch_files(manifest: &PatchManifest, tmp_dir: &Path, server_dir: &Path
         let src = tmp_dir.join(rel_path);
         let dest = server_dir.join(rel_path);
         if !src.exists() {
-            println!("[Delta] ✗ 补丁中缺失文件: {}", rel_path);
+            delta_log(&format!("[Delta] ✗ 补丁中缺失文件: {}", rel_path));
             missing.push(rel_path.to_string());
             continue;
         }
@@ -497,7 +518,7 @@ fn apply_patch_files(manifest: &PatchManifest, tmp_dir: &Path, server_dir: &Path
             .map_err(|e| format!("复制文件失败 {}: {}", rel_path, e))?;
         applied += 1;
     }
-    println!("[Delta] 文件应用结果: 成功={}, 缺失={}", applied, missing.len());
+    delta_log(&format!("[Delta] 文件应用结果: 成功={}, 缺失={}", applied, missing.len()));
     if !missing.is_empty() {
         return Err(format!("补丁中 {} 个文件缺失，拒绝应用: {:?}", missing.len(), missing));
     }
@@ -541,10 +562,10 @@ fn verify_build_manifest_assets(server_dir: &Path) -> Result<(), String> {
     }
 
     if missing_assets.is_empty() {
-        println!("[Delta] ✓ build-manifest 资源完整性验证通过");
+        delta_log("[Delta] ✓ build-manifest 资源完整性验证通过");
         Ok(())
     } else {
-        println!("[Delta] ✗ build-manifest 引用的 {} 个 static 资源缺失: {:?}", missing_assets.len(), missing_assets);
+        delta_log(&format!("[Delta] ✗ build-manifest 引用的 {} 个 static 资源缺失: {:?}", missing_assets.len(), missing_assets));
         Err(format!("build-manifest 引用的 {} 个 static 资源缺失（页面将无法加载）: {:?}", missing_assets.len(), missing_assets))
     }
 }
@@ -582,7 +603,7 @@ fn check_server_health(port: u16) -> bool {
     // 重试 2 次，每次间隔 1 秒
     // 读取超时 30 秒（Next.js 清缓存后冷启动首次请求可能很慢）
     for attempt in 1..=2 {
-        println!("[Delta] 健康检查尝试 {}/2: {}", attempt, url);
+        delta_log(&format!("[Delta] 健康检查尝试 {}/2: {}", attempt, url));
         match std::net::TcpStream::connect_timeout(
             &format!("127.0.0.1:{}", port).parse().unwrap(),
             std::time::Duration::from_secs(5),
@@ -602,20 +623,20 @@ fn check_server_health(port: u16) -> bool {
                                 resp_str.starts_with("HTTP/1.0 304") ||
                                 resp_str.starts_with("HTTP/1.1 304");
                     let has_content = resp_str.contains("<html") || resp_str.contains("<!DOCTYPE") || resp_str.len() > 500;
-                    println!("[Delta] 健康检查响应: status_ok={}, has_content={}, resp_len={}", is_ok, has_content, resp_str.len());
+                    delta_log(&format!("[Delta] 健康检查响应: status_ok={}, has_content={}, resp_len={}", is_ok, has_content, resp_str.len()));
                     if is_ok && has_content {
-                        println!("[Delta] ✓ 服务器健康检查通过");
+                        delta_log("[Delta] ✓ 服务器健康检查通过");
                         return true;
                     }
                 }
             }
             Err(e) => {
-                println!("[Delta] 健康检查连接失败: {}", e);
+                delta_log(&format!("[Delta] 健康检查连接失败: {}", e));
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    println!("[Delta] ✗ 服务器健康检查 2 次均失败");
+    delta_log("[Delta] ✗ 服务器健康检查 2 次均失败");
     false
 }
 
@@ -628,7 +649,7 @@ pub fn get_current_server_version(app: tauri::AppHandle) -> String {
     };
     let version = read_server_version(&resource_dir.join("server"));
     if version == "unknown" {
-        println!("[Delta] 警告: 无法读取 server 版本，server/package.json 可能不存在");
+        delta_log("[Delta] 警告: 无法读取 server 版本，server/package.json 可能不存在");
     }
     version
 }

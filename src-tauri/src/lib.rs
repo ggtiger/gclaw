@@ -130,7 +130,7 @@ fn init_startup_log(app: &tauri::AppHandle) {
 }
 
 /// 写入启动日志（append，带时间戳）
-fn startup_log(msg: &str) {
+pub fn startup_log(msg: &str) {
     println!("[GClaw] {}", msg);
     if let Some(path) = STARTUP_LOG_PATH.get() {
         let timestamp = std::time::SystemTime::now()
