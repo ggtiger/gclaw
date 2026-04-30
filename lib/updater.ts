@@ -63,6 +63,8 @@ export interface ServerUpdateInfo {
   serverFull: ServerFullPackage | null
   /** 更新类型标签 */
   label: string
+  /** 更新说明（来自 latest.json 的 notes 字段） */
+  notes?: string
 }
 
 // ============ 全量更新（Tauri updater） ============
@@ -297,6 +299,7 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
     }
     console.log(`[Delta] ✅ 发现 server 新版本: ${currentVersion} → ${serverVersion}`)
 
+    const notes = (latestJson.notes as string) || undefined
     const deltas = latestJson.serverDeltas as Record<string, ServerDelta[]> | undefined
 
     let matchedDelta: ServerDelta | null = null
@@ -329,18 +332,18 @@ export async function checkServerDelta(): Promise<ServerUpdateInfo | null> {
         : `~${(matchedDelta.size / 1024).toFixed(0)} KB`
       const label = `热更新 ${sizeLabel}`
       console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
-      return { version: serverVersion, delta: matchedDelta, allDeltas: allMatchedDeltas, serverFull: null, label }
+      return { version: serverVersion, delta: matchedDelta, allDeltas: allMatchedDeltas, serverFull: null, label, notes }
     } else {
       const serverFull = latestJson.serverFullUrl as ServerFullPackage | undefined
       if (serverFull) {
         const sizeMB = (serverFull.size / 1024 / 1024).toFixed(1)
         const label = `全量更新 ~${sizeMB} MB`
         console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
-        return { version: serverVersion, delta: null, serverFull, label }
+        return { version: serverVersion, delta: null, serverFull, label, notes }
       }
       const label = '全量更新 ~25 MB'
       console.log(`[Delta] 发现 server 更新: ${currentVersion} → ${serverVersion}, ${label}`)
-      return { version: serverVersion, delta: null, serverFull: null, label }
+      return { version: serverVersion, delta: null, serverFull: null, label, notes }
     }
   } catch (err) {
     console.error('[Delta] 检查 server delta 失败:', err)

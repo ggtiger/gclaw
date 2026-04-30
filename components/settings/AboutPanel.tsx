@@ -23,12 +23,25 @@ export function AboutPanel() {
   const [serverDownloaded, setServerDownloaded] = useState<{ localPath: string; version: string } | null>(null)
   const [tauriDownloaded, setTauriDownloaded] = useState(false)
   const [isTauriEnv, setIsTauriEnv] = useState(false)
+  const [patchStep, setPatchStep] = useState<{ step: number; total: number; message: string } | null>(null)
   const autoDownloadTriggered = useRef(false)
 
   // 从 update store 读取 Tauri 全量更新状态
   const tauriUpdateAvailable = useUpdateStore(s => s.tauriUpdateAvailable)
   const tauriUpdateVersion = useUpdateStore(s => s.tauriUpdateVersion)
   const tauriCanAutoInstall = useUpdateStore(s => s.tauriCanAutoInstall)
+
+  // 监听 Rust 端热更新进度事件
+  useEffect(() => {
+    if (!isTauri()) return
+    let unlisten: (() => void) | null = null
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<{ step: number; total: number; message: string }>('patch-progress', (event) => {
+        setPatchStep(event.payload)
+      }).then(fn => { unlisten = fn })
+    })
+    return () => { unlisten?.() }
+  }, [])
 
   // 获取版本号
   useEffect(() => {
@@ -181,6 +194,7 @@ export function AboutPanel() {
   const handleApplyAndRestart = useCallback(async () => {
     if (!serverDownloaded) return
     setStatus('downloading')
+    setPatchStep(null)
     setErrorMsg('')
     try {
       // restartServer=true: macOS 自动重启 server
@@ -190,10 +204,12 @@ export function AboutPanel() {
       setServerVersion(serverDownloaded.version)
       setServerUpdate(null)
       setServerDownloaded(null)
+      setPatchStep(null)
       setStatus('idle')
     } catch (err) {
       const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
       setErrorMsg(msg || '热更新失败')
+      setPatchStep(null)
       setStatus('error')
     }
   }, [serverDownloaded])
@@ -258,10 +274,16 @@ export function AboutPanel() {
                 检查中...
               </span>
             )}
-            {status === 'downloading' && (
+            {status === 'downloading' && !patchStep && (
               <span className="text-xs text-gray-400 flex items-center gap-1">
                 <Download size={12} className="animate-bounce" />
                 下载中 {progress.percent}%
+              </span>
+            )}
+            {status === 'downloading' && patchStep && (
+              <span className="text-xs text-blue-500 flex items-center gap-1">
+                <RotateCw size={12} className="animate-spin" />
+                更新中 ({patchStep.step}/{patchStep.total})
               </span>
             )}
             {status === 'downloaded' && (
@@ -316,8 +338,23 @@ export function AboutPanel() {
           </div>
         </div>
 
+        {/* 热更新进度步骤显示 */}
+        {status === 'downloading' && patchStep && (
+          <div className="mt-2">
+            <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${Math.round((patchStep.step / patchStep.total) * 100)}%` }}
+              />
+            </div>
+            <div className="mt-1.5 text-xs text-blue-600 dark:text-blue-400">
+              {patchStep.message}
+            </div>
+          </div>
+        )}
+
         {/* 下载进度条 */}
-        {status === 'downloading' && progress.total > 0 && (
+        {status === 'downloading' && !patchStep && progress.total > 0 && (
           <div className="mt-2">
             <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
               <div
@@ -342,10 +379,10 @@ export function AboutPanel() {
         )}
 
         {/* 更新说明 */}
-        {updateInfo?.body && (
+        {(updateInfo?.body || serverUpdate?.notes) && (
           <div className="mt-2 p-2 bg-gray-50 dark:bg-white/5 rounded-lg">
             <div className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-              {updateInfo.body}
+              {updateInfo?.body || serverUpdate?.notes}
             </div>
           </div>
         )}

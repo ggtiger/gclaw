@@ -399,6 +399,15 @@ jobs:
           SERVER_FULL_CDN_URL="https://${{ secrets.QINIU_CDN_DOMAIN }}/gclaw/releases/${LATEST_APP_TAG}/${SERVER_TAR_NAME}"
           echo "Server full tar: size=${SERVER_FULL_SIZE}, hash=${SERVER_FULL_HASH}"
 
+          # 生成更新说明（commit log）写入 latest.json 的 notes 字段
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^(v|server-v)[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges | head -20)
+          else
+            NOTES=$(git log --pretty=format:"- %s" --no-merges -10)
+          fi
+          [ -z "$NOTES" ] && NOTES="版本更新"
+
           # 下载现有 Release 的 latest.json 以保留 platforms 等 Tauri 更新信息
           mkdir -p dist/existing
           gh release download "$LATEST_APP_TAG" --repo "${{ github.repository }}" \
@@ -413,8 +422,10 @@ jobs:
                --arg sfu_cdn "$SERVER_FULL_CDN_URL" \
                --argjson sfu_size "$SERVER_FULL_SIZE" \
                --arg sfu_hash "sha256:${SERVER_FULL_HASH}" \
+               --arg notes "$NOTES" \
                '
                .serverVersion = $sv |
+               .notes = $notes |
                .serverFullUrl = {
                  url: $sfu_url,
                  cdnUrl: $sfu_cdn,
@@ -438,8 +449,10 @@ jobs:
                --arg sfu_cdn "$SERVER_FULL_CDN_URL" \
                --argjson sfu_size "$SERVER_FULL_SIZE" \
                --arg sfu_hash "sha256:${SERVER_FULL_HASH}" \
+               --arg notes "$NOTES" \
                '{
                  serverVersion: $sv,
+                 notes: $notes,
                  serverFullUrl: {
                    url: $sfu_url,
                    cdnUrl: $sfu_cdn,

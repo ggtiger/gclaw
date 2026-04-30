@@ -416,6 +416,15 @@ jobs:
           echo "--- Updating latest.json ---"
           gh release download "$TAG" --pattern "latest.json" --repo ggtiger/gclaw --clobber
 
+          # 生成更新说明（commit log）写入 latest.json 的 notes 字段
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s" --no-merges | head -20)
+          else
+            NOTES=$(git log --pretty=format:"- %s" --no-merges -10)
+          fi
+          [ -z "$NOTES" ] && NOTES="版本更新"
+
           # 计算 server 全量包的 hash 和 size，用于 serverFullUrl
           SERVER_FULL_SIZE=$(stat -c%s "$TMPDIR/${SERVER_TAR_NAME}" 2>/dev/null || stat -f%z "$TMPDIR/${SERVER_TAR_NAME}")
           SERVER_FULL_HASH=$(sha256sum "$TMPDIR/${SERVER_TAR_NAME}" | cut -d' ' -f1)
@@ -431,9 +440,11 @@ jobs:
              --arg sfu_cdn "$SERVER_FULL_CDN_URL" \
              --argjson sfu_size "$SERVER_FULL_SIZE" \
              --arg sfu_hash "sha256:${SERVER_FULL_HASH}" \
+             --arg notes "$NOTES" \
              '
              .version = $tv |
              .serverVersion = $sv |
+             .notes = $notes |
              .serverFullUrl = {
                url: $sfu_url,
                cdnUrl: $sfu_cdn,

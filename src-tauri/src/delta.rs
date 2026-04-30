@@ -9,11 +9,23 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::Manager;
+use tauri::Emitter;
 use flate2::read::GzDecoder;
 
 /// 写入热更新日志（复用 startup_log，写入 gclaw-startup.log）
 fn delta_log(msg: &str) {
     crate::startup_log(msg);
+}
+
+/// 发送热更新进度事件到前端
+fn emit_patch_progress(app: &tauri::AppHandle, step: u8, total: u8, message: &str) {
+    let payload = serde_json::json!({
+        "step": step,
+        "total": total,
+        "message": message,
+    });
+    let _ = app.emit("patch-progress", payload);
+    delta_log(&format!("[Delta] 进度 [{}/{}] {}", step, total, message));
 }
 
 /// 重启 server 进程（热更新后调用，使新代码生效）
@@ -176,6 +188,7 @@ pub async fn apply_server_patch(
     let _will_relaunch = will_relaunch.unwrap_or(false);
     let t_start = std::time::Instant::now();
     delta_log("[Delta] ====== 开始热更新 ======");
+    emit_patch_progress(&app, 0, 7, "准备开始热更新...");
     let resource_dir = app.path().resource_dir()
         .map_err(|e| format!("获取资源目录失败: {}", e))?;
 
@@ -292,6 +305,7 @@ async fn apply_server_patch_windows(
 ) -> Result<String, String> {
     // 0. 停掉 server 进程
     let t0 = std::time::Instant::now();
+    emit_patch_progress(app, 1, 7, "停止服务器...");
     let state = app.state::<crate::ServerState>();
     if let Ok(mut guard) = state.child.lock() {
         if let Some(old) = guard.as_mut() {
@@ -316,8 +330,9 @@ async fn apply_server_patch_windows(
     delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Server stopped, file handles released", t0.elapsed().as_millis()));
 
     // 执行补丁（任何失败都走 recovery）
+    emit_patch_progress(app, 2, 7, "解压并应用补丁文件...");
     let t_patch = std::time::Instant::now();
-    let patch_result = do_windows_patch(patch, server_dir, backup_dir, resource_dir, expected_version);
+    let patch_result = do_windows_patch(app, patch, server_dir, backup_dir, resource_dir, expected_version);
     delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] do_windows_patch 耗时: {:.1}s", t0.elapsed().as_millis(), t_patch.elapsed().as_secs_f64()));
 
     match patch_result {
@@ -332,6 +347,7 @@ async fn apply_server_patch_windows(
             }
 
             // 非 relaunch 模式：重启 server + 健康检查
+            emit_patch_progress(app, 5, 7, "重启服务器...");
             delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Restarting server after patch...", t0.elapsed().as_millis()));
             let t_restart = std::time::Instant::now();
             let (child, port) = crate::start_server_process(app);
@@ -345,6 +361,7 @@ async fn apply_server_patch_windows(
             delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] wait_for_server 完成, 耗时: {:.1}s", t0.elapsed().as_millis(), t_wait.elapsed().as_secs_f64()));
 
             // HTTP 健康检查
+            emit_patch_progress(app, 6, 7, "验证服务器状态...");
             let t_health = std::time::Instant::now();
             let healthy = check_server_health(port);
             delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] 健康检查完成 (healthy={}), 耗时: {:.1}s", t0.elapsed().as_millis(), healthy, t_health.elapsed().as_secs_f64()));
@@ -383,6 +400,7 @@ async fn apply_server_patch_windows(
                 delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Webview navigated to {}", t0.elapsed().as_millis(), new_url));
             }
 
+            emit_patch_progress(app, 7, 7, "热更新完成！");
             delta_log(&format!("[Delta] [Windows] ====== 热更新完成 ======  总耗时: {:.1}s", t0.elapsed().as_secs_f64()));
             Ok(format!("{}|restarted:http://127.0.0.1:{}", new_version, port))
         }
@@ -418,6 +436,7 @@ async fn apply_server_patch_windows(
 /// Windows: 执行实际补丁操作（纯文件操作，不涉及进程管理）
 #[cfg(target_os = "windows")]
 fn do_windows_patch(
+    app: &tauri::AppHandle,
     patch: &Path,
     server_dir: &Path,
     backup_dir: &Path,
@@ -437,6 +456,7 @@ fn do_windows_patch(
         manifest.modified.len(), manifest.added.len(), manifest.deleted.len()));
 
     // 3. 复制备份（不 rename，避免文件锁）
+    emit_patch_progress(app, 3, 7, "备份当前服务器文件...");
     let t_backup = std::time::Instant::now();
     delta_log("[Delta] 备份 server/ → server.bak/...");
     if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
@@ -463,6 +483,7 @@ fn do_windows_patch(
     }
 
     // 6.5 验证所有 modified+added 文件确实存在于 server 目录
+    emit_patch_progress(app, 4, 7, "验证文件完整性...");
     let mut missing_in_server = Vec::new();
     for rel_path in manifest.modified.iter().chain(manifest.added.iter()) {
         let dest = server_dir.join(rel_path);
