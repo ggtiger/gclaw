@@ -267,7 +267,6 @@ fn apply_server_patch_unix(
     // 7. 清理
     let _ = fs::remove_dir_all(&tmp_dir);
     let _ = fs::remove_dir_all(backup_dir);
-    clean_next_cache(server_dir);
 
     println!("[Delta] 文件级补丁应用完成: server version = {}", new_version);
     Ok(new_version)
@@ -312,7 +311,6 @@ async fn apply_server_patch_windows(
 
     match patch_result {
         Ok(new_version) => {
-            clean_next_cache(server_dir);
 
             // 如果即将 relaunch 整个应用，跳过 server 重启和健康检查（节省 15-20 秒）
             // relaunch 会重新启动整个 Tauri 进程，server 会在 main() 中重新启动
@@ -516,14 +514,7 @@ fn delete_patch_files(manifest: &PatchManifest, server_dir: &Path) {
     }
 }
 
-/// 清理 .next 编译缓存
-fn clean_next_cache(server_dir: &Path) {
-    let cache_dir = server_dir.join(".next").join("cache");
-    if cache_dir.exists() {
-        let _ = fs::remove_dir_all(&cache_dir);
-        println!("[Delta] Cleaned .next/cache directory");
-    }
-}
+
 
 /// 验证 build-manifest.json 引用的所有 static 资源在 server 目录中存在
 fn verify_build_manifest_assets(server_dir: &Path) -> Result<(), String> {
@@ -588,9 +579,10 @@ fn collect_manifest_assets(value: &serde_json::Value, server_dir: &Path, prefix:
 #[cfg(target_os = "windows")]
 fn check_server_health(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{}/", port);
-    // 重试 3 次，每次间隔 2 秒
-    for attempt in 1..=3 {
-        println!("[Delta] 健康检查尝试 {}/3: {}", attempt, url);
+    // 重试 2 次，每次间隔 1 秒
+    // 读取超时 30 秒（Next.js 清缓存后冷启动首次请求可能很慢）
+    for attempt in 1..=2 {
+        println!("[Delta] 健康检查尝试 {}/2: {}", attempt, url);
         match std::net::TcpStream::connect_timeout(
             &format!("127.0.0.1:{}", port).parse().unwrap(),
             std::time::Duration::from_secs(5),
@@ -599,18 +591,16 @@ fn check_server_health(port: u16) -> bool {
                 use std::io::{Write, Read};
                 let request = format!("GET / HTTP/1.0\r\nHost: 127.0.0.1:{}\r\n\r\n", port);
                 if stream.write_all(request.as_bytes()).is_ok() {
-                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
                     let mut response = Vec::new();
                     let _ = stream.read_to_end(&mut response);
                     let resp_str = String::from_utf8_lossy(&response);
-                    // 检查 HTTP 状态码是否正常（200/302/304 都算正常）
                     let is_ok = resp_str.starts_with("HTTP/1.0 200") ||
                                 resp_str.starts_with("HTTP/1.1 200") ||
                                 resp_str.starts_with("HTTP/1.0 302") ||
                                 resp_str.starts_with("HTTP/1.1 302") ||
                                 resp_str.starts_with("HTTP/1.0 304") ||
                                 resp_str.starts_with("HTTP/1.1 304");
-                    // 额外检查响应体是否包含 HTML 内容
                     let has_content = resp_str.contains("<html") || resp_str.contains("<!DOCTYPE") || resp_str.len() > 500;
                     println!("[Delta] 健康检查响应: status_ok={}, has_content={}, resp_len={}", is_ok, has_content, resp_str.len());
                     if is_ok && has_content {
@@ -623,9 +613,9 @@ fn check_server_health(port: u16) -> bool {
                 println!("[Delta] 健康检查连接失败: {}", e);
             }
         }
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    println!("[Delta] ✗ 服务器健康检查 3 次均失败");
+    println!("[Delta] ✗ 服务器健康检查 2 次均失败");
     false
 }
 

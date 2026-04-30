@@ -176,23 +176,21 @@ export function AboutPanel() {
     }
   }, [serverUpdate])
 
-  // 第二步：用户确认后，应用补丁并重启
+  // 第二步：用户确认后，应用补丁并重启 server（不 relaunch 整个应用）
+  // server 热更新只改 Next.js 文件，Rust 端处理：停 server → 补丁 → 启 server → 导航 webview
   const handleApplyAndRestart = useCallback(async () => {
     if (!serverDownloaded) return
     setStatus('downloading')
     setErrorMsg('')
     try {
-      await applyServerUpdate(serverDownloaded.localPath, serverDownloaded.version, false, true)
+      // restartServer=true: macOS 自动重启 server
+      // Windows: Rust 端已自动重启 server 并导航 webview
+      // 不调用 relaunch()：热更新不需要重启整个 Tauri 应用，且会与 single-instance 插件冲突
+      await applyServerUpdate(serverDownloaded.localPath, serverDownloaded.version, true)
       setServerVersion(serverDownloaded.version)
       setServerUpdate(null)
       setServerDownloaded(null)
-      setStatus('downloaded')
-      try {
-        const { relaunch } = await import('@tauri-apps/plugin-process')
-        await relaunch()
-      } catch {
-        setServerNeedsRestart(true)
-      }
+      setStatus('idle')
     } catch (err) {
       const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err))
       setErrorMsg(msg || '热更新失败')
