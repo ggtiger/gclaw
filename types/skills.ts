@@ -129,6 +129,14 @@ export interface ProjectInfo {
   updatedAt: string
 }
 
+// ── 文件夹 ──
+export interface Folder {
+  id: string
+  name: string
+  sortOrder: number
+  createdAt: string
+}
+
 // ── 智能体 ──
 export interface AgentInfo {
   name: string

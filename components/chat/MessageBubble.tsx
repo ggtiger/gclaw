@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useCallback } from 'react'
-import { User, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
+import { User, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, Check, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
 import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
 import { CornerLeftUp } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -78,9 +78,12 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
   }, [projectId, message.id, message.content, onMessageUpdate])
 
   // 复制消息内容
+  const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(message.content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
     } catch (err) {
       console.error('Copy failed:', err)
     }
@@ -243,9 +246,9 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
               <button
                 onClick={handleCopy}
                 className="p-1 rounded-md cursor-pointer transition-colors text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10"
-                title="复制"
+                title={copied ? '已复制' : '复制'}
               >
-                <Copy size={14} />
+                {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
               </button>
             </div>
 

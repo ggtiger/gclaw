@@ -14,15 +14,10 @@ import { extractWithLLM } from '@/lib/memory/llm-extractor'
 import { writeEpisodic } from '@/lib/memory/episodic-writer'
 import { runConsolidation } from '@/lib/memory/consolidation'
 
-// 获取全局设置中的用户ID
-function getUserId(): string {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const globalSettings = require('@/lib/store/settings').getGlobalSettings()
-    return globalSettings.userId || 'default'
-  } catch {
-    return 'default'
-  }
+// 记忆写入使用 userId（从认证中获取，无认证时用 default）
+function getUserId(request: NextRequest): string {
+  const id = request.headers.get('x-user-id')
+  return id || 'default'
 }
 
 /**
@@ -90,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. 反馈驱动的记忆记录
-    const userId = getUserId()
+    const userId = getUserId(request)
     const isLike = feedback === 'like'
 
     // 获取用户原始消息和 AI 回复

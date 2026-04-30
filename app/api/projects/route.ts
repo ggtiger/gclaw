@@ -9,6 +9,9 @@ import {
   ensureDefaultProject,
   enrichWithOwnerName,
 } from '@/lib/store/projects'
+import { getUserFolders, getProjectFolderMap } from '@/lib/store/folders'
+import { getAllUsers } from '@/lib/store/users'
+import { getProjectSettings } from '@/lib/store/settings'
 import { addAuditLog } from '@/lib/store/audit-log'
 import { getAuthUser } from '@/lib/auth/helpers'
 import { getDefaultSkills, getEnabledSkills, setEnabledSkills } from '@/lib/store/skills'
@@ -75,7 +78,30 @@ export async function GET(request: NextRequest) {
     projects = enrichWithOwnerName(projects)
   }
 
-  return Response.json({ projects })
+  // 返回当前用户的文件夹和项目映射
+  const folders = user ? getUserFolders(user.userId) : []
+  const projectFolderMap = user ? getProjectFolderMap(user.userId) : {}
+
+  // admin 视角：附带 ownerMeta（头像、角色）用于侧边栏多用户分组显示
+  let ownerMeta: Record<string, { username: string; role: string; avatarUrl?: string }> = {}
+  if (user?.role === 'admin') {
+    const allUsers = getAllUsers()
+    const ownerIds = new Set(projects.map(p => p.ownerId).filter(Boolean))
+    allUsers.forEach(u => {
+      if (ownerIds.has(u.id)) {
+        ownerMeta[u.id] = { username: u.username, role: u.role, avatarUrl: u.avatarUrl }
+      }
+    })
+  }
+
+  // 批量读取项目助理图标信息，用于侧边栏渲染
+  const projectAssistantIcons: Record<string, { assistantIcon?: string; assistantAvatar?: string }> = {}
+  projects.forEach(p => {
+    const s = getProjectSettings(p.id)
+    projectAssistantIcons[p.id] = { assistantIcon: s.assistantIcon, assistantAvatar: s.assistantAvatar }
+  })
+
+  return Response.json({ projects, folders, projectFolderMap, ownerMeta, projectAssistantIcons })
 }
 
 export async function POST(request: NextRequest) {

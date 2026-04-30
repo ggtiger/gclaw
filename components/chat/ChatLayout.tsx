@@ -368,6 +368,15 @@ export function ChatLayout() {
               if (id !== project.currentId) project.switchProject(id)
               setModalOpen('projectSettings')
             }}
+            folders={project.folders}
+            projectFolderMap={project.projectFolderMap}
+            ownerMeta={project.ownerMeta}
+            projectAssistantIcons={project.projectAssistantIcons}
+            currentUser={user ? { id: user.id, username: user.username } : undefined}
+            onCreateFolder={project.createFolder}
+            onRenameFolder={project.renameFolder}
+            onDeleteFolder={project.deleteFolder}
+            onMoveProjectToFolder={project.moveProjectToFolder}
           />
         </div>
         )}
@@ -591,6 +600,13 @@ export function ChatLayout() {
                 setModalOpen('projectSettings')
                 setSidebarOpen(false)
               }}
+              folders={project.folders}
+              projectFolderMap={project.projectFolderMap}
+              currentUser={user ? { id: user.id, username: user.username } : undefined}
+              onCreateFolder={project.createFolder}
+              onRenameFolder={project.renameFolder}
+              onDeleteFolder={project.deleteFolder}
+              onMoveProjectToFolder={project.moveProjectToFolder}
             />
           </div>
         </div>
@@ -628,7 +644,7 @@ export function ChatLayout() {
         />
       </Modal>
       <Modal open={modalOpen === 'projectSettings'} onClose={() => setModalOpen(null)} title="项目设置">
-        <ProjectSettingsPanel projectId={project.currentId} onClose={() => setModalOpen(null)} />
+        <ProjectSettingsPanel projectId={project.currentId} onClose={() => { setModalOpen(null); project.refreshProjects() }} />
       </Modal>
       <Modal open={modalOpen === 'account'} onClose={() => setModalOpen(null)} title="账户">
         <AccountPanel />
