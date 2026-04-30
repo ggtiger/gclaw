@@ -401,12 +401,17 @@ jobs:
 
           # 生成更新说明（commit log）写入 latest.json 的 notes 字段
           PREV_TAG=$(git tag --sort=-creatordate | grep -E '^(v|server-v)[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1)
+          echo "PREV_TAG=${PREV_TAG}, TAG=${TAG}, HEAD=$(git rev-parse --short HEAD)"
           if [ -n "$PREV_TAG" ]; then
-            NOTES=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges | head -20)
-          else
-            NOTES=$(git log --pretty=format:"- %s" --no-merges -10)
+            echo "Generating notes from ${PREV_TAG}..HEAD"
+            NOTES=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges 2>/dev/null | head -20 || true)
+          fi
+          if [ -z "$NOTES" ]; then
+            echo "No commits between tags, using current commit message"
+            NOTES=$(git log -1 --pretty=format:"- %s" 2>/dev/null || true)
           fi
           [ -z "$NOTES" ] && NOTES="版本更新"
+          echo "NOTES: $NOTES"
 
           # 下载现有 Release 的 latest.json 以保留 platforms 等 Tauri 更新信息
           mkdir -p dist/existing

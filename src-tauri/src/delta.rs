@@ -241,6 +241,15 @@ fn apply_server_patch_unix(
     if tmp_dir.exists() { let _ = fs::remove_dir_all(&tmp_dir); }
     extract_tar_gz(patch, &tmp_dir)?;
 
+    // 检测是否为全量包（无 __manifest.json）
+    let manifest_path = tmp_dir.join("__manifest.json");
+    if !manifest_path.exists() {
+        delta_log("[Delta] 未发现 __manifest.json，走全量替换流程");
+        let result = apply_full_replace(&tmp_dir, server_dir, backup_dir, expected_version);
+        if result.is_ok() { let _ = fs::remove_dir_all(backup_dir); }
+        return result;
+    }
+
     // 2. 读取 manifest
     let manifest = read_patch_manifest(&tmp_dir)?;
     delta_log(&format!("[Delta] manifest: modified={}, added={}, deleted={}",
@@ -450,6 +459,14 @@ fn do_windows_patch(
     extract_tar_gz(patch, &tmp_dir)?;
     delta_log(&format!("[Delta] [Windows] 解压耗时: {:.1}s", t_extract.elapsed().as_secs_f64()));
 
+    // 检测是否为全量包（无 __manifest.json）
+    let manifest_path = tmp_dir.join("__manifest.json");
+    if !manifest_path.exists() {
+        delta_log("[Delta] [Windows] 未发现 __manifest.json，走全量替换流程");
+        emit_patch_progress(app, 3, 7, "替换服务器文件...");
+        return apply_full_replace(&tmp_dir, server_dir, backup_dir, expected_version);
+    }
+
     // 2. 读取 manifest
     let manifest = read_patch_manifest(&tmp_dir)?;
     delta_log(&format!("[Delta] manifest: modified={}, added={}, deleted={}",
@@ -502,6 +519,52 @@ fn do_windows_patch(
 
     // 7. 清理临时目录（备份留给外层健康检查后删除）
     let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(new_version)
+}
+
+/// 全量替换：解压内容直接替换整个 server 目录
+fn apply_full_replace(
+    tmp_dir: &Path,
+    server_dir: &Path,
+    backup_dir: &Path,
+    expected_version: &str,
+) -> Result<String, String> {
+    delta_log("[Delta] 全量替换: 备份 server/ → server.bak/...");
+    if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
+    if let Err(e) = rename_or_copy_dir(server_dir, backup_dir) {
+        let _ = fs::remove_dir_all(tmp_dir);
+        return Err(format!("备份 server 目录失败: {}", e));
+    }
+
+    // 将解压的全量包移动为新的 server 目录
+    delta_log("[Delta] 全量替换: 应用新版本...");
+    if let Err(e) = rename_or_copy_dir(tmp_dir, server_dir) {
+        // 失败则回滚
+        delta_log(&format!("[Delta] 全量替换失败: {}，回滚...", e));
+        let _ = rename_or_copy_dir(backup_dir, server_dir);
+        return Err(format!("全量替换 server 目录失败: {}", e));
+    }
+
+    // 验证版本
+    let new_version = read_server_version(server_dir);
+    if new_version != expected_version {
+        delta_log(&format!("[Delta] 全量替换版本验证失败: 期望 {} 实际 {}，回滚...", expected_version, new_version));
+        let _ = fs::remove_dir_all(server_dir);
+        let _ = rename_or_copy_dir(backup_dir, server_dir);
+        return Err(format!("版本验证失败: 期望 {} 实际 {}", expected_version, new_version));
+    }
+
+    // 验证 build-manifest 引用的 static 资源都存在
+    if let Err(e) = verify_build_manifest_assets(server_dir) {
+        delta_log("[Delta] 全量替换静态资源验证失败，回滚...");
+        let _ = fs::remove_dir_all(server_dir);
+        let _ = rename_or_copy_dir(backup_dir, server_dir);
+        return Err(e);
+    }
+
+    // 清理临时目录（备份留给调用者决定何时清理）
+    let _ = fs::remove_dir_all(tmp_dir);
+    delta_log(&format!("[Delta] 全量替换完成: server version = {}", new_version));
     Ok(new_version)
 }
 

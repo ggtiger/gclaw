@@ -161,22 +161,18 @@ export function AboutPanel() {
     }
   }, [])
 
-  // 第一步：只下载增量包
+  // 第一步：下载 server 更新包（增量或全量）
   const handleServerDownload = useCallback(async () => {
-    if (!serverUpdate?.delta) return
+    if (!serverUpdate) return
+    if (!serverUpdate.delta && !serverUpdate.serverFull) return
     setStatus('downloading')
     setErrorMsg('')
     try {
-      const info: ServerUpdateInfo = {
-        version: serverUpdate.version,
-        delta: serverUpdate.delta,
-        serverFull: null,
-        label: '热更新',
-      }
-      const result = await downloadServerUpdate(info, (percent) => {
+      const totalSize = serverUpdate.delta?.size || serverUpdate.serverFull?.size || 0
+      const result = await downloadServerUpdate(serverUpdate, (percent) => {
         setProgress({
-          downloaded: Math.floor((serverUpdate.delta!.size || 0) * percent / 100),
-          total: serverUpdate.delta!.size || 0,
+          downloaded: Math.floor(totalSize * percent / 100),
+          total: totalSize,
           percent,
         })
       })
@@ -237,6 +233,7 @@ export function AboutPanel() {
   if (!isTauriEnv) return null
 
   const hasServerDelta = serverUpdate?.delta != null
+  const hasServerFull = serverUpdate?.serverFull != null
   const hasTauriUpdate = updateInfo != null
   const canAutoInstall = updateInfo?.canAutoInstall !== false
 
@@ -294,8 +291,8 @@ export function AboutPanel() {
             )}
             {status === 'available' && (
               <>
-                {/* Server 热更新按钮 */}
-                {hasServerDelta && (
+                {/* Server 热更新/全量更新按钮 */}
+                {(hasServerDelta || hasServerFull) && (
                   <button
                     onClick={handleServerDownload}
                     className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer"
@@ -432,12 +429,12 @@ export function AboutPanel() {
           </div>
         )}
 
-        {/* Server 热更新提示 */}
-        {status === 'available' && serverUpdate && !hasServerDelta && (
+        {/* Server 更新提示：无增量包也无全量包时 */}
+        {status === 'available' && serverUpdate && !hasServerDelta && !hasServerFull && (
           <div className="mt-2 p-2 bg-gray-50 dark:bg-white/5 rounded-lg">
             <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
               <Info size={12} />
-              Server 有新版本（{serverUpdate.version}），但无可用增量包，请通过全量更新获取。
+              Server 有新版本（{serverUpdate.version}），但无可用更新包，请等待新版本发布。
             </div>
           </div>
         )}
