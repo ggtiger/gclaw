@@ -637,7 +637,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           LATEST_APP_TAG="${{ steps.app_release.outputs.app_tag }}"
           GH_BASE="https://github.com/${{ github.repository }}/releases/download/${LATEST_APP_TAG}"
-          CDN_BASE="https://o09u11p5v.qnssl.com/gclaw/releases/${VERSION}"
+          CDN_BASE="http://o09u11p5v.qnssl.com/gclaw/releases/${VERSION}"
 
           if [ -f "dist/qiniu/latest.json" ]; then
             jq --arg gb "$GH_BASE" --arg cdn "$CDN_BASE" '
@@ -714,7 +714,7 @@ jobs:
         if: success()
         run: |
           echo "=== Refreshing CDN cache for latest.json ==="
-          echo "https://o09u11p5v.qnssl.com/gclaw/latest.json" > /tmp/cdn_refresh_urls.txt
+          echo "http://o09u11p5v.qnssl.com/gclaw/latest.json" > /tmp/cdn_refresh_urls.txt
           qshell cdnrefresh --urls -i /tmp/cdn_refresh_urls.txt || echo "WARNING: CDN refresh failed, cache will expire naturally"
           echo "CDN cache refresh requested"
 

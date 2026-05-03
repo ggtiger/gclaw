@@ -257,7 +257,7 @@ function delay(ms: number): Promise<void> {
  */
 async function fetchLatestJsonWithRetry(maxRetries = 2): Promise<Record<string, unknown> | null> {
   const endpoints: Array<() => Promise<Record<string, unknown> | null>> = [
-    () => fetchJsonViaRust(`https://o09u11p5v.qnssl.com/gclaw/latest.json?t=${Date.now()}`),
+    () => fetchJsonViaRust(`http://o09u11p5v.qnssl.com/gclaw/latest.json?t=${Date.now()}`),
     () => fetchJsonViaRust('https://github.com/ggtiger/gclaw/releases/latest/download/latest.json'),
   ]
   for (const fetchFn of endpoints) {
