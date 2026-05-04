@@ -11,6 +11,7 @@ interface CommandParamsDialogProps {
   onClose: () => void
   onSubmit: (commandId: string, params: Record<string, unknown>, cwd?: string) => void
   defaultCwd?: string
+  prefillParams?: Record<string, unknown>
 }
 
 function renderField(
@@ -98,6 +99,7 @@ export const CommandParamsDialog = memo(function CommandParamsDialog({
   onClose,
   onSubmit,
   defaultCwd = '',
+  prefillParams,
 }: CommandParamsDialogProps) {
   const [params, setParams] = useState<Record<string, unknown>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -117,10 +119,11 @@ export const CommandParamsDialog = memo(function CommandParamsDialog({
         defaults[p.name] = p.default
       }
     }
-    setParams(defaults)
+    // 合并预填参数（优先级高于 default）
+    setParams({ ...defaults, ...(prefillParams || {}) })
     setErrors({})
     setCwd(defaultCwd)
-  }, [open, command.id, command.parameters, defaultCwd])
+  }, [open, command.id, command.parameters, defaultCwd, prefillParams])
 
   if (!open || !command.parameters || command.parameters.length === 0) return null
 

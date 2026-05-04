@@ -264,6 +264,18 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
             </div>
           </div>
         </div>
+        <div className="mt-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.autoExecute || false}
+              onChange={e => updateForm({ autoExecute: e.target.checked })}
+              className="cursor-pointer w-4 h-4 accent-[var(--color-primary)]"
+            />
+            <span className="text-sm" style={{ color: 'var(--color-text)' }}>自动执行</span>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>开启后工作流每步完成自动继续，无需确认</span>
+          </label>
+        </div>
       </Section>
 
       {/* B. 参数定义 */}

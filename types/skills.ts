@@ -82,6 +82,8 @@ export interface ProjectSettings {
   assistantIcon?: string
   /** AI 助理自定义头像文件名 */
   assistantAvatar?: string
+  /** 项目级环境变量 {KEY: value}，命令执行时自动加载 */
+  envVariables?: Record<string, string>
 }
 
 export const DEFAULT_PROJECT: ProjectSettings = {

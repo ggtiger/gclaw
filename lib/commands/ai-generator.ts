@@ -96,6 +96,7 @@ interface CommandDefinition {
   category?: 'development' | 'analysis' | 'writing' | 'automation' | 'other'
   scope: 'global' | 'project'
   enabled: boolean
+  autoExecute?: boolean // 自动执行模式，跳过步骤间确认，适合无需人工干预的流水线任务
   parameters?: { name: string; type: 'string'|'number'|'boolean'|'enum'|'file'; required: boolean; default?: any; description: string; values?: string[]; placeholder?: string }[]
   steps: CommandStep[] // 至少1个
   output?: { format?: 'markdown'|'json'|'text'; saveTo?: string }
@@ -120,7 +121,8 @@ interface CommandDefinition {
 - 禁止危险命令(rm -rf, sudo等)
 - prompt步骤的systemPrompt末尾必须包含："【输出规则】\\n- 当你使用工具将内容写入文件后，不要在对话中重复输出文件内容\\n- 只需简洁确认操作结果，保持输出简洁"
 - 只输出一个合法JSON对象，不包含其他文本
-- scope默认'project'，enabled设为true`
+- scope默认'project'，enabled设为true
+- autoExecute 默认不设置（false），当工作流为全自动流水线且无需用户介入时可设为 true`
 
 /**
  * 根据自然语言描述生成一个工作流命令

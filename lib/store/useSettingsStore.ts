@@ -79,6 +79,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         assistantName: data.assistantName || '',
         assistantIcon: data.assistantIcon || '',
         assistantAvatar: data.assistantAvatar || '',
+        envVariables: data.envVariables || undefined,
       }
 
       set({

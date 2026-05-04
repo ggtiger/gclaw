@@ -74,6 +74,7 @@ export interface CommandDefinition {
     format?: 'markdown' | 'json' | 'text'
     saveTo?: string             // 文件保存路径模板
   }
+  autoExecute?: boolean         // 自动执行模式，跳过步骤间确认
   createdAt: string
   updatedAt: string
   createdBy?: string

@@ -12,6 +12,7 @@ import { channelEventBus } from '@/lib/channels/channel-events'
 import type { ChatMessage } from '@/types/chat'
 import path from 'path'
 import fs from 'fs'
+import { getProjectSettings } from '@/lib/store/settings'
 
 export interface TaskExecutorResult {
   success: boolean
@@ -137,9 +138,11 @@ executors.set('script', async (task) => {
   if (!command) return { success: false, error: 'Missing command' }
 
   return new Promise((resolve) => {
+    // 加载项目环境变量
+    const projectEnv = task.projectId ? (getProjectSettings(task.projectId)?.envVariables || {}) : {}
     const child = spawn('bash', ['-c', command], {
       cwd: cwd || process.cwd(),
-      env: { ...process.env, GCLAW_PROJECT_ID: task.projectId || '' },
+      env: { ...process.env, GCLAW_PROJECT_ID: task.projectId || '', ...projectEnv },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
@@ -219,9 +222,11 @@ executors.set('execute-skill', async (task) => {
   }
 
   return new Promise((resolve) => {
+    // 加载项目环境变量
+    const projectEnv = task.projectId ? (getProjectSettings(task.projectId)?.envVariables || {}) : {}
     const child = spawn('bash', [resolved, ...(args || [])], {
       cwd: configCwd || path.dirname(resolved),
-      env: { ...process.env, GCLAW_PROJECT_ID: task.projectId || '' },
+      env: { ...process.env, GCLAW_PROJECT_ID: task.projectId || '', ...projectEnv },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 

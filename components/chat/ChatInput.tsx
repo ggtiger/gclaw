@@ -29,6 +29,38 @@ interface Template {
   isBuiltIn: boolean
 }
 
+/**
+ * 解析命令行参数，支持引号包裹含空格的参数
+ * 例: parseCommandArgs('hello "world foo" bar') => ['hello', 'world foo', 'bar']
+ */
+function parseCommandArgs(argsStr: string): string[] {
+  const args: string[] = []
+  if (!argsStr) return args
+  let current = ''
+  let inQuote: '"' | "'" | null = null
+  for (let i = 0; i < argsStr.length; i++) {
+    const ch = argsStr[i]
+    if (inQuote) {
+      if (ch === inQuote) {
+        inQuote = null
+      } else {
+        current += ch
+      }
+    } else if (ch === '"' || ch === "'") {
+      inQuote = ch
+    } else if (ch === ' ' || ch === '\t') {
+      if (current) {
+        args.push(current)
+        current = ''
+      }
+    } else {
+      current += ch
+    }
+  }
+  if (current) args.push(current)
+  return args
+}
+
 // @-mention 候选项（Agent 或 子项目）
 interface MentionItem {
   type: 'agent' | 'project'
@@ -90,7 +122,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const [slashCommands, setSlashCommands] = useState<CommandDefinition[]>([])
   const [slashQuery, setSlashQuery] = useState<string | null>(null)
   const [slashIndex, setSlashIndex] = useState(0)
-  const [slashParamsDialog, setSlashParamsDialog] = useState<{ open: boolean; command: CommandDefinition | null }>({ open: false, command: null })
+  const [slashParamsDialog, setSlashParamsDialog] = useState<{ open: boolean; command: CommandDefinition | null; prefillParams?: Record<string, unknown> }>({ open: false, command: null })
 
   // 加载自定义命令列表
   useEffect(() => {
@@ -235,7 +267,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
     if (cmd.parameters && cmd.parameters.length > 0) {
-      setSlashParamsDialog({ open: true, command: cmd })
+      setSlashParamsDialog({ open: true, command: cmd, prefillParams: undefined })
     } else {
       onSendCommand?.(cmd.id)
     }
@@ -305,6 +337,48 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     const hasAttachments = attachments.length > 0
     if ((!hasInput && !hasAttachments) || sending || disabled || uploading) return
 
+    // ── 检测 /command-id [args...] 模式 ──
+    const trimmed = input.trim()
+    const slashCmdMatch = trimmed.match(/^\/([^\s]+)(.*)$/)
+    if (slashCmdMatch && onSendCommand) {
+      const inputCmdId = slashCmdMatch[1]
+      const argsStr = (slashCmdMatch[2] || '').trim()
+      // 查找匹配的命令
+      const matchedCmd = slashCommands.find(c => c.enabled && c.id === inputCmdId)
+      if (matchedCmd) {
+        const inlineArgs = parseCommandArgs(argsStr)
+        const parameters = matchedCmd.parameters || []
+
+        // 按 parameters 数组顺序映射参数
+        const params: Record<string, unknown> = {}
+        for (let i = 0; i < parameters.length; i++) {
+          if (i < inlineArgs.length) {
+            params[parameters[i].name] = inlineArgs[i]
+          }
+        }
+
+        // 检查是否所有 required 参数都已提供
+        const missingRequired = parameters.some(
+          (p, i) => p.required && i >= inlineArgs.length && p.default === undefined
+        )
+
+        setInput('')
+        setAttachments([])
+        setMentionQuery(null)
+        setSlashQuery(null)
+        if (textareaRef.current) textareaRef.current.style.height = 'auto'
+
+        if (missingRequired) {
+          // 缺少必填参数，弹出参数弹窗（预填已有参数）
+          setSlashParamsDialog({ open: true, command: matchedCmd, prefillParams: params })
+        } else {
+          // 所有必填参数已提供，直接执行
+          onSendCommand(matchedCmd.id, params)
+        }
+        return
+      }
+    }
+
     onSend(hasInput ? input : (hasAttachments ? '(附件)' : ''), attachments)
     setInput('')
     setAttachments([])
@@ -312,7 +386,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [input, attachments, sending, disabled, uploading, onSend])
+  }, [input, attachments, sending, disabled, uploading, onSend, onSendCommand, slashCommands])
 
   // 处理输入变化 + 检测 @-mention
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -780,6 +854,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           open={slashParamsDialog.open}
           onClose={() => setSlashParamsDialog({ open: false, command: null })}
           defaultCwd={projectSettings?.cwd || effectiveCwd || ''}
+          prefillParams={slashParamsDialog.prefillParams}
           onSubmit={(commandId, params, cwd) => {
             setSlashParamsDialog({ open: false, command: null })
             onSendCommand?.(commandId, params, cwd)

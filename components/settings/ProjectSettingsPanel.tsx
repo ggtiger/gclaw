@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Loader, RefreshCw, FolderOpen, Bot, Sparkles, Brain, Wand2, Cpu, MessageSquare, GraduationCap, Stethoscope, Code, Palette, Music, Heart, Upload, X } from 'lucide-react'
 import type { ProjectSettings, GlobalSettings, ModelProvider } from '@/types/skills'
 import { useToast } from '@/components/ui/Toast'
@@ -38,6 +38,54 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
   const { toast } = useToast()
   const { Icon: AssistantIcon, avatarUrl } = useAssistantIdentity(settings, projectId)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  // ── 环境变量管理 ──
+  const envEntries = useMemo(() => {
+    const vars = settings?.envVariables || {}
+    const entries = Object.entries(vars).map(([key, value]) => ({ key, value }))
+    return entries
+  }, [settings?.envVariables])
+
+  const [localEnvEntries, setLocalEnvEntries] = useState<{ key: string; value: string }[]>([])
+
+  useEffect(() => {
+    setLocalEnvEntries(envEntries)
+  }, [envEntries])
+
+  const syncEnvToStore = useCallback((entries: { key: string; value: string }[]) => {
+    const record: Record<string, string> = {}
+    for (const entry of entries) {
+      if (entry.key.trim()) {
+        record[entry.key.trim()] = entry.value
+      }
+    }
+    updateField('envVariables', Object.keys(record).length > 0 ? record : undefined as unknown as Record<string, string>)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddEnvVar = useCallback(() => {
+    const next = [...localEnvEntries, { key: '', value: '' }]
+    setLocalEnvEntries(next)
+  }, [localEnvEntries])
+
+  const handleUpdateEnvKey = useCallback((index: number, newKey: string) => {
+    const next = [...localEnvEntries]
+    next[index] = { ...next[index], key: newKey }
+    setLocalEnvEntries(next)
+    syncEnvToStore(next)
+  }, [localEnvEntries, syncEnvToStore])
+
+  const handleUpdateEnvValue = useCallback((index: number, newValue: string) => {
+    const next = [...localEnvEntries]
+    next[index] = { ...next[index], value: newValue }
+    setLocalEnvEntries(next)
+    syncEnvToStore(next)
+  }, [localEnvEntries, syncEnvToStore])
+
+  const handleRemoveEnvVar = useCallback((index: number) => {
+    const next = localEnvEntries.filter((_, i) => i !== index)
+    setLocalEnvEntries(next)
+    syncEnvToStore(next)
+  }, [localEnvEntries, syncEnvToStore])
 
   useEffect(() => {
     fetchSettings(projectId)
@@ -336,6 +384,54 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         <div className="text-xs mt-1 text-gray-400">
           Claude 工作目录，默认为项目目录
         </div>
+      </div>
+
+      {/* 环境变量 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-500 dark:text-gray-400">环境变量</label>
+          <button
+            type="button"
+            onClick={handleAddEnvVar}
+            className="text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+          >
+            + 添加
+          </button>
+        </div>
+
+        {localEnvEntries.length > 0 && (
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {localEnvEntries.map((entry, index) => (
+              <div key={index} className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={entry.key}
+                  onChange={e => handleUpdateEnvKey(index, e.target.value)}
+                  placeholder="变量名"
+                  className="flex-1 min-w-0 text-xs font-mono bg-gray-100 dark:bg-white/10 rounded-lg px-2 py-1.5 outline-none"
+                />
+                <span className="text-gray-400 text-xs">=</span>
+                <input
+                  type="text"
+                  value={entry.value}
+                  onChange={e => handleUpdateEnvValue(index, e.target.value)}
+                  placeholder="值"
+                  className="flex-1 min-w-0 text-xs font-mono bg-gray-100 dark:bg-white/10 rounded-lg px-2 py-1.5 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveEnvVar(index)}
+                  className="shrink-0 p-1 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
+                  title="删除"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 mt-2">命令执行时自动加载这些变量</p>
       </div>
 
       {/* System Prompt */}

@@ -18,6 +18,7 @@ function generateRequestId(): string {
 import { resolveTemplate, evaluateCondition } from './variables'
 import { resolveCommand } from './registry'
 import { executeChat } from '@/lib/claude/process-manager'
+import { getProjectSettings } from '@/lib/store/settings'
 import type { PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 import { logger } from '@/lib/logger'
 import { exec } from 'child_process'
@@ -207,13 +208,13 @@ export class CommandExecutor {
         data: { stepId: step.id, status: result!.status, duration: result!.duration },
       }
 
-      // 步骤完成后等待用户确认（最后一个步骤不需要确认）
+      // 步骤完成后等待用户确认（最后一个步骤不需要确认；autoExecute 模式跳过确认）
       // 用循环处理「修改 → 重新执行 → 再确认」
       let needsConfirmation = true
       while (needsConfirmation) {
         needsConfirmation = false
 
-        if (result! && result!.status === 'completed' && currentIndex < command.steps.length - 1) {
+        if (result! && result!.status === 'completed' && currentIndex < command.steps.length - 1 && !command.autoExecute) {
           const confirmReqId = generateRequestId()
 
           yield {
@@ -571,11 +572,18 @@ export class CommandExecutor {
       : this.context.cwd
 
     const output = await new Promise<string>((resolve, reject) => {
+      // 读取项目环境变量并合并
+      const projectSettings = getProjectSettings(this.context.projectId)
+      const mergedEnv = {
+        ...process.env,
+        ...(projectSettings?.envVariables || {}),
+      }
+
       const child = exec(resolvedCommand, {
         cwd,
         timeout: SCRIPT_TIMEOUT_MS,
         maxBuffer: 1024 * 1024, // 1MB
-        env: { ...process.env },
+        env: mergedEnv,
       }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(`ScriptStep "${step.id}" failed: ${error.message}\nstderr: ${stderr}`))
