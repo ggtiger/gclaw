@@ -13,6 +13,7 @@ import { AgentsPanel } from '../agents/AgentsPanel'
 import { AgentTemplatePanel } from '../agents/AgentTemplatePanel'
 import { ChannelsPanel } from '../channels/ChannelsPanel'
 import { SchedulesPanel } from '../schedules/SchedulesPanel'
+import { CommandsPanel } from '../commands/CommandsPanel'
 import { ProjectSidebar } from '../projects/ProjectSidebar'
 import FocusPanel from '../panels/FocusPanel'
 import FilesPanel from '../panels/FilesPanel'
@@ -30,7 +31,7 @@ import { WindowControls } from '@/components/ui/WindowControls'
 
 export function ChatLayout() {
   const project = useProject()
-  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | 'schedules' | null>(null)
+  const [modalOpen, setModalOpen] = useState<'skills' | 'agents' | 'agentTemplates' | 'channels' | 'settings' | 'projectSettings' | 'account' | 'schedules' | 'commands' | null>(null)
   const [settingsInitialTab, setSettingsInitialTab] = useState<'preferences' | 'settings' | 'about'>('preferences')
   const chat = useChat(project.currentId, () => { setSettingsInitialTab('settings'); setModalOpen('settings') })
   const activeProjectIds = useActiveProjects()
@@ -377,6 +378,7 @@ export function ChatLayout() {
             onRenameFolder={project.renameFolder}
             onDeleteFolder={project.deleteFolder}
             onMoveProjectToFolder={project.moveProjectToFolder}
+            onOpenCommands={() => setModalOpen('commands')}
           />
         </div>
         )}
@@ -410,12 +412,18 @@ export function ChatLayout() {
             onClearChat={chat.clearChat}
             onRespondPermission={chat.respondPermission}
             onRespondAskQuestion={chat.respondAskQuestion}
+            stepConfirmation={chat.stepConfirmation}
+            onRespondStepConfirmation={chat.respondToStepConfirmation}
             onUpdateMessage={chat.updateMessage}
             onOpenChannels={() => setModalOpen('channels')}
             onOpenSkills={() => setModalOpen('skills')}
             onOpenAgents={() => setModalOpen('agents')}
             onOpenSchedules={() => setModalOpen('schedules')}
             onOpenSettings={() => { setSettingsInitialTab('settings'); setModalOpen('settings') }}
+            workflowState={chat.workflowState}
+            onSendCommand={(commandId, params, cwd) => {
+              chat.sendMessage(`/command ${commandId}`, undefined, commandId, params as Record<string, unknown>, cwd)
+            }}
             onScheduleSend={async (message, schedule) => {
               try {
                 const res = await fetch('/api/schedules', {
@@ -607,6 +615,7 @@ export function ChatLayout() {
               onRenameFolder={project.renameFolder}
               onDeleteFolder={project.deleteFolder}
               onMoveProjectToFolder={project.moveProjectToFolder}
+              onOpenCommands={() => { setModalOpen('commands'); setSidebarOpen(false) }}
             />
           </div>
         </div>
@@ -622,6 +631,10 @@ export function ChatLayout() {
         projects={project.projects}
         currentProjectId={project.currentId}
         onOpenModal={(panel) => setModalOpen(panel as typeof modalOpen)}
+        projectId={project.currentId}
+        onSendCommand={(commandId, params, cwd) => {
+          chat.sendMessage(`/command ${commandId}`, undefined, commandId, params as Record<string, unknown>, cwd)
+        }}
       />
 
       {/* Modal 弹出框 */}
@@ -651,6 +664,9 @@ export function ChatLayout() {
       </Modal>
       <Modal open={modalOpen === 'schedules'} onClose={() => setModalOpen(null)} title="定时任务">
         <SchedulesPanel projectId={project.currentId} />
+      </Modal>
+      <Modal open={modalOpen === 'commands'} onClose={() => setModalOpen(null)} title="命令管理">
+        <CommandsPanel projectId={project.currentId} />
       </Modal>
     </div>
   )

@@ -137,6 +137,13 @@ export type SSEEventType =
   | 'done'
   | 'error'
   | 'end'
+  | 'workflow_start'
+  | 'workflow_step_start'
+  | 'workflow_step_done'
+  | 'workflow_done'
+  | 'workflow_error'
+  | 'step_delta'
+  | 'step_tool_use'
 
 export interface SSEEvent {
   event: SSEEventType

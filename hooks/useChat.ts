@@ -44,6 +44,25 @@ const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
 // 流数据写入 buffer，React state 只在 projectId 匹配时更新
 // ============================================================
 
+export interface WorkflowStepState {
+  stepId: string
+  stepName?: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+  duration?: number
+  streamingContent?: string    // 当前步骤的实时流式文本
+  activeToolName?: string      // 当前正在执行的工具名
+  activeToolElapsed?: number   // 工具执行耗时(秒)
+}
+
+export interface WorkflowState {
+  commandId: string
+  commandName: string
+  totalSteps: number
+  currentStepIndex: number
+  steps: WorkflowStepState[]
+  startTime: number
+}
+
 interface StreamBuffer {
   streamingBlocks: StreamingBlock[]    // 替代 content + toolSummary
   textBlockCounter: number             // text block ID 递增
@@ -53,11 +72,20 @@ interface StreamBuffer {
   lastStats: ConversationStats | null
   permissionRequest: PermissionRequest | null
   askQuestion: AskUserQuestionRequest | null
+  stepConfirmation: {
+    requestId: string
+    stepId: string
+    stepName: string
+    stepIndex: number
+    totalSteps: number
+    output: string
+  } | null
   pendingMessages: ChatMessage[]       // 流结束后产生的消息（assistant/error）
   statusText: string | null            // 当前状态文本（如 'compacting'）
   planContent: string | null
   fileChanges: FileChangeEntry[]
   todos: ActivityTodoItem[]
+  workflowState: WorkflowState | null  // 工作流执行状态
 }
 
 const streamBuffers = new Map<string, StreamBuffer>()
@@ -78,11 +106,13 @@ function getBuffer(projectId: string): StreamBuffer {
       lastStats: null,
       permissionRequest: null,
       askQuestion: null,
+      stepConfirmation: null,
       pendingMessages: [],
       statusText: null,
       planContent: null,
       fileChanges: [],
       todos: [],
+      workflowState: null,
     }
     streamBuffers.set(projectId, buf)
   }
@@ -218,12 +248,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
   const [lastStats, setLastStats] = useState<ConversationStats | null>(null)
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
   const [askQuestion, setAskQuestion] = useState<AskUserQuestionRequest | null>(null)
+  const [stepConfirmation, setStepConfirmation] = useState<StreamBuffer['stepConfirmation']>(null)
   const [statusText, setStatusText] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [activityData, setActivityData] = useState<ActivityData>({ planContent: null, fileChanges: [], todos: [] })
+  const [workflowState, setWorkflowState] = useState<WorkflowState | null>(null)
 
   // 当前 projectId 的 ref，供闭包内判断
   const currentProjectIdRef = useRef(projectId)
@@ -295,8 +327,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       setLastStats(buf.lastStats)
       setPermissionRequest(buf.permissionRequest)
       setAskQuestion(buf.askQuestion)
+      setStepConfirmation(buf.stepConfirmation)
       setStatusText(buf.statusText)
       setActivityData({ planContent: buf.planContent, fileChanges: buf.fileChanges, todos: buf.todos })
+      setWorkflowState(buf.workflowState)
 
       // 捕获 pendingMessages（流结束但用户不在该项目时产生的消息）
       const pendingMsgs = buf.pendingMessages
@@ -334,8 +368,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         setLastStats(b.lastStats)
         setPermissionRequest(b.permissionRequest)
         setAskQuestion(b.askQuestion)
+        setStepConfirmation(b.stepConfirmation)
         setStatusText(b.statusText)
         setActivityData({ planContent: b.planContent, fileChanges: [...b.fileChanges], todos: b.todos })
+        setWorkflowState(b.workflowState)
       })
     }
   }, [])
@@ -653,7 +689,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
   }
 
   // 发送消息
-  const sendMessage = useCallback(async (text: string, attachments?: ChatAttachment[]) => {
+  const sendMessage = useCallback(async (text: string, attachments?: ChatAttachment[], commandId?: string, commandParams?: Record<string, unknown>, cwd?: string) => {
     if (!text.trim() && (!attachments || attachments.length === 0)) return
 
     // 捕获发送时的 projectId（闭包绑定）
@@ -683,6 +719,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       buf.lastStats = null
       buf.permissionRequest = null
       buf.askQuestion = null
+      buf.stepConfirmation = null
       buf.pendingMessages = []
       buf.statusText = null
     })
@@ -701,6 +738,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           message: text.trim() || '(附件)',
           projectId: sendProjectId,
           attachments: attachments || undefined,
+          ...(commandId ? { commandId } : {}),
+          ...(commandParams ? { commandParams } : {}),
+          ...(cwd ? { cwd } : {}),
         }),
         signal: controller.signal,
       })
@@ -822,6 +862,19 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               })
               break
 
+            case 'step_confirmation_request':
+              updateState(sendProjectId, b => {
+                b.stepConfirmation = {
+                  requestId: data.requestId as string,
+                  stepId: data.stepId as string,
+                  stepName: data.stepName as string,
+                  stepIndex: data.stepIndex as number,
+                  totalSteps: data.totalSteps as number,
+                  output: data.output as string,
+                }
+              })
+              break
+
             case 'skill_notify': {
               // 技能通知：显示为系统消息
               const notifyMsg: ChatMessage = {
@@ -838,6 +891,147 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               }
               break
             }
+
+            case 'workflow_start':
+              updateState(sendProjectId, b => {
+                b.workflowState = {
+                  commandId: data.commandId as string,
+                  commandName: data.commandName as string,
+                  totalSteps: data.totalSteps as number,
+                  currentStepIndex: 0,
+                  steps: [],
+                  startTime: Date.now(),
+                }
+              })
+              break
+
+            case 'workflow_step_start':
+              updateState(sendProjectId, b => {
+                if (!b.workflowState) return
+                const stepInfo = data as Record<string, unknown>
+                const stepId = stepInfo.stepId as string
+                const stepName = stepInfo.stepName as string | undefined
+                const index = stepInfo.index as number
+                b.workflowState.currentStepIndex = index
+                // 添加或更新步骤
+                const existing = b.workflowState.steps.find(s => s.stepId === stepId)
+                if (existing) {
+                  existing.status = 'running'
+                } else {
+                  b.workflowState.steps.push({ stepId, stepName, status: 'running' })
+                }
+              })
+              break
+
+            case 'workflow_step_done':
+              updateState(sendProjectId, b => {
+                if (!b.workflowState) return
+                const stepId = data.stepId as string
+                const step = b.workflowState.steps.find(s => s.stepId === stepId)
+                if (step) {
+                  step.status = (data.status as WorkflowStepState['status']) || 'completed'
+                  step.duration = data.duration as number
+                }
+              })
+              break
+
+            case 'workflow_done':
+              updateState(sendProjectId, b => {
+                b.workflowState = null
+              })
+              break
+
+            case 'workflow_error':
+              updateState(sendProjectId, b => {
+                if (b.workflowState) {
+                  const errorStepId = data.stepId as string | undefined
+                  if (errorStepId) {
+                    const step = b.workflowState.steps.find(s => s.stepId === errorStepId)
+                    if (step) step.status = 'failed'
+                  }
+                }
+                b.workflowState = null
+              })
+              {
+                const errorText = (data.error as string) || '工作流执行失败'
+                const errorMsg: ChatMessage = {
+                  id: `msg_${Date.now()}_workflow_error`,
+                  role: 'system',
+                  content: `命令工作流执行失败：${errorText}`,
+                  messageType: 'text',
+                  createdAt: new Date().toISOString(),
+                }
+                if (currentProjectIdRef.current === sendProjectId) {
+                  setMessages(prev => [...prev, errorMsg])
+                } else {
+                  getBuffer(sendProjectId).pendingMessages.push(errorMsg)
+                }
+              }
+              break
+
+            case 'step_delta': {
+              const stepContent = data.content as string
+              if (stepContent) {
+                handleDeltaEvent(sendProjectId, stepContent)
+                // 同步更新 workflowState 中当前步骤的流式内容
+                updateState(sendProjectId, b => {
+                  if (!b.workflowState) return
+                  const sid = data.stepId as string
+                  const step = b.workflowState.steps.find(s => s.stepId === sid)
+                  if (step) {
+                    step.streamingContent = (step.streamingContent || '') + stepContent
+                  }
+                })
+              }
+              break
+            }
+
+            case 'step_tool_use': {
+              // step_tool_use 从 executor 传来，包含 toolUseId
+              const toolData = { ...data }
+              if (!toolData.toolUseId && toolData.stepId) {
+                toolData.toolUseId = `step_tool_${toolData.stepId}_${Date.now()}`
+              }
+              handleToolUseEvent(sendProjectId, toolData)
+              // 同步更新 workflowState 工具状态
+              updateState(sendProjectId, b => {
+                if (!b.workflowState) return
+                const sid = data.stepId as string
+                const step = b.workflowState.steps.find(s => s.stepId === sid)
+                if (step) {
+                  step.activeToolName = data.toolName as string || ''
+                  step.activeToolElapsed = 0
+                }
+              })
+              break
+            }
+
+            case 'step_tool_result':
+              handleToolResultEvent(sendProjectId, data)
+              // 清除工具执行状态
+              updateState(sendProjectId, b => {
+                if (!b.workflowState) return
+                const sid = data.stepId as string
+                const step = b.workflowState.steps.find(s => s.stepId === sid)
+                if (step) {
+                  step.activeToolName = undefined
+                  step.activeToolElapsed = undefined
+                }
+              })
+              break
+
+            case 'step_tool_progress':
+              handleToolProgressEvent(sendProjectId, data)
+              // 同步更新工具耗时
+              updateState(sendProjectId, b => {
+                if (!b.workflowState) return
+                const sid = data.stepId as string
+                const step = b.workflowState.steps.find(s => s.stepId === sid)
+                if (step) {
+                  step.activeToolElapsed = data.elapsedSeconds as number || 0
+                }
+              })
+              break
 
             case 'done':
               handleDoneEvent(sendProjectId, data, accContent)
@@ -931,6 +1125,26 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     updateState(currentProjectIdRef.current, b => { b.permissionRequest = null })
   }, [updateState])
 
+  // 回复步骤确认
+  const respondToStepConfirmation = useCallback(async (
+    requestId: string,
+    action: 'continue' | 'modify' | 'abort',
+    modifiedContent?: string
+  ) => {
+    try {
+      await fetch('/api/chat/step-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, action, modifiedContent }),
+      })
+      updateState(currentProjectIdRef.current, b => {
+        b.stepConfirmation = null
+      })
+    } catch (error) {
+      console.error('Failed to respond to step confirmation:', error)
+    }
+  }, [updateState])
+
   // 回复 AskUserQuestion
   const respondAskQuestion = useCallback(async (requestId: string, answers: Record<string, string>) => {
     try {
@@ -1018,6 +1232,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       buf.lastStats = null
       buf.permissionRequest = null
       buf.askQuestion = null
+      buf.stepConfirmation = null
       buf.pendingMessages = []
       buf.statusText = null
     })
@@ -1165,14 +1380,17 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     statusText,
     activityData,
     sessionStats,
+    workflowState,
     sendMessage,
     abortChat,
     clearChat,
     loadHistory,
     hasMore,
     loadMoreMessages,
+    stepConfirmation,
     respondPermission,
     respondAskQuestion,
+    respondToStepConfirmation,
     updateMessage,
     addLocalMessage,
     sendToProject,

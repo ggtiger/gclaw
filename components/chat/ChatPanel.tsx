@@ -9,11 +9,15 @@ import { MessageBubble } from './MessageBubble'
 import { StreamingBlocksRenderer } from './StreamingBlocksRenderer'
 import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
+import { AskQuestionDialog } from './AskQuestionDialog'
+import { StepConfirmationDialog } from './StepConfirmationDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
 import Modal from '@/components/ui/Modal'
 // BranchSwitcher 已隐藏
 import type { ChatMessage, ChatAttachment, StreamingBlock, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
+import type { WorkflowState } from '@/hooks/useChat'
+import { WorkflowProgress } from './WorkflowProgress'
 import appIcon from '@/public/icon.png'
 
 interface ChatPanelProps {
@@ -47,6 +51,17 @@ interface ChatPanelProps {
   onRespondAskQuestion: (requestId: string, answers: Record<string, string>) => void
   onUpdateMessage?: (message: ChatMessage) => void
   projectName?: string
+  workflowState?: WorkflowState | null
+  stepConfirmation?: {
+    requestId: string
+    stepId: string
+    stepName: string
+    stepIndex: number
+    totalSteps: number
+    output: string
+  } | null
+  onRespondStepConfirmation?: (requestId: string, action: 'continue' | 'modify' | 'abort', modifiedContent?: string) => void
+  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string) => void
 }
 
 function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttachment[]) => void }) {
@@ -84,7 +99,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, sessionStats, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, sessionStats, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName, workflowState, stepConfirmation, onRespondStepConfirmation, onSendCommand }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -220,7 +235,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
       }
     })
     return () => cancelAnimationFrame(raf)
-  }, [messages, streamingBlocks])
+  }, [messages, streamingBlocks, workflowState])
 
   // 检测用户是否手动向上滚动 — 使用原生 passive 监听器，不阻塞滚动合成
   const scrollRafRef = useRef<number>(0)
@@ -462,6 +477,13 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               </div>
             )}
 
+            {/* 工作流进度卡片 */}
+            {workflowState && (
+              <div className="px-2 my-1 animate-fade-in">
+                <WorkflowProgress workflowState={workflowState} />
+              </div>
+            )}
+
             {/* 流式输出：文本 + 工具交错渲染 */}
             {(streamingBlocks.length > 0 || thinkingContent) && (
               <div className="flex gap-3 px-4 py-4 animate-fade-in rounded-lg mx-2 my-1 glass-card">
@@ -548,6 +570,23 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           </div>
         )}
 
+        {/* AskUserQuestion 对话框（工作流模式下 tool_use 可能未到达前端，独立渲染） */}
+        {askQuestion && !streamingBlocks.some(b => b.type === 'tool' && (b.toolName === 'AskUserQuestion' || b.toolName === 'ask_user_question') && b.status === 'pending') && (
+          <div className="px-3 lg:px-4 pb-2">
+            <AskQuestionDialog request={askQuestion} onRespond={onRespondAskQuestion} />
+          </div>
+        )}
+
+        {/* 步骤确认对话框 */}
+        {stepConfirmation && onRespondStepConfirmation && (
+          <div className="px-3 lg:px-4 pb-2">
+            <StepConfirmationDialog
+              request={stepConfirmation}
+              onRespond={onRespondStepConfirmation}
+            />
+          </div>
+        )}
+
         {/* 输入区域 */}
         <div className="px-3 lg:px-4 pb-3">
         <ChatInput
@@ -570,6 +609,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           contextMaxTokens={sessionStats?.maxContext ?? 200000}
           onCompact={() => onSend('/compact')}
           onClearChat={() => onClearChat?.()}
+          onSendCommand={onSendCommand}
         />
       </div>
       </div>

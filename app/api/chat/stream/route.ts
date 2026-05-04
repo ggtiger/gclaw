@@ -6,6 +6,8 @@ import { gclawEventBus } from '@/lib/claude/gclaw-events'
 import { addMessage } from '@/lib/store/messages'
 import { getSettings } from '@/lib/store/settings'
 import { assertValidProjectId } from '@/lib/store/projects'
+import { resolveCommand } from '@/lib/commands/registry'
+import { CommandExecutor } from '@/lib/commands/executor'
 import type { ChatMessage, ChatAttachment, PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 
 export const dynamic = 'force-dynamic'
@@ -87,13 +89,17 @@ function loadAttachmentData(att: ChatAttachment, projectId: string): AttachmentD
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { message, projectId = '', attachments }: {
+  const { message, projectId = '', attachments, commandId, commandParams, cwd: requestCwd }: {
     message: string
     projectId: string
     attachments?: ChatAttachment[]
+    commandId?: string
+    commandParams?: Record<string, any>
+    cwd?: string
   } = body
 
-  if (!message || typeof message !== 'string') {
+  // commandId 模式下 message 可选，普通聊天模式下 message 必填
+  if (!commandId && (!message || typeof message !== 'string')) {
     return new Response(JSON.stringify({ error: 'message is required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
@@ -109,6 +115,108 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // ── 命令执行分支 ──
+  if (commandId) {
+    const command = resolveCommand(commandId, projectId)
+    if (!command) {
+      return new Response(JSON.stringify({ error: `Command "${commandId}" not found` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (!command.enabled) {
+      return new Response(JSON.stringify({ error: `Command "${commandId}" is disabled` }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const settings = getSettings(projectId)
+    const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      return new Response(JSON.stringify({
+        error: '未配置 API Key，请先在设置中配置 Anthropic API Key',
+        code: 'NO_API_KEY',
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        // 权限请求回调：直接通过 SSE 推送到前端
+        const onPermissionRequest = (req: PermissionRequest) => {
+          const sseData = `event: permission_request\ndata: ${JSON.stringify(req)}\n\n`
+          controller.enqueue(encoder.encode(sseData))
+        }
+        // AskUserQuestion 回调：通过 SSE 推送问题到前端
+        const onAskUserQuestion = (req: AskUserQuestionRequest) => {
+          const sseData = `event: ask_user_question\ndata: ${JSON.stringify(req)}\n\n`
+          controller.enqueue(encoder.encode(sseData))
+        }
+
+        const executor = new CommandExecutor(
+          projectId,
+          'user',
+          requestCwd || settings.cwd || '',
+          0,
+          { onPermissionRequest, onAskUserQuestion }
+        )
+        let fullContent = ''
+        try {
+          for await (const event of executor.execute(command, commandParams || {})) {
+            // 累积 step_delta 内容，用于最终生成消息
+            if (event.type === 'step_delta' && event.data.content) {
+              fullContent += event.data.content
+            }
+            const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`
+            controller.enqueue(encoder.encode(sseData))
+          }
+
+          // 持久化 AI 回复消息（与普通聊天一致）
+          if (fullContent.trim()) {
+            const assistantMsg: ChatMessage = {
+              id: `msg_${Date.now()}_assistant`,
+              role: 'assistant',
+              content: fullContent,
+              messageType: 'text',
+              createdAt: new Date().toISOString(),
+            }
+            addMessage(projectId, assistantMsg)
+          }
+
+          // 发送 done 事件，前端 handleDoneEvent 会据此创建聊天消息
+          const doneData = `event: done\ndata: ${JSON.stringify({ fullContent })}\n\n`
+          controller.enqueue(encoder.encode(doneData))
+          // 发送 end 事件
+          const endData = `event: end\ndata: {}\n\n`
+          controller.enqueue(encoder.encode(endData))
+        } catch (err) {
+          const errorData = `event: workflow_error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`
+          controller.enqueue(encoder.encode(errorData))
+          const endData = `event: end\ndata: {}\n\n`
+          controller.enqueue(encoder.encode(endData))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    })
+  }
+
+  // ── 普通聊天流程 ──
 
   // 前置检查：API Key 是否已配置
   const settings = getSettings(projectId)

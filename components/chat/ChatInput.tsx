@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen, Clock, ChevronDown, Check } from 'lucide-react'
+import { Send, Square, Paperclip, Zap, Bot, X, FileText, Sparkles, Crown, FolderOpen, Clock, ChevronDown, Check, Terminal } from 'lucide-react'
 import { TemplateSelector } from './TemplateSelector'
 import { SchedulePicker } from './SchedulePicker'
 import { ContextRing } from './SessionInfoPopover'
 import type { ChatAttachment } from '@/types/chat'
 import type { AgentInfo } from '@/types/skills'
+import type { CommandDefinition } from '@/types/commands'
 import { useSettingsStore } from '@/lib/store/useSettingsStore'
+import { CommandParamsDialog } from './CommandParamsDialog'
 
 /** 模型 ID → 短名称（按钮显示） */
 function shortModelName(id: string): string {
@@ -54,9 +56,10 @@ interface ChatInputProps {
   contextMaxTokens?: number
   onCompact?: () => void
   onClearChat?: () => void
+  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string) => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings, contextUsage, contextInputTokens, contextMaxTokens, onCompact, onClearChat }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings, contextUsage, contextInputTokens, contextMaxTokens, onCompact, onClearChat, onSendCommand }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
@@ -64,6 +67,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   // ── 模型选择器：从 store 响应式读取当前模型 + 供应商 ──
   const projectSettings = useSettingsStore(state => state.projectSettings)
+  const effectiveCwd = useSettingsStore(state => state.effectiveCwd)
   const globalSettings = useSettingsStore(state => state.globalSettings)
   const storeModel = projectSettings?.model || globalSettings?.defaultModel || ''
   const storeProviderId = projectSettings?.providerId || globalSettings?.activeProviderId || ''
@@ -81,6 +85,21 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [mentionStart, setMentionStart] = useState(-1)
   const [mentionIndex, setMentionIndex] = useState(0)
+
+  // ── /slash 命令自动完成 ──
+  const [slashCommands, setSlashCommands] = useState<CommandDefinition[]>([])
+  const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const [slashParamsDialog, setSlashParamsDialog] = useState<{ open: boolean; command: CommandDefinition | null }>({ open: false, command: null })
+
+  // 加载自定义命令列表
+  useEffect(() => {
+    if (!projectId) return
+    fetch(`/api/commands?projectId=${encodeURIComponent(projectId)}`)
+      .then(r => r.json())
+      .then(data => setSlashCommands(data.commands || []))
+      .catch(() => {})
+  }, [projectId])
 
   // 加载 agents + 子项目列表（一次性 API）
   useEffect(() => {
@@ -176,6 +195,21 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     )
   }, [mentionQuery, mentionItems])
 
+  // 过滤匹配的 slash commands
+  const filteredSlashCommands = useMemo(() => {
+    if (slashQuery === null) return []
+    const q = slashQuery.toLowerCase()
+    if (!q) return slashCommands.filter(c => c.enabled)
+    return slashCommands
+      .filter(c => c.enabled)
+      .filter(cmd =>
+        cmd.id.toLowerCase().includes(q) ||
+        cmd.name.toLowerCase().includes(q) ||
+        cmd.description.toLowerCase().includes(q) ||
+        (cmd.category || '').toLowerCase().includes(q)
+      )
+  }, [slashQuery, slashCommands])
+
   // 选择 mention item
   const selectMention = useCallback((item: MentionItem) => {
     const textarea = textareaRef.current
@@ -193,6 +227,19 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
       textarea.focus()
     })
   }, [input, mentionStart])
+
+  // 选择 slash command
+  const selectSlashCommand = useCallback((cmd: CommandDefinition) => {
+    setInput('')
+    setSlashQuery(null)
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+
+    if (cmd.parameters && cmd.parameters.length > 0) {
+      setSlashParamsDialog({ open: true, command: cmd })
+    } else {
+      onSendCommand?.(cmd.id)
+    }
+  }, [onSendCommand])
 
   // 自动调整 textarea 高度
   const adjustHeight = useCallback(() => {
@@ -281,14 +328,48 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
         setMentionQuery(atMatch[1])
         setMentionStart(atPos)
         setMentionIndex(0)
+        setSlashQuery(null)
         return
       }
     }
     setMentionQuery(null)
+
+    // 检测 /slash 命令
+    const slashMatch = value.match(/^\/([^\s]*)$/)
+    if (slashMatch) {
+      setSlashQuery(slashMatch[1])
+      setSlashIndex(0)
+      return
+    }
+    setSlashQuery(null)
   }, [])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // /slash 命令键盘导航
+      if (slashQuery !== null && filteredSlashCommands.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setSlashIndex(i => (i + 1) % filteredSlashCommands.length)
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setSlashIndex(i => (i - 1 + filteredSlashCommands.length) % filteredSlashCommands.length)
+          return
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault()
+          selectSlashCommand(filteredSlashCommands[slashIndex])
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setSlashQuery(null)
+          return
+        }
+      }
+
       if (mentionQuery !== null && filteredItems.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
@@ -317,7 +398,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
         handleSubmit()
       }
     },
-    [mentionQuery, filteredItems, mentionIndex, selectMention, handleSubmit]
+    [mentionQuery, filteredItems, mentionIndex, selectMention, handleSubmit, slashQuery, filteredSlashCommands, slashIndex, selectSlashCommand]
   )
 
   const handleCompositionStart = useCallback(() => {
@@ -471,6 +552,43 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
                 <span className="text-[var(--color-text-secondary)] text-xs truncate flex-1">
                   {item.description}
                 </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* /slash 命令下拉候选列表 */}
+        {slashQuery !== null && filteredSlashCommands.length > 0 && (
+          <div className="absolute left-3 right-3 bottom-full mb-1 z-50 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-lg border border-gray-200/60 dark:border-white/10 shadow-lg max-h-56 overflow-y-auto">
+            <div className="px-2 py-1.5 text-[10px] text-[var(--color-text-secondary)] border-b border-gray-100 dark:border-white/5 sticky top-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md">
+              选择命令 (↑↓ 切换, Enter 确认, Esc 关闭)
+            </div>
+            {filteredSlashCommands.map((cmd, idx) => (
+              <button
+                key={cmd.id}
+                type="button"
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                  idx === slashIndex
+                    ? 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                    : 'text-[var(--color-text)] hover:bg-gray-50 dark:hover:bg-white/5'
+                }`}
+                onClick={() => selectSlashCommand(cmd)}
+                onMouseEnter={() => setSlashIndex(idx)}
+              >
+                <span className="flex items-center justify-center w-6 h-6 rounded-md bg-purple-100 dark:bg-purple-500/20 flex-shrink-0">
+                  <Terminal size={13} className="text-purple-600 dark:text-purple-400" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">/{cmd.id}</span>
+                    {cmd.category && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                        {cmd.category}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-[var(--color-text-secondary)] truncate">{cmd.description}</div>
+                </div>
               </button>
             ))}
           </div>
@@ -654,6 +772,20 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           </div>
         </div>
       </div>
+
+      {/* Slash 命令参数弹窗 */}
+      {slashParamsDialog.open && slashParamsDialog.command && (
+        <CommandParamsDialog
+          command={slashParamsDialog.command}
+          open={slashParamsDialog.open}
+          onClose={() => setSlashParamsDialog({ open: false, command: null })}
+          defaultCwd={projectSettings?.cwd || effectiveCwd || ''}
+          onSubmit={(commandId, params, cwd) => {
+            setSlashParamsDialog({ open: false, command: null })
+            onSendCommand?.(commandId, params, cwd)
+          }}
+        />
+      )}
     </div>
   )
 }

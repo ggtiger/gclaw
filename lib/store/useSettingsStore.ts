@@ -10,6 +10,8 @@ interface SettingsStore {
   projectSettings: ProjectSettings | null
   globalProviders: ModelProvider[]
   currentProjectId: string
+  /** 后端解析后的实际工作目录（含 fallback） */
+  effectiveCwd: string
   loading: boolean
 
   // ── 草稿状态（仅设置面板编辑用） ──
@@ -37,6 +39,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   projectSettings: null,
   globalProviders: [],
   currentProjectId: '',
+  effectiveCwd: '',
   loading: false,
 
   draftGlobal: null,
@@ -85,6 +88,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         draftGlobal: { ...globalSettings },
         draftProject: { ...projectSettings },
         globalProviders: data.providers || [],
+        effectiveCwd: data.effectiveCwd || '',
         apiKeyRawValue,
         dirty: false,
       })

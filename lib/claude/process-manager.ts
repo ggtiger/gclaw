@@ -92,6 +92,12 @@ export interface ExecuteOptions {
   dangerouslySkipPermissions?: boolean
   onAskUserQuestion?: (req: AskUserQuestionRequest) => void
   attachments?: AttachmentData[]
+  /** 用于 AbortController 隔离的 key，默认使用 projectId */
+  abortKey?: string
+  /** 限制 AI 最大交互轮次（防止工具调用循环），传入 SDK maxTurns */
+  maxTurns?: number
+  /** 外部传入的 AbortController，用于单步超时等场景 */
+  externalAbortController?: AbortController
 }
 
 /**
@@ -106,14 +112,15 @@ export async function* executeChat(
 
   // 终止同一项目的已有查询（不影响其他项目）
   const projectId = options.projectId || ''
-  const existingController = projectAbortControllers.get(projectId)
+  const abortMapKey = options.abortKey || projectId
+  const existingController = projectAbortControllers.get(abortMapKey)
   if (existingController) {
     existingController.abort()
-    projectAbortControllers.delete(projectId)
+    projectAbortControllers.delete(abortMapKey)
   }
 
-  const abortController = new AbortController()
-  projectAbortControllers.set(projectId, abortController)
+  const abortController = options.externalAbortController || new AbortController()
+  projectAbortControllers.set(abortMapKey, abortController)
 
   // 读取配置
   const settings = getSettings(projectId)
@@ -403,6 +410,7 @@ export async function* executeChat(
     abortController,
     cwd: sdkCwd,
     model: model || undefined,
+    maxTurns: options.maxTurns ?? undefined,
     resume: resumeSessionId || undefined,
     includePartialMessages: true,
     // 始终用 bypassPermissions 绕过 SDK 内置权限系统
@@ -723,9 +731,14 @@ export async function* executeChat(
             }
             break
 
-          case 'error':
-            yield { event: 'error', data: { message: parsed.message } }
+          case 'error': {
+            const stderrDetail = stderrBuffer.trim()
+            const errorMessage = stderrDetail
+              ? `${parsed.message}\nstderr: ${stderrDetail}`
+              : parsed.message
+            yield { event: 'error', data: { message: errorMessage } }
             break
+          }
         }
       }
     }
@@ -780,7 +793,7 @@ export async function* executeChat(
   }
 
   // 清理
-  projectAbortControllers.delete(projectId)
+  projectAbortControllers.delete(abortMapKey)
 }
 
 /**

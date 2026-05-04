@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import Image from 'next/image'
-import { FolderOpen, FolderClosed, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, ChevronDown, Loader2, Bot, Monitor, FileText, Settings, Settings2, Download, ExternalLink, FolderPlus, FolderInput, Shield } from 'lucide-react'
+import { FolderOpen, FolderClosed, Plus, Trash2, Pencil, Check, X, PanelLeftClose, ChevronRight, ChevronDown, Loader2, Bot, Monitor, FileText, Settings, Settings2, Download, ExternalLink, FolderPlus, FolderInput, Shield, Terminal } from 'lucide-react'
 import type { ProjectInfo, ProjectMode, ProjectType, Folder } from '@/types/skills'
 import { ModeSelector } from './ModeSelector'
 import appIcon from '@/public/icon.png'
@@ -66,6 +66,7 @@ interface ProjectSidebarProps {
   onRenameFolder?: (id: string, name: string) => void
   onDeleteFolder?: (id: string) => void
   onMoveProjectToFolder?: (projectId: string, folderId: string | null) => void
+  onOpenCommands?: () => void
 }
 
 export function ProjectSidebar({
@@ -81,6 +82,7 @@ export function ProjectSidebar({
   onRenameFolder,
   onDeleteFolder,
   onMoveProjectToFolder,
+  onOpenCommands,
 }: ProjectSidebarProps) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -737,6 +739,9 @@ export function ProjectSidebar({
       <div className="mt-auto  border-gray-200 dark:border-white/[0.06] px-3 py-2 flex items-center gap-1">
         <button onClick={() => onOpenSettings?.()} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="设置">
           <Settings size={16} />
+        </button>
+        <button onClick={onOpenCommands} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer" title="命令管理">
+          <Terminal size={16} />
         </button>
         <button onClick={onCycleTheme} className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title="切换主题">
           {themeIcon}

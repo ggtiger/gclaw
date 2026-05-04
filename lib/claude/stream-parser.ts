@@ -244,10 +244,16 @@ export function convertSDKMessage(
         : null
 
       if (resultMsg.is_error || resultMsg.subtype !== 'success') {
-        const errorMsg =
+        const errorDetail =
           resultMsg.errors?.join('; ') ||
           resultMsg.result ||
-          'Claude execution error'
+          ''
+        const subtypeHint = resultMsg.subtype && resultMsg.subtype !== 'success'
+          ? `[${resultMsg.subtype}]`
+          : ''
+        const errorMsg = errorDetail
+          ? `${subtypeHint} ${errorDetail}`.trim()
+          : `Claude execution error ${subtypeHint}`.trim()
         results.push({ kind: 'error', message: errorMsg })
       }
 

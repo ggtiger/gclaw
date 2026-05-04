@@ -23,11 +23,11 @@ export async function openWithSystemApp(absolutePath: string): Promise<void> {
  * 打开系统目录选择对话框，返回用户选择的目录路径
  * 非 Tauri 环境下返回 null
  */
-export async function selectDirectory(): Promise<string | null> {
+export async function selectDirectory(defaultPath?: string): Promise<string | null> {
   if (!isTauri()) return null
   try {
     const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false })
+    const selected = await open({ directory: true, multiple: false, defaultPath: defaultPath || undefined })
     return typeof selected === 'string' ? selected : null
   } catch {
     return null

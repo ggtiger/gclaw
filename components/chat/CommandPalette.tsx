@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Search, CornerDownLeft, Hash, Palette, FolderOpen, Sun, Moon, Monitor, X } from 'lucide-react'
+import { Search, CornerDownLeft, Hash, Palette, FolderOpen, Sun, Moon, Monitor, X, Terminal } from 'lucide-react'
+import { CommandParamsDialog } from './CommandParamsDialog'
+import type { CommandDefinition } from '@/types/commands'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 
 // ============================================================
 // 命令面板：支持 /clear /project /theme 等 / 命令
@@ -27,6 +30,8 @@ interface CommandPaletteProps {
   projects?: Array<{ id: string; name: string }>
   currentProjectId?: string
   onOpenModal?: (panel: 'skills' | 'agents' | 'channels' | 'settings' | 'schedules') => void
+  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string) => void
+  projectId?: string
 }
 
 /**
@@ -77,11 +82,15 @@ export function CommandPalette({
   projects = [],
   currentProjectId,
   onOpenModal,
+  onSendCommand,
+  projectId,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const [customCommands, setCustomCommands] = useState<CommandDefinition[]>([])
+  const [paramsDialog, setParamsDialog] = useState<{ open: boolean; command: CommandDefinition | null }>({ open: false, command: null })
 
   // ---- 构建命令列表 ----
   const commands: CommandItem[] = useMemo(() => {
@@ -191,8 +200,29 @@ export function CommandPalette({
       })
     }
 
+    // 动态添加自定义命令
+    for (const cmd of customCommands) {
+      if (!cmd.enabled) continue
+      cmds.push({
+        id: `cmd-${cmd.id}`,
+        label: `/${cmd.id}`,
+        description: cmd.description,
+        icon: <Terminal size={16} />,
+        category: cmd.category || '自定义命令',
+        keywords: [cmd.id, cmd.name, cmd.description, cmd.category].filter((s): s is string => Boolean(s)),
+        action: () => {
+          if (cmd.parameters && cmd.parameters.length > 0) {
+            setParamsDialog({ open: true, command: cmd })
+          } else {
+            onSendCommand?.(cmd.id)
+            onClose()
+          }
+        },
+      })
+    }
+
     return cmds
-  }, [onClearChat, onCycleTheme, onSwitchProject, onOpenModal, onClose, projects, currentProjectId])
+  }, [onClearChat, onCycleTheme, onSwitchProject, onOpenModal, onClose, projects, currentProjectId, customCommands, onSendCommand])
 
   // ---- 模糊过滤 ----
   const filtered = useMemo(() => {
@@ -215,6 +245,17 @@ export function CommandPalette({
   useEffect(() => {
     setSelectedIdx(0)
   }, [filtered.length])
+
+  // 加载自定义命令
+  useEffect(() => {
+    if (!open || !projectId) return
+    fetch(`/api/commands?projectId=${encodeURIComponent(projectId)}`)
+      .then(r => r.json())
+      .then(data => {
+        setCustomCommands(data.commands || [])
+      })
+      .catch(() => {})
+  }, [open, projectId])
 
   // 打开时自动聚焦输入框
   useEffect(() => {
@@ -261,7 +302,25 @@ export function CommandPalette({
     }
   }, [filtered, selectedIdx, onClose])
 
-  if (!open) return null
+  // 参数弹窗提交
+  const handleParamsSubmit = useCallback((commandId: string, params: Record<string, unknown>, cwd?: string) => {
+    setParamsDialog({ open: false, command: null })
+    onSendCommand?.(commandId, params, cwd)
+    onClose()
+  }, [onSendCommand, onClose])
+
+  if (!open && !paramsDialog.open) return null
+  if (!open && paramsDialog.open) {
+    return (
+      <CommandParamsDialog
+        command={paramsDialog.command!}
+        open={paramsDialog.open}
+        onClose={() => setParamsDialog({ open: false, command: null })}
+        defaultCwd={useSettingsStore.getState().projectSettings?.cwd || ''}
+        onSubmit={handleParamsSubmit}
+      />
+    )
+  }
 
   // ---- 按类别分组 ----
   const grouped = new Map<string, CommandItem[]>()
@@ -275,6 +334,7 @@ export function CommandPalette({
   let flatIdx = 0
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] animate-fade-in" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
       <div
         className="w-full max-w-lg rounded-xl border shadow-2xl overflow-hidden animate-fade-in-up"
@@ -396,5 +456,17 @@ export function CommandPalette({
         </div>
       </div>
     </div>
+
+    {/* 参数输入弹窗 */}
+    {paramsDialog.open && paramsDialog.command && (
+      <CommandParamsDialog
+        command={paramsDialog.command}
+        open={paramsDialog.open}
+        onClose={() => setParamsDialog({ open: false, command: null })}
+        defaultCwd={useSettingsStore.getState().projectSettings?.cwd || ''}
+        onSubmit={handleParamsSubmit}
+      />
+    )}
+    </>
   )
 }
