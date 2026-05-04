@@ -29,8 +29,17 @@ function readCommandsFile(filePath: string): CommandDefinition[] {
 /** 写入命令列表到 JSON 文件 */
 function writeCommandsFile(filePath: string, commands: CommandDefinition[]): void {
   const dir = path.dirname(filePath)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(filePath, JSON.stringify(commands, null, 2), 'utf-8')
+  if (!fs.existsSync(dir)) {
+    logger.info('[Commands] Creating directory:', dir)
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(commands, null, 2), 'utf-8')
+    logger.info('[Commands] Written commands file:', filePath)
+  } catch (err) {
+    logger.error('[Commands] Failed to write commands file:', filePath, err)
+    throw new Error(`无法写入命令文件: ${filePath} - ${(err as Error).message}`)
+  }
 }
 
 /** 读取全局命令 */
@@ -126,11 +135,16 @@ export function createCommand(
     updatedAt: now,
   }
 
+  logger.info('[Commands] Creating command:', newCmd.id, 'scope:', scope, 'projectId:', projectId)
+
   if (scope === 'project' && projectId) {
+    const filePath = getProjectCommandsFile(projectId)
+    logger.info('[Commands] Target file:', filePath)
     const commands = readProjectCommands(projectId)
     commands.push(newCmd)
-    writeCommandsFile(getProjectCommandsFile(projectId), commands)
+    writeCommandsFile(filePath, commands)
   } else {
+    logger.info('[Commands] Target file:', GLOBAL_COMMANDS_FILE)
     const commands = readGlobalCommands()
     commands.push(newCmd)
     writeCommandsFile(GLOBAL_COMMANDS_FILE, commands)

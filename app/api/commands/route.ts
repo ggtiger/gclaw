@@ -66,6 +66,14 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Validation failed', errors: validation.errors }, { status: 400 })
   }
 
-  const created = createCommand(command, scope, projectId)
-  return Response.json({ success: true, command: created })
+  try {
+    const created = createCommand(command, scope, projectId)
+    return Response.json({ success: true, command: created })
+  } catch (err) {
+    console.error('[Commands API] Failed to create command:', err)
+    return Response.json(
+      { error: '创建命令失败：' + (err instanceof Error ? err.message : '未知错误') },
+      { status: 500 }
+    )
+  }
 }

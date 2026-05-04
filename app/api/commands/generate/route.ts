@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     return sseStream(async (send) => {
       send('progress', { stage: 'optimizing', message: '正在优化工作流命令...' })
-      const result = await optimizeCommand(command, instruction?.trim())
+      const result = await optimizeCommand(command, instruction?.trim(), projectId)
       send('progress', { stage: 'validating', message: '校验优化结果...' })
       send('result', { command: result })
       send('done', {})

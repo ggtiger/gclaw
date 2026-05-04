@@ -5,6 +5,7 @@
 import { callLLM } from '@/lib/llm'
 import { validateCommand } from '@/lib/commands/validator'
 import type { CommandDefinition } from '@/types/commands'
+import { DATA_DIR } from '@/lib/store/projects'
 import fs from 'fs'
 import path from 'path'
 
@@ -61,7 +62,8 @@ function repairTruncatedJSON(jsonStr: string): string {
 /** 加载一个精简的内置命令作为 few-shot 示例（只保留结构，缩短长文本字段） */
 function loadExample(): string {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'commands.json')
+    const filePath = path.join(DATA_DIR, 'commands.json')
+    console.log('[AI Generator] Loading example from:', filePath)
     const raw = fs.readFileSync(filePath, 'utf-8')
     const commands: CommandDefinition[] = JSON.parse(raw)
     const selected = commands.find(c => c.id === 'code-review')
@@ -205,7 +207,8 @@ const OPTIMIZE_SYSTEM_PROMPT = `你是一个专业的工作流优化师。你的
  */
 export async function optimizeCommand(
   command: CommandDefinition,
-  instruction?: string
+  instruction?: string,
+  projectId?: string
 ): Promise<CommandDefinition> {
   const userPrompt = `请优化以下工作流命令：
 
@@ -222,7 +225,7 @@ ${instruction ? `\n用户指定的优化方向：${instruction}` : '请按照默
     user: userPrompt,
     maxTokens: 8192,
     timeoutMs: 120000,
-    projectId: command.scope === 'project' ? command.id : undefined,
+    projectId,
   })
 
   if (!result) {

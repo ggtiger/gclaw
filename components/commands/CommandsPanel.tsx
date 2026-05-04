@@ -87,20 +87,34 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ updates: command, scope: command.scope, projectId: command.scope === 'project' ? projectId : undefined }),
         })
-        if (!res.ok) { const d = await res.json(); setError(d.error || '保存失败'); return }
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          const errorMsg = d.error || '保存失败'
+          setError(errorMsg)
+          console.error('[CommandsPanel] Update failed:', errorMsg)
+          return
+        }
       } else {
         const res = await fetch('/api/commands', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ command, scope: command.scope, projectId: command.scope === 'project' ? projectId : undefined }),
         })
-        if (!res.ok) { const d = await res.json(); setError(d.error || '创建失败'); return }
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          const errorMsg = d.error || '创建失败'
+          setError(errorMsg)
+          console.error('[CommandsPanel] Save failed:', errorMsg)
+          return
+        }
       }
       setEditingCommand(null)
       setCreatingNew(false)
       await fetchCommands()
-    } catch {
-      setError('保存失败')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '保存失败'
+      setError(msg)
+      console.error('[CommandsPanel] Save error:', err)
     }
   }, [commands, projectId, fetchCommands])
 

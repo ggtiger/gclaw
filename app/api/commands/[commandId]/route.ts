@@ -54,12 +54,19 @@ export async function PUT(
     }
   }
 
-  const result = updateCommand(commandId, updates, scope, projectId)
-  if (!result) {
-    return Response.json({ error: 'Command not found' }, { status: 404 })
+  try {
+    const result = updateCommand(commandId, updates, scope, projectId)
+    if (!result) {
+      return Response.json({ error: 'Command not found' }, { status: 404 })
+    }
+    return Response.json({ success: true, command: result })
+  } catch (err) {
+    console.error('[Commands API] Failed to update command:', err)
+    return Response.json(
+      { error: '更新命令失败：' + (err instanceof Error ? err.message : '未知错误') },
+      { status: 500 }
+    )
   }
-
-  return Response.json({ success: true, command: result })
 }
 
 export async function DELETE(
@@ -83,10 +90,17 @@ export async function DELETE(
     }
   }
 
-  const deleted = deleteCommand(commandId, scope, projectId)
-  if (!deleted) {
-    return Response.json({ error: 'Command not found' }, { status: 404 })
+  try {
+    const deleted = deleteCommand(commandId, scope, projectId)
+    if (!deleted) {
+      return Response.json({ error: 'Command not found' }, { status: 404 })
+    }
+    return Response.json({ success: true })
+  } catch (err) {
+    console.error('[Commands API] Failed to delete command:', err)
+    return Response.json(
+      { error: '删除命令失败：' + (err instanceof Error ? err.message : '未知错误') },
+      { status: 500 }
+    )
   }
-
-  return Response.json({ success: true })
 }
