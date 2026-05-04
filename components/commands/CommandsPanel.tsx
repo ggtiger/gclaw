@@ -10,12 +10,12 @@ import { CommandEditor } from './CommandEditor'
 import { generateMermaidCode } from '@/lib/commands/mermaid-generator'
 import { MermaidBlock } from '@/components/chat/MermaidBlock'
 
-const BUILT_IN_TEMPLATES: { id: string; name: string; description: string }[] = [
-  { id: 'code-review', name: '代码审查', description: '对代码进行多维度审查' },
-  { id: 'project-summary', name: '项目概要', description: '全面分析项目结构和技术栈' },
-  { id: 'full-project-audit', name: '项目全面审计', description: '多步工作流审计项目' },
-  { id: 'doc-generator', name: '文档生成', description: '生成 API 文档/README/变更日志' },
-  { id: 'bug-analyzer', name: 'Bug 分析', description: '分析 Bug 根因并建议修复方案' },
+const BUILT_IN_TEMPLATES: { id: string; name: string; description: string; category: string }[] = [
+  { id: 'code-review', name: '代码审查', description: '对代码进行多维度审查', category: 'development' },
+  { id: 'project-summary', name: '项目概要', description: '全面分析项目结构和技术栈', category: 'analysis' },
+  { id: 'full-project-audit', name: '项目全面审计', description: '多步工作流审计项目', category: 'analysis' },
+  { id: 'doc-generator', name: '文档生成', description: '生成 API 文档/README/变更日志', category: 'writing' },
+  { id: 'bug-analyzer', name: 'Bug 分析', description: '分析 Bug 根因并建议修复方案', category: 'development' },
 ]
 
 interface CommandsPanelProps {
@@ -175,12 +175,26 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
   }, [aiDescription, projectId])
 
   const handleCreateFromTemplate = useCallback(async (templateId: string) => {
+    console.log('[CommandsPanel] handleCreateFromTemplate called, templateId:', templateId)
     try {
-      const res = await fetch(`/api/commands?projectId=${encodeURIComponent(projectId)}&includeDisabled=true`)
-      const data = await res.json()
-      const allCmds = data.commands || []
-      const template = allCmds.find((c: CommandDefinition) => c.id === templateId)
+      // 优先从已加载的 commands 状态中查找模板（避免冗余 API 调用）
+      let template = commands.find(c => c.id === templateId)
+
+      // 如果本地状态没有，再尝试从 API 获取（可能是首次加载或数据未同步）
+      if (!template) {
+        console.log('[CommandsPanel] Template not in local state, fetching from API...')
+        const res = await fetch(`/api/commands?projectId=${encodeURIComponent(projectId)}&includeDisabled=true`)
+        if (res.ok) {
+          const data = await res.json()
+          const allCmds = data.commands || []
+          template = allCmds.find((c: CommandDefinition) => c.id === templateId)
+        } else {
+          console.warn('[CommandsPanel] API returned error:', res.status)
+        }
+      }
+
       if (template) {
+        console.log('[CommandsPanel] Template found, creating copy:', template.name)
         const newCmd: CommandDefinition = {
           ...template,
           id: `${template.id}-copy-${Date.now().toString(36)}`,
@@ -193,11 +207,45 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
         setEditingCommand(newCmd)
         setCreatingNew(true)
         setShowTemplates(false)
+      } else {
+        // 模板未在命令库中找到 → 用内置模板信息创建骨架命令
+        console.warn('[CommandsPanel] Template not found in commands, creating skeleton from built-in info')
+        const builtIn = BUILT_IN_TEMPLATES.find(t => t.id === templateId)
+        if (builtIn) {
+          const skeletonCmd: CommandDefinition = {
+            id: `${builtIn.id}-copy-${Date.now().toString(36)}`,
+            name: `${builtIn.name} (副本)`,
+            description: builtIn.description,
+            category: builtIn.category,
+            scope: 'project',
+            enabled: true,
+            parameters: [],
+            steps: [
+              {
+                id: 'step-1',
+                type: 'prompt',
+                name: '步骤 1',
+                systemPrompt: `你是${builtIn.name}专家。`,
+                userMessage: '请执行任务。',
+                tools: ['Read', 'Bash', 'Grep'],
+                outputVar: 'result',
+              },
+            ],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          setEditingCommand(skeletonCmd)
+          setCreatingNew(true)
+          setShowTemplates(false)
+        } else {
+          setError(`未找到模板: ${templateId}`)
+        }
       }
-    } catch {
+    } catch (err) {
+      console.error('[CommandsPanel] handleCreateFromTemplate error:', err)
       setError('加载模板失败')
     }
-  }, [projectId])
+  }, [projectId, commands])
 
   // Editor mode
   if (editingCommand || creatingNew) {

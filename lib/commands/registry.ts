@@ -7,6 +7,39 @@ import { logger } from '@/lib/logger'
 
 const GLOBAL_COMMANDS_FILE = path.join(DATA_DIR, 'commands.json')
 
+/** 检查是否需要初始化默认命令（生产环境首次运行时 DATA_DIR 为空） */
+let defaultCommandsInitialized = false
+function ensureDefaultCommands(): void {
+  if (defaultCommandsInitialized) return
+  defaultCommandsInitialized = true
+
+  if (fs.existsSync(GLOBAL_COMMANDS_FILE)) return
+
+  // 尝试从项目源码 data/ 目录加载默认命令（开发环境回退）
+  const fallbackPath = path.join(process.cwd(), 'data', 'commands.json')
+  if (fs.existsSync(fallbackPath) && fallbackPath !== GLOBAL_COMMANDS_FILE) {
+    logger.info('[Commands] Seeding default commands from fallback:', fallbackPath)
+    try {
+      const dir = path.dirname(GLOBAL_COMMANDS_FILE)
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      fs.copyFileSync(fallbackPath, GLOBAL_COMMANDS_FILE)
+      return
+    } catch (err) {
+      logger.error('[Commands] Failed to copy fallback commands:', err)
+    }
+  }
+
+  // 如果没有 fallback，创建一个空的 commands.json
+  logger.info('[Commands] Creating empty global commands file:', GLOBAL_COMMANDS_FILE)
+  try {
+    const dir = path.dirname(GLOBAL_COMMANDS_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(GLOBAL_COMMANDS_FILE, '[]', 'utf-8')
+  } catch (err) {
+    logger.error('[Commands] Failed to create commands file:', err)
+  }
+}
+
 function getProjectCommandsFile(projectId: string): string {
   if (projectId.includes('..') || projectId.includes('/') || projectId.includes('\\')) {
     throw new Error(`Invalid projectId: ${projectId}`)
@@ -44,6 +77,7 @@ function writeCommandsFile(filePath: string, commands: CommandDefinition[]): voi
 
 /** 读取全局命令 */
 function readGlobalCommands(): CommandDefinition[] {
+  ensureDefaultCommands()
   return readCommandsFile(GLOBAL_COMMANDS_FILE)
 }
 
