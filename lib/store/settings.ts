@@ -12,6 +12,7 @@ import {
 import { getProjectDataDir } from './projects'
 import { encrypt, decrypt, isEncrypted } from '@/lib/crypto'
 import { logger } from '@/lib/logger'
+import { findSeedFile } from './seed-utils'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
   ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -24,10 +25,30 @@ function ensureDataDir() {
   }
 }
 
+/** 首次运行时从种子数据初始化 global.json */
+let seedChecked = false
+function ensureSeedGlobal(): void {
+  if (seedChecked) return
+  seedChecked = true
+  if (fs.existsSync(GLOBAL_FILE)) return
+
+  const seedPath = findSeedFile('global.json')
+  if (seedPath && seedPath !== GLOBAL_FILE) {
+    ensureDataDir()
+    try {
+      fs.copyFileSync(seedPath, GLOBAL_FILE)
+      console.log('[Settings] Initialized global.json from seed:', seedPath)
+    } catch (err) {
+      console.error('[Settings] Failed to copy seed global.json:', err)
+    }
+  }
+}
+
 // ── 全局设置 ──
 
 export function getGlobalSettings(): GlobalSettings {
   ensureDataDir()
+  ensureSeedGlobal()
   try {
     if (!fs.existsSync(GLOBAL_FILE)) return { ...DEFAULT_GLOBAL }
     const raw = fs.readFileSync(GLOBAL_FILE, 'utf-8')

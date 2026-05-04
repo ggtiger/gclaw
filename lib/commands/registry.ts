@@ -3,6 +3,7 @@ import path from 'path'
 import { randomUUID } from 'crypto'
 import type { CommandDefinition } from '@/types/commands'
 import { DATA_DIR } from '@/lib/store/projects'
+import { findSeedFile } from '@/lib/store/seed-utils'
 import { logger } from '@/lib/logger'
 
 const GLOBAL_COMMANDS_FILE = path.join(DATA_DIR, 'commands.json')
@@ -15,17 +16,17 @@ function ensureDefaultCommands(): void {
 
   if (fs.existsSync(GLOBAL_COMMANDS_FILE)) return
 
-  // 尝试从项目源码 data/ 目录加载默认命令（开发环境回退）
-  const fallbackPath = path.join(process.cwd(), 'data', 'commands.json')
-  if (fs.existsSync(fallbackPath) && fallbackPath !== GLOBAL_COMMANDS_FILE) {
-    logger.info('[Commands] Seeding default commands from fallback:', fallbackPath)
+  // 查找种子数据文件（多级回退：开发环境 / 打包后相对于 server.js）
+  const seedPath = findSeedFile('commands.json')
+  if (seedPath && seedPath !== GLOBAL_COMMANDS_FILE) {
+    logger.info('[Commands] Seeding default commands from:', seedPath)
     try {
       const dir = path.dirname(GLOBAL_COMMANDS_FILE)
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-      fs.copyFileSync(fallbackPath, GLOBAL_COMMANDS_FILE)
+      fs.copyFileSync(seedPath, GLOBAL_COMMANDS_FILE)
       return
     } catch (err) {
-      logger.error('[Commands] Failed to copy fallback commands:', err)
+      logger.error('[Commands] Failed to copy seed commands:', err)
     }
   }
 

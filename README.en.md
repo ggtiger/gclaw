@@ -28,6 +28,8 @@ English | **[中文](./README.md)**
 - Mermaid diagrams, Office/PDF file preview
 - Multimodal messages: upload files and images for Claude to analyze
 - Message search, export, branch switching, and feedback
+- **Command System**: Custom command management, parameterized execution, AI-assisted generation, flowchart visualization
+- **Workflow Step Confirmation**: SDK-level pause/resume, real-time confirmation dialog and progress display in frontend
 - Command palette and scheduled sending
 - API proxy: support third-party API forwarding (OpenAI/Anthropic, etc.)
 
@@ -35,6 +37,9 @@ English | **[中文](./README.md)**
 
 - Independent configuration, message history, skills, and agents per project
 - Concurrent conversations across projects — background streams never interrupt
+- **Folder Grouping**: Custom folder organization for projects, create / rename / delete, drag in/out
+- **Multi-User Grouping**: Admin view groups projects by owner with avatar and role indicators
+- Project icons linked to assistant identity (custom avatar/icon)
 - Per-project channel and member permission management
 - Agent definitions and template system
 - Project-level file management and Git integration
@@ -204,12 +209,14 @@ gclaw/
 ├── app/                          # Next.js App Router pages and API
 │   ├── api/chat/                 # Chat (stream / messages / abort / permission / branches / search / export / attachments)
 │   ├── api/projects/             # Project CRUD + file management + Git + members
+│   ├── api/folders/              # Folder CRUD + project-to-folder mapping
 │   ├── api/agents/               # Agent CRUD
 │   ├── api/agent-templates/      # Agent templates
 │   ├── api/templates/            # Message templates
 │   ├── api/skills/               # Skill management + marketplace
 │   ├── api/channels/             # Channel management + webhook + SSE + API channel
 │   ├── api/schedules/            # Scheduled tasks CRUD + manual trigger
+│   ├── api/commands/             # Command CRUD + AI generation
 │   ├── api/settings/             # Global / project / model / prompt settings
 │   ├── api/auth/                 # Authentication (login / register / oauth / password)
 │   ├── api/users/                # User management and avatar
@@ -224,12 +231,13 @@ gclaw/
 │   ├── api/convert/              # Document conversion (Word → Markdown)
 │   ├── api/llm/                  # LLM configuration
 ├── components/
-│   ├── chat/                     # Chat panel (messages, input, tool summary, approval, search, export, branches)
+│   ├── chat/                     # Chat panel (messages, input, tool summary, approval, step confirmation, command params, search, export)
 │   ├── channels/                 # Channel management panel
 │   ├── projects/                 # Project sidebar, mode selector, members
 │   ├── agents/                   # Agent management and templates
 │   ├── skills/                   # Skill management and marketplace
 │   ├── schedules/                # Scheduled tasks (with visual Cron builder)
+│   ├── commands/                 # Command management panel (editor + workflow visualization)
 │   ├── panels/                   # Focus mode (Todo / Notes / Calendar) + Files + Git + Memory
 │   │   ├── files/                # File panel (CodeMirror editor + preview)
 │   │   ├── focus/                # Focus mode sub-panels
@@ -253,6 +261,7 @@ gclaw/
 │   ├── focus.ts                  # Focus mode types
 │   ├── git.ts                    # Git operation types
 │   └── channels.ts               # Channel types
+│   └── commands.ts               # Command system types
 ├── lib/
 │   ├── claude/                   # Claude SDK integration
 │   │   ├── process-manager.ts    # Core orchestration: query() + AbortController
@@ -299,8 +308,19 @@ gclaw/
 │   │   └── providers/            # Data providers (Skill)
 │   ├── prompts/                  # Prompt template management
 │   ├── modes/                    # Mode definitions
+│   ├── commands/                 # Command system
+│   │   ├── registry.ts           # Command definition storage and retrieval
+│   │   ├── executor.ts           # Command parameter rendering and execution
+│   │   ├── variables.ts          # Variable parsing ({{var}} template replacement)
+│   │   ├── validator.ts          # Command definition validation
+│   │   ├── ai-generator.ts       # LLM-assisted command generation
+│   │   └── mermaid-generator.ts  # Flowchart generation
+│   ├── auth/                     # Auth helpers
+│   │   ├── helpers.ts            # Auth helper functions
+│   │   └── jwt.ts                # JWT utilities
 │   ├── services/                 # Service layer (skill marketplace, etc.)
 │   ├── store/                    # Data persistence (file-system JSON)
+│   │   └── folders.ts            # Folder CRUD + project mapping
 │   ├── crypto.ts                 # Encryption utilities
 │   ├── logger.ts                 # Logger
 │   ├── llm.ts                    # LLM config management

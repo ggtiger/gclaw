@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { getPromptTemplate } from '@/lib/store/prompt-templates'
+import { findSeedFile } from '@/lib/store/seed-utils'
 
 const DATA_DIR = process.env.GCLAW_DATA_DIR
  ? path.join(process.env.GCLAW_DATA_DIR, 'data')
@@ -21,6 +22,26 @@ export interface ConversationTemplate {
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true })
+  }
+}
+
+/** 首次运行时从种子数据初始化 templates.json */
+let seedChecked = false
+function ensureSeedTemplates(): void {
+  if (seedChecked) return
+  seedChecked = true
+  if (fs.existsSync(TEMPLATES_FILE)) return
+
+  const seedPath = findSeedFile('templates.json')
+  if (seedPath && seedPath !== TEMPLATES_FILE) {
+    ensureDataDir()
+    try {
+      fs.copyFileSync(seedPath, TEMPLATES_FILE)
+      console.log('[Templates] Initialized from seed:', seedPath)
+      return
+    } catch (err) {
+      console.error('[Templates] Failed to copy seed templates:', err)
+    }
   }
 }
 
@@ -74,6 +95,7 @@ const DEFAULT_TEMPLATES: ConversationTemplate[] = [
 
 function readTemplates(): ConversationTemplate[] {
   ensureDataDir()
+  ensureSeedTemplates()
   try {
     // 为内置模板注入存储层的自定义提示词
     const customizedDefaults = DEFAULT_TEMPLATES.map(t => ({

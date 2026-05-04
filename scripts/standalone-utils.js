@@ -152,11 +152,44 @@ function assembleServerBundle(standaloneRoot, destDir) {
     copyDirSync(skillsSrc, path.join(destDir, 'skills'))
   }
 
+  // 复制种子数据文件（仅初始化所需的默认数据，不包含运行时数据）
+  copySeedData(destDir)
+
   // 补充 Claude Agent SDK 遗漏的文件
   patchSdkFiles(destDir)
 
   // 移除不需要的原生二进制（macOS 公证要求所有二进制签名，排除可避免问题）
   removeNativeBinaries(destDir)
+}
+
+/**
+ * 复制种子数据文件到打包产物的 data/ 目录
+ * 只复制初始化所需的默认数据文件，不包含用户运行时数据（logs、projects、uploads、memory 等）
+ */
+function copySeedData(destDir) {
+  const SEED_FILES = [
+    'commands.json',
+    'templates.json',
+    'default-skills.json',
+    'global.json',
+  ]
+
+  const srcDataDir = path.join(ROOT, 'data')
+  const destDataDir = path.join(destDir, 'data')
+  fs.mkdirSync(destDataDir, { recursive: true })
+
+  let copied = 0
+  for (const file of SEED_FILES) {
+    const src = path.join(srcDataDir, file)
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(destDataDir, file))
+      console.log(`[standalone]   Copied seed data: data/${file}`)
+      copied++
+    } else {
+      console.warn(`[standalone]   Seed file not found: data/${file}`)
+    }
+  }
+  console.log(`[standalone] Seed data: ${copied}/${SEED_FILES.length} files copied`)
 }
 
 /**

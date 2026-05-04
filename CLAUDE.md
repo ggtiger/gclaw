@@ -72,6 +72,13 @@ npx tsc --noEmit # TypeScript 类型检查（无测试框架，用此验证编�
 | OTA 更新 | `lib/dev-mode/ota.ts` | 远程更新检测 |
 | 专注模式存储 | `lib/focus/store.ts` | 专注模式数据存储 |
 | 热更新管理 | `lib/updater.ts` | bsdiff 增量差分下载与替换 |
+| 文件夹存储 | `lib/store/folders.ts` | 项目文件夹 CRUD + 项目映射持久化（`data/folders.json`） |
+| 命令注册表 | `lib/commands/registry.ts` | 命令定义存储与检索（`data/commands.json`） |
+| 命令执行器 | `lib/commands/executor.ts` | 命令参数渲染与执行（SDK 调用 / shell） |
+| 命令变量 | `lib/commands/variables.ts` | 命令变量解析（`{{var}}` 模板替换） |
+| 命令验证 | `lib/commands/validator.ts` | 命令定义校验 |
+| 命令 AI 生成 | `lib/commands/ai-generator.ts` | LLM 辅助命令定义生成 |
+| 命令流程图 | `lib/commands/mermaid-generator.ts` | 命令流程 Mermaid 图生成 |
 
 ### 多项目并发
 
@@ -116,13 +123,21 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 /api/chat/messages     — 历史消息 CRUD + 搜索 + 反馈
 /api/chat/abort        — 终止查询
 /api/chat/permission   — 权限审批
+/api/chat/ask-question — SDK 提问事件响应
+/api/chat/step-confirmation — 工作流步骤确认（pause/resume）
 /api/chat/branches     — 消息分支切换
 /api/chat/attachments  — 附件管理
 /api/chat/export       — 对话导出
-/api/projects          — 项目 CRUD
+/api/chat/optimize-prompt — 提示词优化
+/api/chat/relay        — 消息转发（秘书项目）
+/api/projects          — 项目 CRUD（GET 含 folders + projectFolderMap + ownerMeta + projectAssistantIcons）
 /api/projects/[id]/files — 项目文件管理
 /api/projects/[id]/git — 项目 Git 操作
 /api/projects/members  — 项目成员管理
+/api/folders           — 文件夹 CRUD（GET/POST/PUT/DELETE）
+/api/folders/move      — 项目移入文件夹（POST）
+/api/commands          — 命令 CRUD（GET/POST/PUT/DELETE）
+/api/commands/generate — AI 生成命令定义（POST）
 /api/agents            — 智能体 CRUD
 /api/agent-templates   — 智能体模板
 /api/templates         — 消息模板
@@ -133,6 +148,7 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 /api/settings          — 全局/项目设置
 /api/settings/models   — 模型配置
 /api/settings/prompts  — 提示词配置
+/api/settings/avatar   — 助理头像上传
 /api/auth/login        — 登录
 /api/auth/register     — 注册
 /api/auth/logout       — 登出
@@ -163,6 +179,7 @@ SDK Hook `PreToolUse` 拦截危险工具（Bash/Write/Edit/MultiEdit/Skill），
 - `data/global.json` — 全局设置
 - `data/users.json` — 用户数据（含密码哈希）
 - `data/projects.json` — 项目列表
+- `data/folders.json` — 文件夹与项目映射（按用户分组）
 - `data/schedules.json` — 全局定时任务
 - `data/templates.json` — 消息模板
 - `data/audit-log.json` — 审计日志

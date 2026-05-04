@@ -28,6 +28,8 @@
 - Mermaid 图表、Office/PDF 文件在线预览
 - 多模态消息：支持文件和图片上传，Claude 自动分析
 - 消息搜索、导出、分支切换与反馈
+- **命令系统**：自定义命令管理、参数化执行、AI 辅助生成、流程图可视化
+- **工作流步骤确认**：SDK 级别 pause/resume，前端实时确认对话框与进度显示
 - 命令面板与定时发送
 - API 代理：支持第三方 API 转发（OpenAI/Anthropic 等）
 
@@ -35,6 +37,9 @@
 
 - 每个项目独立配置、独立消息历史、独立技能和智能体
 - 多项目并发对话，后台流不中断
+- **文件夹分组**：自定义文件夹组织项目，支持创建/重命名/删除，拖拽移入移出
+- **多用户分组**：管理员视角按项目所有者分组，带头像和角色标识
+- 项目图标与助理身份联动（自定义头像/图标）
 - 项目级渠道、成员权限管理
 - 智能体定义与模板系统
 - 项目级文件管理与 Git 集成
@@ -202,15 +207,17 @@ npm run tauri:build
 ```
 gclaw/
 ├── app/                          # Next.js App Router 页面与 API
-│   ├── api/chat/                 # 对话（stream / messages / abort / permission / branches / search / export / attachments）
+│   ├── api/chat/                 # 对话（stream / messages / abort / permission / branches / search / export / step-confirmation）
 │   ├── api/projects/             # 项目 CRUD + 文件管理 + Git + 成员
+│   ├── api/folders/              # 文件夹 CRUD + 项目移入文件夹
 │   ├── api/agents/               # 智能体 CRUD
 │   ├── api/agent-templates/      # 智能体模板
 │   ├── api/templates/            # 消息模板
 │   ├── api/skills/               # 技能管理 + 市场
 │   ├── api/channels/             # 渠道管理 + webhook + SSE + API渠道
 │   ├── api/schedules/            # 定时任务 CRUD + 手动触发
-│   ├── api/settings/             # 全局 / 项目 / 模型 / 提示词设置
+│   ├── api/settings/             # 全局 / 项目 / 模型 / 提示词 / 头像设置
+│   ├── api/commands/             # 命令 CRUD + AI 生成
 │   ├── api/auth/                 # 用户认证（login / register / oauth / password）
 │   ├── api/users/                # 用户管理与头像
 │   ├── api/uploads/              # 文件上传与访问
@@ -225,12 +232,13 @@ gclaw/
 │   ├── api/llm/                  # LLM 配置
 │   └── api/auth/                 # 用户认证
 ├── components/
-│   ├── chat/                     # 聊天面板（消息、输入、工具摘要、权限审批、搜索、导出、分支）
+│   ├── chat/                     # 聊天面板（消息、输入、工具摘要、权限审批、步骤确认、命令参数、搜索、导出）
 │   ├── channels/                 # 渠道管理面板
 │   ├── projects/                 # 项目侧栏、模式选择、成员管理
 │   ├── agents/                   # 智能体管理与模板
 │   ├── skills/                   # 技能管理与市场
 │   ├── schedules/                # 定时任务（含可视化 Cron 构建器）
+│   ├── commands/                 # 命令管理面板（编辑器 + 工作流可视化）
 │   ├── panels/                   # 专注模式（Todo / Notes / Calendar）+ 文件 + Git + 记忆
 │   │   ├── files/                # 文件面板（CodeMirror 编辑器 + 预览）
 │   │   ├── focus/                # 专注模式子面板
@@ -253,7 +261,8 @@ gclaw/
 │   ├── memory.ts                 # 记忆系统类型
 │   ├── focus.ts                  # 专注模式类型
 │   ├── git.ts                    # Git 操作类型
-│   └── channels.ts               # 渠道类型
+│   ├── channels.ts               # 渠道类型
+│   └── commands.ts               # 命令系统类型
 ├── lib/
 │   ├── claude/                   # Claude SDK 集成
 │   │   ├── process-manager.ts    # 核心调度：query() + AbortController
@@ -286,6 +295,13 @@ gclaw/
 │   │   ├── scheduler.ts          # 核心调度器（globalThis 单例）
 │   │   ├── executors.ts          # 执行器注册表
 │   │   └── cron-parser.ts        # Cron 表达式解析
+│   ├── commands/                 # 命令系统
+│   │   ├── registry.ts           # 命令定义存储与检索
+│   │   ├── executor.ts           # 命令参数渲染与执行
+│   │   ├── variables.ts          # 变量解析（{{var}} 模板替换）
+│   │   ├── validator.ts          # 命令定义校验
+│   │   ├── ai-generator.ts       # LLM 辅助命令生成
+│   │   └── mermaid-generator.ts  # 流程图生成
 │   ├── auth/                     # 认证辅助
 │   │   ├── helpers.ts            # 认证辅助函数
 │   │   └── jwt.ts                # JWT 工具
@@ -302,6 +318,7 @@ gclaw/
 │   ├── modes/                    # 模式定义
 │   ├── services/                 # 服务层（技能市场等）
 │   ├── store/                    # 数据持久化（文件系统 JSON）
+│   │   └── folders.ts            # 文件夹 CRUD + 项目映射
 │   ├── crypto.ts                 # 加密工具
 │   ├── logger.ts                 # 日志工具
 │   ├── llm.ts                    # LLM 配置管理
