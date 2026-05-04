@@ -19,136 +19,106 @@ function extractJSON(text: string): string {
   return text.trim()
 }
 
-/** 加载内置命令作为 few-shot 示例 */
-function loadExamples(): string {
+/** 尝试修复被截断的 JSON 字符串 */
+function repairTruncatedJSON(jsonStr: string): string {
+  let str = jsonStr.trim()
+  // 如果已经是合法 JSON，直接返回
+  try { JSON.parse(str); return str } catch { /* continue */ }
+
+  // 修复未闭合的字符串：如果奇数个未转义引号，补一个引号
+  const unescapedQuotes = str.match(/(?<!\\)"/g)
+  if (unescapedQuotes && unescapedQuotes.length % 2 !== 0) {
+    str += '"'
+  }
+
+  // 移除末尾不完整的键值对（如 "key": "未完成的值 ）
+  // 先去掉末尾的逗号
+  str = str.replace(/,\s*$/, '')
+
+  // 计算未闭合的括号并补全
+  let braces = 0
+  let brackets = 0
+  let inString = false
+  let escape = false
+  for (const ch of str) {
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') braces++
+    else if (ch === '}') braces--
+    else if (ch === '[') brackets++
+    else if (ch === ']') brackets--
+  }
+
+  // 补全未闭合的括号
+  for (let i = 0; i < brackets; i++) str += ']'
+  for (let i = 0; i < braces; i++) str += '}'
+
+  return str
+}
+
+/** 加载一个精简的内置命令作为 few-shot 示例（只保留结构，缩短长文本字段） */
+function loadExample(): string {
   try {
     const filePath = path.join(process.cwd(), 'data', 'commands.json')
     const raw = fs.readFileSync(filePath, 'utf-8')
     const commands: CommandDefinition[] = JSON.parse(raw)
-    const selected = commands.filter(c => c.id === 'code-review' || c.id === 'doc-generator')
-    return selected.map(c => JSON.stringify(c, null, 2)).join('\n\n---\n\n')
+    const selected = commands.find(c => c.id === 'code-review')
+    if (!selected) return '(无示例)'
+    // 精简：截断长字段，只保留结构参考
+    const slim = {
+      ...selected,
+      steps: selected.steps.map(s => ({
+        ...s,
+        systemPrompt: 'systemPrompt' in s && typeof (s as any).systemPrompt === 'string'
+          ? (s as any).systemPrompt.slice(0, 150) + '...（省略）'
+          : undefined,
+      })),
+    }
+    return JSON.stringify(slim, null, 2)
   } catch {
     return '(无法加载示例)'
   }
 }
 
-const GENERATE_SYSTEM_PROMPT = `你是一个专业的工作流命令设计师。你的任务是根据用户的描述生成一个完整的 CommandDefinition JSON 对象。
+const GENERATE_SYSTEM_PROMPT = `你是工作流命令设计师。根据用户描述生成 CommandDefinition JSON。
 
-## CommandDefinition JSON 结构
+## 结构
 
 \`\`\`typescript
 interface CommandDefinition {
-  id: string                    // 唯一标识，必须是 kebab-case（小写字母、数字、连字符）
-  name: string                  // 显示名称
-  description: string           // 命令描述
-  category?: string             // 分类：development | analysis | writing | automation | other
-  scope: 'global' | 'project'  // 作用域
-  enabled: boolean              // 是否启用
-  parameters?: CommandParameter[] // 命令参数
-  steps: CommandStep[]          // 工作流步骤（至少 1 个）
-  output?: { format?: 'markdown' | 'json' | 'text'; saveTo?: string }
-  createdAt: string             // ISO 时间字符串
-  updatedAt: string             // ISO 时间字符串
-}
-
-interface CommandParameter {
-  name: string       // 参数名，只允许字母、数字、下划线，不能以数字开头
-  type: 'string' | 'number' | 'boolean' | 'enum' | 'file'
-  required: boolean
-  default?: any
+  id: string           // kebab-case
+  name: string
   description: string
-  values?: string[]  // enum 类型必须提供
-  placeholder?: string
+  category?: 'development' | 'analysis' | 'writing' | 'automation' | 'other'
+  scope: 'global' | 'project'
+  enabled: boolean
+  parameters?: { name: string; type: 'string'|'number'|'boolean'|'enum'|'file'; required: boolean; default?: any; description: string; values?: string[]; placeholder?: string }[]
+  steps: CommandStep[] // 至少1个
+  output?: { format?: 'markdown'|'json'|'text'; saveTo?: string }
+  createdAt: string    // ISO
+  updatedAt: string    // ISO
 }
 \`\`\`
 
-## 5 种步骤类型
+## 步骤类型（仅支持以下5种，type 字段只允许这5个值）
+1. **prompt** - AI 调用: { id, type:"prompt", name, systemPrompt, userMessage, tools?:["Read","Bash","Grep","Write"], agent?, maxTurns?, outputVar?, onError? }
+2. **script** - Shell 脚本/命令执行（bash、sh 等都用此类型）: { id, type:"script", name, command, cwd?, outputVar?, onError? }
+3. **condition** - 条件分支: { id, type:"condition", name, if, then, else?, onError? }
+4. **command-ref** - 引用其他命令: { id, type:"command-ref", name, commandId, params?, outputVar?, onError? }
+5. **parallel** - 并行执行: { id, type:"parallel", name, branches:[[step,...],[step,...]], outputVar?, onError? }
 
-### 1. prompt（AI 对话）
-\`\`\`json
-{
-  "id": "step-id",
-  "type": "prompt",
-  "name": "步骤名称",
-  "systemPrompt": "系统提示词",
-  "userMessage": "用户消息，支持模板变量",
-  "tools": ["Read", "Bash", "Grep", "Write"],
-  "outputVar": "变量名",
-  "onError": "stop"
-}
-\`\`\`
+⚠️ 严禁使用 "bash"、"shell"、"exec" 等未列出的类型。执行 shell 命令请使用 type:"script"。
 
-### 2. script（脚本执行）
-\`\`\`json
-{
-  "id": "step-id",
-  "type": "script",
-  "name": "步骤名称",
-  "command": "shell 命令",
-  "cwd": "工作目录（可选）",
-  "outputVar": "变量名",
-  "onError": "stop"
-}
-\`\`\`
+模板变量: {{date}}, {{projectId}}, {{params.xxx}}, {{steps.xxx.output}}
 
-### 3. condition（条件分支）
-\`\`\`json
-{
-  "id": "step-id",
-  "type": "condition",
-  "name": "步骤名称",
-  "if": "条件表达式，如：{{steps.xxx.output}} contains '关键词'",
-  "then": "目标步骤ID 或 [步骤ID数组]",
-  "else": "目标步骤ID 或 [步骤ID数组]（可选）"
-}
-\`\`\`
-
-### 4. command-ref（引用其他命令）
-\`\`\`json
-{
-  "id": "step-id",
-  "type": "command-ref",
-  "name": "步骤名称",
-  "commandId": "被引用的命令ID",
-  "params": { "key": "value" },
-  "outputVar": "变量名"
-}
-\`\`\`
-
-### 5. parallel（并行执行）
-\`\`\`json
-{
-  "id": "step-id",
-  "type": "parallel",
-  "name": "步骤名称",
-  "branches": [
-    [ { "id": "branch1-step1", "type": "prompt", ... } ],
-    [ { "id": "branch2-step1", "type": "prompt", ... } ]
-  ],
-  "outputVar": "变量名"
-}
-\`\`\`
-
-## 模板变量语法
-- \`{{date}}\` - 当前日期
-- \`{{projectId}}\` - 项目 ID
-- \`{{params.xxx}}\` - 引用参数值
-- \`{{steps.xxx.output}}\` - 引用前面步骤的输出
-
-## 校验规则
-- id 必须是 kebab-case（只允许小写字母、数字和连字符）
-- 所有步骤 id 必须唯一
-- 禁止危险命令：rm -rf、rm -r、sudo、mkfs、dd if=、format、fdisk、chmod 777、chown -R
-- 每个 prompt 步骤的 systemPrompt 末尾必须包含输出规则：
-  "【输出规则】\\n- 当你使用工具将内容写入文件后，不要在对话中重复输出文件内容\\n- 只需简洁确认操作结果，保持输出简洁"
-
-## 要求
-- 只输出一个合法的 JSON 对象，不要包含任何其他文本
-- 根据用户描述合理设计步骤结构
-- prompt 步骤要有高质量的 systemPrompt
-- 合理使用参数让命令更灵活
-- scope 默认为 'project'
-- enabled 设为 true`
+## 规则
+- id 只允许小写字母、数字、连字符
+- 禁止危险命令(rm -rf, sudo等)
+- prompt步骤的systemPrompt末尾必须包含："【输出规则】\\n- 当你使用工具将内容写入文件后，不要在对话中重复输出文件内容\\n- 只需简洁确认操作结果，保持输出简洁"
+- 只输出一个合法JSON对象，不包含其他文本
+- scope默认'project'，enabled设为true`
 
 /**
  * 根据自然语言描述生成一个工作流命令
@@ -157,15 +127,13 @@ export async function generateCommand(
   description: string,
   projectId: string
 ): Promise<CommandDefinition> {
-  const examples = loadExamples()
+  const example = loadExample()
 
   const systemPrompt = `${GENERATE_SYSTEM_PROMPT}
 
 ## 参考示例
 
-以下是 2 个内置命令的完整 JSON 结构，供你参考风格和结构：
-
-${examples}`
+${example}`
 
   const userPrompt = `请根据以下描述生成一个工作流命令的完整 JSON：
 
@@ -176,8 +144,8 @@ ${description}
   const result = await callLLM({
     system: systemPrompt,
     user: userPrompt,
-    maxTokens: 4096,
-    timeoutMs: 30000,
+    maxTokens: 8192,
+    timeoutMs: 120000,
     projectId,
   })
 
@@ -187,10 +155,16 @@ ${description}
 
   let parsed: CommandDefinition
   try {
-    const jsonStr = extractJSON(result)
-    parsed = JSON.parse(jsonStr) as CommandDefinition
+    let jsonStr = extractJSON(result)
+    try {
+      parsed = JSON.parse(jsonStr) as CommandDefinition
+    } catch {
+      // 尝试修复被截断的 JSON
+      jsonStr = repairTruncatedJSON(jsonStr)
+      parsed = JSON.parse(jsonStr) as CommandDefinition
+    }
   } catch (e) {
-    throw new Error(`LLM 返回的 JSON 解析失败: ${(e as Error).message}\n\n原始输出片段: ${result.slice(0, 500)}`)
+    throw new Error(`LLM 返回的 JSON 解析失败（可能输出被截断）: ${(e as Error).message}\n\n原始输出片段: ${result.slice(0, 500)}`)
   }
 
   // 自动填充字段
@@ -223,7 +197,8 @@ const OPTIMIZE_SYSTEM_PROMPT = `你是一个专业的工作流优化师。你的
 - 只输出优化后的完整 JSON 对象
 - 所有步骤 id 必须唯一且为 kebab-case
 - 禁止危险命令（rm -rf、sudo 等）
-- prompt 步骤的 systemPrompt 末尾需包含输出规则约束`
+- prompt 步骤的 systemPrompt 末尾需包含输出规则约束
+- 步骤类型只允许 5 种：prompt、script、condition、command-ref、parallel。严禁使用 "bash"、"shell"、"exec" 等未列出的类型，执行 shell 命令请使用 type:"script"`
 
 /**
  * 优化已有的工作流命令
@@ -245,8 +220,8 @@ ${instruction ? `\n用户指定的优化方向：${instruction}` : '请按照默
   const result = await callLLM({
     system: OPTIMIZE_SYSTEM_PROMPT,
     user: userPrompt,
-    maxTokens: 4096,
-    timeoutMs: 30000,
+    maxTokens: 8192,
+    timeoutMs: 120000,
     projectId: command.scope === 'project' ? command.id : undefined,
   })
 
@@ -256,10 +231,15 @@ ${instruction ? `\n用户指定的优化方向：${instruction}` : '请按照默
 
   let parsed: CommandDefinition
   try {
-    const jsonStr = extractJSON(result)
-    parsed = JSON.parse(jsonStr) as CommandDefinition
+    let jsonStr = extractJSON(result)
+    try {
+      parsed = JSON.parse(jsonStr) as CommandDefinition
+    } catch {
+      jsonStr = repairTruncatedJSON(jsonStr)
+      parsed = JSON.parse(jsonStr) as CommandDefinition
+    }
   } catch (e) {
-    throw new Error(`LLM 返回的 JSON 解析失败: ${(e as Error).message}\n\n原始输出片段: ${result.slice(0, 500)}`)
+    throw new Error(`LLM 返回的 JSON 解析失败（可能输出被截断）: ${(e as Error).message}\n\n原始输出片段: ${result.slice(0, 500)}`)
   }
 
   // 保持原始 id 和时间

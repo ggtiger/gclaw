@@ -32,6 +32,7 @@ interface WorkflowEditorProps {
   onStepsChange: (steps: CommandStep[]) => void
   selectedStepId?: string | null
   onSelectStep?: (stepId: string | null) => void
+  onExitFullscreen?: () => void
 }
 
 const STEP_TYPE_OPTIONS = [
@@ -67,13 +68,13 @@ function createEmptyStep(type: CommandStep['type']): CommandStep {
 
 // ── Inner editor (must be inside ReactFlowProvider) ──
 
-function WorkflowEditorInner({ steps, onStepsChange, selectedStepId, onSelectStep }: WorkflowEditorProps) {
+function WorkflowEditorInner({ steps, onStepsChange, selectedStepId, onSelectStep, onExitFullscreen }: WorkflowEditorProps) {
   const nodeTypes = useMemo(() => ({ stepNode: StepNode }), [])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<string | null>(selectedStepId ?? null)
   const [showAddMenu, setShowAddMenu] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(!!onExitFullscreen)
   const addMenuRef = useRef<HTMLDivElement>(null)
   const reactFlowInstance = useReactFlow()
   const initialFitDone = useRef(false)
@@ -127,11 +128,17 @@ function WorkflowEditorInner({ steps, onStepsChange, selectedStepId, onSelectSte
   useEffect(() => {
     if (!isFullscreen) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsFullscreen(false)
+      if (e.key === 'Escape') {
+        if (onExitFullscreen) {
+          onExitFullscreen()
+        } else {
+          setIsFullscreen(false)
+        }
+      }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [isFullscreen])
+  }, [isFullscreen, onExitFullscreen])
 
   // Fit view when entering fullscreen or on first meaningful render
   useEffect(() => {
@@ -279,8 +286,12 @@ function WorkflowEditorInner({ steps, onStepsChange, selectedStepId, onSelectSte
 
 
   const toggleFullscreen = useCallback(() => {
-    setIsFullscreen(prev => !prev)
-  }, [])
+    if (isFullscreen && onExitFullscreen) {
+      onExitFullscreen()
+    } else {
+      setIsFullscreen(prev => !prev)
+    }
+  }, [isFullscreen, onExitFullscreen])
 
   return (
     <div

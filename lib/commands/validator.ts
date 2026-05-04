@@ -107,6 +107,12 @@ function collectAllSteps(steps: CommandStep[]): CommandStep[] {
 
 /** 校验单个步骤 */
 function validateStep(step: CommandStep, _allStepIds: Set<string>, errors: string[]): void {
+  const validTypes = ['prompt', 'script', 'condition', 'command-ref', 'parallel']
+  if (!validTypes.includes((step as any).type)) {
+    errors.push(`步骤 "${step.id}" 的类型 "${(step as any).type}" 不合法，支持的类型：${validTypes.join('、')}`)
+    return
+  }
+
   switch (step.type) {
     case 'script': {
       if (!step.command || !step.command.trim()) {

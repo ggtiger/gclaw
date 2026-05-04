@@ -36,6 +36,7 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
   const [aiDescription, setAiDescription] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [aiProgress, setAiProgress] = useState<string | null>(null)
 
   const fetchCommands = useCallback(async () => {
     setLoading(true)
@@ -107,25 +108,55 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
     if (!aiDescription.trim()) return
     setAiGenerating(true)
     setAiError(null)
+    setAiProgress(null)
     try {
       const res = await fetch('/api/commands/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'generate', description: aiDescription.trim(), projectId }),
       })
-      const data = await res.json()
       if (!res.ok) {
+        const data = await res.json()
         setAiError(data.error || '生成失败')
         return
       }
-      setShowAIDialog(false)
-      setAiDescription('')
-      setEditingCommand(data.command)
-      setCreatingNew(true)
+      const reader = res.body?.getReader()
+      if (!reader) { setAiError('无法读取响应流'); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let currentEvent = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n')
+        buffer = parts.pop() || ''
+        for (const line of parts) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7)
+          } else if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (currentEvent === 'progress') {
+                setAiProgress(data.message)
+              } else if (currentEvent === 'result') {
+                setShowAIDialog(false)
+                setAiDescription('')
+                setAiProgress(null)
+                setEditingCommand(data.command)
+                setCreatingNew(true)
+              } else if (currentEvent === 'error') {
+                setAiError(data.message || '生成失败')
+              }
+            } catch { /* skip malformed data */ }
+          }
+        }
+      }
     } catch {
       setAiError('网络错误，请重试')
     } finally {
       setAiGenerating(false)
+      setAiProgress(null)
     }
   }, [aiDescription, projectId])
 
@@ -157,12 +188,14 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
   // Editor mode
   if (editingCommand || creatingNew) {
     return (
-      <CommandEditor
-        command={editingCommand || undefined}
-        projectId={projectId}
-        onSave={handleSave}
-        onCancel={() => { setEditingCommand(null); setCreatingNew(false) }}
-      />
+      <div className="h-full flex flex-col min-h-0">
+        <CommandEditor
+          command={editingCommand || undefined}
+          projectId={projectId}
+          onSave={handleSave}
+          onCancel={() => { setEditingCommand(null); setCreatingNew(false) }}
+        />
+      </div>
     )
   }
 
@@ -183,7 +216,7 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4 h-full overflow-y-auto">
       {/* 说明 */}
       <div className="text-xs mb-3 flex items-start gap-2" style={{ color: 'var(--color-text-muted)' }}>
         <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
@@ -264,6 +297,12 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
               style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
               disabled={aiGenerating}
             />
+            {aiProgress && (
+              <div className="flex items-center gap-2 text-xs mt-2 px-2 py-1.5 rounded" style={{ color: 'var(--color-primary)', backgroundColor: 'color-mix(in srgb, var(--color-primary) 10%, transparent)' }}>
+                <Loader2 size={12} className="animate-spin" />
+                {aiProgress}
+              </div>
+            )}
             {aiError && (
               <div className="text-xs text-red-500 mt-2 px-2 py-1.5 rounded" style={{ backgroundColor: 'color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent)' }}>
                 {aiError}

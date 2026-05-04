@@ -10,13 +10,13 @@ interface ModalProps {
   children: React.ReactNode;
   /** 是否使用宽模式（适合内容多的弹窗如日志查看） */
   wide?: boolean;
-  /** 是否禁止点击遮罩层关闭（默认 false，点击遮罩关闭） */
-  persistent?: boolean;
+  /** 是否允许点击遮罩层关闭（默认 false，有关闭按钮时不应点击外部关闭） */
+  closeOnOverlayClick?: boolean;
   /** 禁止外层滚动，由子组件自行管理（适合有侧边栏的布局） */
   noScroll?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children, wide, persistent, noScroll }: ModalProps) {
+export default function Modal({ open, onClose, title, children, wide, closeOnOverlayClick = false, noScroll }: ModalProps) {
   // ESC 键关闭支持
   useEffect(() => {
     if (!open) return;
@@ -34,10 +34,10 @@ export default function Modal({ open, onClose, title, children, wide, persistent
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={persistent ? undefined : onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={closeOnOverlayClick ? onClose : undefined}>
       {/* 内容区域 */}
       <div
-        className={`relative w-full mx-4 flex flex-col overflow-hidden rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 ${wide ? 'max-w-4xl h-[85vh]' : 'max-w-2xl max-h-[80vh]'}`}
+        className={`relative w-full mx-4 flex flex-col overflow-hidden rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 ${wide ? 'max-w-4xl h-[85vh]' : noScroll ? 'max-w-2xl h-[80vh]' : 'max-w-2xl max-h-[80vh]'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* 标题栏 */}

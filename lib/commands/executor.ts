@@ -68,6 +68,17 @@ export class CommandExecutor {
   private context: ExecutionContext
   private depth: number
   private callbacks: CommandExecutorCallbacks
+  private totalUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cachedTokens: 0,
+    costUsd: 0,
+  }
+  private lastModel = ''
+
+  getUsageStats() {
+    return { usage: this.totalUsage, model: this.lastModel }
+  }
 
   constructor(projectId: string, userId: string, cwd: string, depth = 0, callbacks: CommandExecutorCallbacks = {}) {
     this.depth = depth
@@ -499,11 +510,26 @@ export class CommandExecutor {
             }
             break
           }
+          case 'done': {
+            const doneData = sseEvent.data as Record<string, any>
+            if (doneData.usage) {
+              this.totalUsage.inputTokens += (doneData.usage as any).inputTokens || 0
+              this.totalUsage.outputTokens += (doneData.usage as any).outputTokens || 0
+              this.totalUsage.cachedTokens += (doneData.usage as any).cachedTokens || 0
+            }
+            if (doneData.costUsd) {
+              this.totalUsage.costUsd += doneData.costUsd as number
+            }
+            if (doneData.model) {
+              this.lastModel = doneData.model as string
+            }
+            break
+          }
           case 'error': {
             const errMsg = (sseEvent.data as { message?: string }).message || 'Unknown error'
             throw new Error(`PromptStep "${step.id}" error: ${errMsg}`)
           }
-          // start, init, thinking, tool_result, tool_progress, status, done, end — 忽略或透传
+          // start, init, thinking, tool_result, tool_progress, status, end — 忽略或透传
           default:
             break
         }

@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import {
   Save, X, Plus, Trash2, ChevronUp, ChevronDown, ChevronRight,
-  AlertCircle, Sparkles, Loader2
+  AlertCircle, Sparkles, Loader2, GitBranch
 } from 'lucide-react'
 import type {
   CommandDefinition, CommandParameter, CommandStep,
@@ -72,13 +72,15 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   })
-  const [viewMode, setViewMode] = useState<'form' | 'chart' | 'json'>('form')
+  const [viewMode, setViewMode] = useState<'form' | 'json'>('form')
+  const [showFullscreenChart, setShowFullscreenChart] = useState(false)
   const [saving, setSaving] = useState(false)
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(() => new Set(form.steps.map(s => s.id)))
   const [showOptimizeDialog, setShowOptimizeDialog] = useState(false)
   const [optimizeInstruction, setOptimizeInstruction] = useState('')
   const [optimizing, setOptimizing] = useState(false)
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
+  const [optimizeProgress, setOptimizeProgress] = useState<string | null>(null)
 
   const updateForm = useCallback((updates: Partial<CommandDefinition>) => {
     setForm(prev => ({ ...prev, ...updates, updatedAt: new Date().toISOString() }))
@@ -97,6 +99,7 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
   const handleOptimize = useCallback(async () => {
     setOptimizing(true)
     setOptimizeError(null)
+    setOptimizeProgress(null)
     try {
       const res = await fetch('/api/commands/generate', {
         method: 'POST',
@@ -108,19 +111,48 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
           projectId,
         }),
       })
-      const data = await res.json()
       if (!res.ok) {
+        const data = await res.json()
         setOptimizeError(data.error || '优化失败')
         return
       }
-      setForm(data.command)
-      setExpandedSteps(new Set((data.command.steps || []).map((s: CommandStep) => s.id)))
-      setShowOptimizeDialog(false)
-      setOptimizeInstruction('')
+      const reader = res.body?.getReader()
+      if (!reader) { setOptimizeError('无法读取响应流'); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let currentEvent = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n')
+        buffer = parts.pop() || ''
+        for (const line of parts) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7)
+          } else if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (currentEvent === 'progress') {
+                setOptimizeProgress(data.message)
+              } else if (currentEvent === 'result') {
+                setForm(data.command)
+                setExpandedSteps(new Set((data.command.steps || []).map((s: CommandStep) => s.id)))
+                setShowOptimizeDialog(false)
+                setOptimizeInstruction('')
+                setOptimizeProgress(null)
+              } else if (currentEvent === 'error') {
+                setOptimizeError(data.message || '优化失败')
+              }
+            } catch { /* skip malformed data */ }
+          }
+        }
+      }
     } catch {
       setOptimizeError('网络错误，请重试')
     } finally {
       setOptimizing(false)
+      setOptimizeProgress(null)
     }
   }, [form, optimizeInstruction, projectId])
 
@@ -170,10 +202,17 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
 
   const mermaidCode = useMemo(() => generateMermaidCode(form.steps), [form.steps])
 
+  const handleChartClose = useCallback(() => {
+    setShowFullscreenChart(false)
+    setViewMode('form')
+  }, [])
+
   return (
-    <div className={viewMode === 'chart' ? 'p-4 flex flex-col h-full' : 'p-4 space-y-4'}>
-      {/* A. 基本信息 - 流程图模式下隐藏 */}
-      {viewMode !== 'chart' && <Section title="基本信息">
+    <div className="flex flex-col h-full">
+      {/* 可滚动内容区 */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
+      {/* A. 基本信息 */}
+      <Section title="基本信息">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelClass} style={labelStyle}>
@@ -225,10 +264,10 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
             </div>
           </div>
         </div>
-      </Section>}
+      </Section>
 
-      {/* B. 参数定义 - 流程图模式下隐藏 */}
-      {viewMode !== 'chart' && <Section title={`参数 (${form.parameters?.length || 0})`}>
+      {/* B. 参数定义 */}
+      <Section title={`参数 (${form.parameters?.length || 0})`}>
         {(form.parameters || []).map((param, idx) => (
           <div key={idx} className="p-2.5 rounded-lg border mb-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
             <div className="grid grid-cols-3 gap-2">
@@ -285,15 +324,15 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
         <button onClick={addParameter} className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border cursor-pointer transition-colors" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
           <Plus size={12} /> 添加参数
         </button>
-      </Section>}
+      </Section>
 
       {/* C. 步骤 */}
-      <Section title={viewMode === 'chart' ? `流程图编辑 (${form.steps.length} 步骤)` : `步骤 (${form.steps.length})`} extra={
+      <Section title={`步骤 (${form.steps.length})`} extra={
         <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
-          {([['form', '📝 表单'], ['chart', '📊 流程图'], ['json', '{ } JSON']] as const).map(([mode, label]) => (
+          {([['form', '📝 表单'], ['json', '{ } JSON']] as const).map(([mode, label]) => (
             <button
               key={mode}
-              onClick={(e) => { e.stopPropagation(); setViewMode(mode as 'form' | 'chart' | 'json') }}
+              onClick={(e) => { e.stopPropagation(); setViewMode(mode as 'form' | 'json') }}
               className="px-2 py-1 text-xs rounded cursor-pointer transition-colors"
               style={{
                 backgroundColor: viewMode === mode ? 'var(--color-bg)' : 'transparent',
@@ -307,14 +346,6 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
           ))}
         </div>
       }>
-        {viewMode === 'chart' && (
-          <div className="rounded-lg border mb-3 overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)', height: 600 }}>
-            <WorkflowEditor
-              steps={form.steps}
-              onStepsChange={(newSteps) => updateForm({ steps: newSteps })}
-            />
-          </div>
-        )}
         {viewMode === 'json' && (
           <div className="mb-3">
             <pre className="text-xs p-3 rounded-lg border overflow-auto max-h-[60vh] font-mono" style={{ ...inputStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
@@ -370,8 +401,8 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
         </>}
       </Section>
 
-      {/* D. 输出配置 - 流程图模式下隐藏 */}
-      {viewMode !== 'chart' && <Section title="输出配置">
+      {/* D. 输出配置 */}
+      <Section title="输出配置">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelClass} style={labelStyle}>格式</label>
@@ -386,12 +417,17 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
             <input value={form.output?.saveTo || ''} onChange={e => updateForm({ output: { ...form.output, saveTo: e.target.value || undefined } })} placeholder="reports/{{date}}.md" className={`${inputClass} font-mono`} style={inputStyle} />
           </div>
         </div>
-      </Section>}
+      </Section>
+      </div>{/* end scrollable content */}
 
-      {/* E. 操作按钮 */}
-      <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-        <button onClick={handleSave} disabled={saving || !form.id.trim() || !form.name.trim() || form.steps.length === 0} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
-          <Save size={14} /> {saving ? '保存中...' : isNew ? '创建' : '保存'}
+      {/* E. 操作按钮 - 固定底部 */}
+      <div className="flex items-center gap-2 px-6 py-3 border-t bg-white dark:bg-gray-900 shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+        <button
+          onClick={() => setShowFullscreenChart(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer border transition-colors"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          <GitBranch size={14} /> 流程图
         </button>
         <button
           onClick={() => { setShowOptimizeDialog(true); setOptimizeError(null) }}
@@ -401,14 +437,29 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
         >
           <Sparkles size={14} /> AI 优化
         </button>
-        <button onClick={onCancel} className="px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ color: 'var(--color-text-muted)' }}>取消</button>
+        <div className="flex-1" />
         {!form.id.trim() || !form.name.trim() || form.steps.length === 0 ? (
-          <div className="flex items-center gap-1 text-xs ml-auto" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
             <AlertCircle size={12} />
             {!form.id.trim() ? '需要 ID' : !form.name.trim() ? '需要名称' : '至少添加一个步骤'}
           </div>
         ) : null}
+        <button onClick={onCancel} className="px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ color: 'var(--color-text-muted)' }}>取消</button>
+        <button onClick={handleSave} disabled={saving || !form.id.trim() || !form.name.trim() || form.steps.length === 0} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
+          <Save size={14} /> {saving ? '保存中...' : isNew ? '创建' : '保存'}
+        </button>
       </div>
+
+      {/* 全屏流程图 */}
+      {showFullscreenChart && (
+        <div className="fixed inset-0 z-50 bg-white dark:bg-gray-900">
+          <WorkflowEditor
+            steps={form.steps}
+            onStepsChange={(newSteps) => updateForm({ steps: newSteps })}
+            onExitFullscreen={handleChartClose}
+          />
+        </div>
+      )}
 
       {/* AI 优化弹窗 */}
       {showOptimizeDialog && (
@@ -432,6 +483,12 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
               style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
               disabled={optimizing}
             />
+            {optimizeProgress && (
+              <div className="flex items-center gap-2 text-xs mt-2 px-2 py-1.5 rounded" style={{ color: 'var(--color-primary)', backgroundColor: 'color-mix(in srgb, var(--color-primary) 10%, transparent)' }}>
+                <Loader2 size={12} className="animate-spin" />
+                {optimizeProgress}
+              </div>
+            )}
             {optimizeError && (
               <div className="text-xs text-red-500 mt-2 px-2 py-1.5 rounded" style={{ backgroundColor: 'color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent)' }}>
                 {optimizeError}
@@ -459,6 +516,7 @@ export function CommandEditor({ command, projectId, onSave, onCancel }: CommandE
     </div>
   )
 }
+
 
 /* ── Section 折叠区块 ── */
 function Section({ title, children, extra }: { title: string; children: React.ReactNode; extra?: React.ReactNode }) {

@@ -650,7 +650,7 @@ export function ChatLayout() {
       <Modal open={modalOpen === 'channels'} onClose={() => setModalOpen(null)} title="渠道管理">
         <ChannelsPanel projectId={project.currentId} />
       </Modal>
-      <Modal open={modalOpen === 'settings'} onClose={() => setModalOpen(null)} title="设置" wide persistent noScroll>
+      <Modal open={modalOpen === 'settings'} onClose={() => setModalOpen(null)} title="设置" wide noScroll>
         <SettingsPanel
           projectId={project.currentId}
           initialTab={settingsInitialTab}
@@ -665,7 +665,7 @@ export function ChatLayout() {
       <Modal open={modalOpen === 'schedules'} onClose={() => setModalOpen(null)} title="定时任务">
         <SchedulesPanel projectId={project.currentId} />
       </Modal>
-      <Modal open={modalOpen === 'commands'} onClose={() => setModalOpen(null)} title="命令管理">
+      <Modal open={modalOpen === 'commands'} onClose={() => setModalOpen(null)} title="命令管理" noScroll>
         <CommandsPanel projectId={project.currentId} />
       </Modal>
     </div>

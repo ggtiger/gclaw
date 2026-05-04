@@ -177,6 +177,9 @@ export async function POST(request: NextRequest) {
             controller.enqueue(encoder.encode(sseData))
           }
 
+          // 获取累积的 token 统计
+          const usageStats = executor.getUsageStats()
+
           // 持久化 AI 回复消息（与普通聊天一致）
           if (fullContent.trim()) {
             const assistantMsg: ChatMessage = {
@@ -185,12 +188,28 @@ export async function POST(request: NextRequest) {
               content: fullContent,
               messageType: 'text',
               createdAt: new Date().toISOString(),
+              stats: usageStats.usage.inputTokens > 0 ? {
+                costUsd: usageStats.usage.costUsd,
+                inputTokens: usageStats.usage.inputTokens,
+                outputTokens: usageStats.usage.outputTokens,
+                cachedTokens: usageStats.usage.cachedTokens,
+                model: usageStats.model,
+              } : undefined,
             }
             addMessage(projectId, assistantMsg)
           }
 
           // 发送 done 事件，前端 handleDoneEvent 会据此创建聊天消息
-          const doneData = `event: done\ndata: ${JSON.stringify({ fullContent })}\n\n`
+          const doneData = `event: done\ndata: ${JSON.stringify({
+            fullContent,
+            usage: usageStats.usage.inputTokens > 0 ? {
+              inputTokens: usageStats.usage.inputTokens,
+              outputTokens: usageStats.usage.outputTokens,
+              cachedTokens: usageStats.usage.cachedTokens,
+            } : undefined,
+            costUsd: usageStats.usage.costUsd || undefined,
+            model: usageStats.model || undefined,
+          })}\n\n`
           controller.enqueue(encoder.encode(doneData))
           // 发送 end 事件
           const endData = `event: end\ndata: {}\n\n`
