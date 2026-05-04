@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    console.log(`[StepConfirmation API] Received: requestId=${requestId}, action=${action}`)
     resolveStepConfirmation(requestId, { action, modifiedContent })
 
     return new Response(JSON.stringify({ success: true }), {

@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useEffect, useRef } from 'react'
-import { Check, X, Zap, SkipForward, Circle, Loader, ChevronDown, ChevronUp, Wrench } from 'lucide-react'
+import { Check, X, Zap, SkipForward, Circle, Loader, ChevronDown, ChevronUp, Wrench, Pause } from 'lucide-react'
 import type { WorkflowState, WorkflowStepState } from '@/hooks/useChat'
 
 interface WorkflowProgressProps {
@@ -48,6 +48,8 @@ function StepStatusIcon({ status }: { status: WorkflowStepState['status'] }) {
       return <Check size={14} className="text-emerald-500" />
     case 'running':
       return <Loader size={14} className="animate-spin text-[var(--color-primary)]" />
+    case 'waiting_confirmation':
+      return <Pause size={14} className="text-amber-500" />
     case 'failed':
       return <X size={14} className="text-red-500" />
     case 'skipped':
@@ -73,6 +75,7 @@ const StepRow = memo(function StepRow({
   const isFailed = step.status === 'failed'
   const isPending = step.status === 'pending'
   const isSkipped = step.status === 'skipped'
+  const isWaitingConfirmation = step.status === 'waiting_confirmation'
 
   // 进行中步骤的动态计时 — 用 workflow startTime 做粗略估算
   // 实际上 step 没有自己的 startTime，用 duration（完成后才有）
@@ -88,10 +91,12 @@ const StepRow = memo(function StepRow({
       className={`px-3 py-1.5 transition-colors ${
         isRunning
           ? 'bg-[var(--color-primary)]/[0.06]'
-          : ''
+          : isWaitingConfirmation
+            ? 'bg-amber-500/[0.06]'
+            : ''
       }`}
       style={{
-        opacity: isCompleted || isSkipped ? 0.7 : 1,
+        opacity: (isCompleted && !isWaitingConfirmation) || isSkipped ? 0.7 : 1,
       }}
     >
       <div className="flex items-center gap-2.5">
@@ -111,9 +116,11 @@ const StepRow = memo(function StepRow({
             ? formatDuration(step.duration / 1000)
             : isRunning
               ? <RunningTimer />
-              : isPending
-                ? '待执行'
-                : null
+              : isWaitingConfirmation
+                ? '等待确认'
+                : isPending
+                  ? '待执行'
+                  : null
           }
         </span>
       </div>
@@ -164,6 +171,7 @@ export const WorkflowProgress = memo(function WorkflowProgress({ workflowState }
   const completedCount = workflowState.steps.filter(s => s.status === 'completed').length
   const failedCount = workflowState.steps.filter(s => s.status === 'failed').length
   const hasRunning = workflowState.steps.some(s => s.status === 'running')
+  const hasWaiting = workflowState.steps.some(s => s.status === 'waiting_confirmation')
   const totalElapsed = useElapsed(workflowState.startTime, hasRunning)
 
   // 填充 pending 步骤：workflowState.steps 可能只有已开始的步骤
@@ -256,6 +264,12 @@ export const WorkflowProgress = memo(function WorkflowProgress({ workflowState }
           <span className="ml-auto flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse" />
             执行中
+          </span>
+        )}
+        {!hasRunning && hasWaiting && (
+          <span className="ml-auto flex items-center gap-1">
+            <Pause size={10} className="text-amber-500" />
+            等待确认
           </span>
         )}
       </div>

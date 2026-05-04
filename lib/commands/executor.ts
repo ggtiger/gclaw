@@ -22,14 +22,26 @@ import type { PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 import { logger } from '@/lib/logger'
 import { exec } from 'child_process'
 
-// 待确认的步骤请求 Map
-const pendingStepConfirmations = new Map<string, (response: { action: string; modifiedContent?: string }) => void>()
+// 待确认的步骤请求 Map — 使用 globalThis 确保跨 Next.js API routes 共享同一实例
+declare global {
+  // eslint-disable-next-line no-var
+  var _pendingStepConfirmations: Map<string, (response: { action: string; modifiedContent?: string }) => void> | undefined
+}
+
+if (!globalThis._pendingStepConfirmations) {
+  globalThis._pendingStepConfirmations = new Map()
+}
+const pendingStepConfirmations = globalThis._pendingStepConfirmations
 
 export function resolveStepConfirmation(requestId: string, response: { action: string; modifiedContent?: string }) {
+  console.log(`[StepConfirmation] resolveStepConfirmation called: requestId=${requestId}, mapSize=${pendingStepConfirmations.size}, hasKey=${pendingStepConfirmations.has(requestId)}`)
   const resolve = pendingStepConfirmations.get(requestId)
   if (resolve) {
     resolve(response)
     pendingStepConfirmations.delete(requestId)
+    console.log(`[StepConfirmation] Successfully resolved requestId=${requestId}`)
+  } else {
+    console.warn(`[StepConfirmation] No pending confirmation found for requestId=${requestId}. Available keys:`, Array.from(pendingStepConfirmations.keys()))
   }
 }
 
@@ -207,6 +219,7 @@ export class CommandExecutor {
 
           // 等待用户确认（5 分钟超时，默认继续）
           const confirmation = await new Promise<{ action: string; modifiedContent?: string }>((resolve) => {
+            console.log(`[StepConfirmation] Setting pending confirmation: requestId=${confirmReqId}, mapSize=${pendingStepConfirmations.size}`)
             pendingStepConfirmations.set(confirmReqId, resolve)
             setTimeout(() => {
               if (pendingStepConfirmations.has(confirmReqId)) {

@@ -47,7 +47,7 @@ const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
 export interface WorkflowStepState {
   stepId: string
   stepName?: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'waiting_confirmation'
   duration?: number
   streamingContent?: string    // 当前步骤的实时流式文本
   activeToolName?: string      // 当前正在执行的工具名
@@ -371,7 +371,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         setStepConfirmation(b.stepConfirmation)
         setStatusText(b.statusText)
         setActivityData({ planContent: b.planContent, fileChanges: [...b.fileChanges], todos: b.todos })
-        setWorkflowState(b.workflowState)
+        // 创建新引用，确保 React 检测到变更并重渲染
+        setWorkflowState(b.workflowState ? { ...b.workflowState, steps: [...b.workflowState.steps] } : null)
       })
     }
   }, [])
@@ -872,6 +873,13 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                   totalSteps: data.totalSteps as number,
                   output: data.output as string,
                 }
+                // 将当前步骤标记为"等待确认"状态
+                if (b.workflowState) {
+                  const step = b.workflowState.steps.find(s => s.stepId === (data.stepId as string))
+                  if (step) {
+                    step.status = 'waiting_confirmation'
+                  }
+                }
               })
               break
 
@@ -1138,6 +1146,13 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         body: JSON.stringify({ requestId, action, modifiedContent }),
       })
       updateState(currentProjectIdRef.current, b => {
+        // 将等待确认的步骤恢复为正确状态
+        if (b.workflowState && b.stepConfirmation) {
+          const step = b.workflowState.steps.find(s => s.stepId === b.stepConfirmation?.stepId)
+          if (step && step.status === 'waiting_confirmation') {
+            step.status = action === 'modify' ? 'running' : 'completed'
+          }
+        }
         b.stepConfirmation = null
       })
     } catch (error) {
