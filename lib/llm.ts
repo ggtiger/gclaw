@@ -101,3 +101,126 @@ async function callOpenAI(
   const data = await resp.json()
   return data.choices?.[0]?.message?.content?.trim() || null
 }
+
+/**
+ * 流式调用 LLM API，逐 chunk 返回文本
+ *
+ * 支持 Anthropic 和 OpenAI 兼容两种协议的 SSE 流式响应。
+ * 失败时抛出异常，由调用方决定是否 fallback。
+ */
+export async function* callLLMStream(options: {
+  system: string
+  user: string
+  maxTokens?: number
+  model?: string
+  timeoutMs?: number
+  projectId?: string
+}): AsyncGenerator<string, void, unknown> {
+  const config = resolveProviderConfig(options.projectId)
+  if (!config.apiKey) throw new Error('No API key configured')
+
+  const model = options.model || getAssistantModel(options.projectId)
+  const maxTokens = options.maxTokens || 512
+  const timeoutMs = options.timeoutMs || 120000
+  const baseUrl = config.baseUrl || 'https://api.anthropic.com'
+
+  logger.info(`[callLLMStream] model=${model} | baseUrl=${baseUrl} | type=${config.providerType || 'anthropic'} | projectId=${options.projectId || '(无)'}`)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const isOpenAI = config.providerType === 'openai-compatible'
+
+    const url = isOpenAI
+      ? `${baseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+      : `${baseUrl}/v1/messages`
+
+    const headers: Record<string, string> = isOpenAI
+      ? {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+        }
+      : {
+          'Content-Type': 'application/json',
+          'x-api-key': config.apiKey,
+          'anthropic-version': '2023-06-01',
+        }
+
+    const body = isOpenAI
+      ? JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          stream: true,
+          messages: [
+            { role: 'system', content: options.system },
+            { role: 'user', content: options.user },
+          ],
+        })
+      : JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          stream: true,
+          system: options.system,
+          messages: [{ role: 'user', content: options.user }],
+        })
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: controller.signal,
+    })
+
+    if (!resp.ok) {
+      throw new Error(`LLM stream request failed: ${resp.status} ${resp.statusText}`)
+    }
+
+    if (!resp.body) {
+      throw new Error('LLM stream response has no body')
+    }
+
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed === 'event: ping') continue
+
+        if (trimmed.startsWith('data: ')) {
+          const dataStr = trimmed.slice(6)
+          if (dataStr === '[DONE]') return
+
+          try {
+            const parsed = JSON.parse(dataStr)
+
+            if (isOpenAI) {
+              // OpenAI format: choices[0].delta.content
+              const content = parsed.choices?.[0]?.delta?.content
+              if (content) yield content
+            } else {
+              // Anthropic format: type === 'content_block_delta'
+              if (parsed.type === 'content_block_delta') {
+                const text = parsed.delta?.text
+                if (text) yield text
+              }
+            }
+          } catch {
+            // Skip unparseable lines
+          }
+        }
+      }
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}

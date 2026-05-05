@@ -90,6 +90,10 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
         if (nestedToolIds.has(block.id)) {
           return null
         }
+        // 隐藏 TaskOutput（内部协调工具，结果已通过原始任务卡片展示）
+        if (block.type === 'tool' && block.toolName === 'TaskOutput') {
+          return null
+        }
 
         return block.type === 'text' ? (
           <MarkdownRenderer
