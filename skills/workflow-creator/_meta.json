@@ -1,9 +1,9 @@
 {
   "name": "workflow-creator",
-  "version": "1.0.0",
-  "description": "通过对话方式创建和管理 GClaw 命令工作流",
+  "version": "1.1.0",
+  "description": "通过对话方式创建和管理 GClaw 命令工作流。支持 6 种步骤类型（prompt、script、condition、command-ref、parallel、dynamic-exec）、自动执行模式、环境变量注入、命令行传参。",
   "author": "GClaw User",
   "createdAt": "2026-05-05",
-  "tags": ["workflow", "command", "automation", "creator"],
+  "tags": ["workflow", "command", "automation", "creator", "dynamic-exec", "autoExecute", "env-variables"],
   "builtIn": false
 }

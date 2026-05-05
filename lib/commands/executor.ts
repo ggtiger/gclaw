@@ -6,6 +6,7 @@ import type {
   ConditionStep,
   CommandRefStep,
   ParallelStep,
+  DynamicExecStep,
   ExecutionContext,
   StepResult,
   WorkflowStepInfo,
@@ -19,6 +20,7 @@ import { resolveTemplate, evaluateCondition } from './variables'
 import { resolveCommand } from './registry'
 import { executeChat } from '@/lib/claude/process-manager'
 import { getProjectSettings } from '@/lib/store/settings'
+import { callLLM } from '@/lib/llm'
 import type { PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 import { logger } from '@/lib/logger'
 import { exec } from 'child_process'
@@ -409,6 +411,9 @@ export class CommandExecutor {
       case 'parallel':
         yield* this.executeParallelStep(step)
         break
+      case 'dynamic-exec':
+        yield* this.executeDynamicExecStep(step)
+        break
       default: {
         const _exhaustive: never = step
         throw new Error(`Unknown step type: ${(_exhaustive as CommandStep).type}`)
@@ -775,6 +780,78 @@ export class CommandExecutor {
       result: {
         stepId: step.id,
         output: allOutputs.filter(Boolean).join('\n---\n'),
+        status: 'completed',
+        duration: Date.now() - stepStart,
+      },
+      jumpTarget: null,
+    }
+  }
+
+  // ── DynamicExecStep 执行 ──
+
+  private async *executeDynamicExecStep(
+    step: DynamicExecStep
+  ): AsyncGenerator<StepEvent> {
+    const stepStart = Date.now()
+    const resolvedIntent = resolveTemplate(step.intent, this.context)
+    const cwd = step.cwd
+      ? resolveTemplate(step.cwd, this.context)
+      : this.context.cwd
+
+    // 第一阶段：让 AI 生成命令
+    yield { type: 'step_delta', data: { stepId: step.id, content: `正在生成命令: ${resolvedIntent}\n` } }
+
+    const systemPrompt = `你是一个命令行专家。根据用户的意图生成一个可直接执行的 shell 命令。
+只输出命令本身，不要输出解释、标记或代码块符号。
+工作目录: ${cwd}
+${step.constraints ? `约束: ${step.constraints}` : ''}`
+
+    const generatedCommand = await callLLM({
+      system: systemPrompt,
+      user: resolvedIntent,
+      maxTokens: 1024,
+      timeoutMs: 60000,
+      projectId: this.context.projectId,
+    })
+
+    if (!generatedCommand) {
+      throw new Error(`DynamicExecStep "${step.id}" 失败: LLM 未返回有效命令`)
+    }
+
+    const command = generatedCommand.trim()
+    yield { type: 'step_delta', data: { stepId: step.id, content: `生成的命令: ${command}\n` } }
+
+    // 第二阶段：执行生成的命令
+    yield { type: 'step_delta', data: { stepId: step.id, content: `正在执行...\n` } }
+
+    const projectSettings = getProjectSettings(this.context.projectId)
+    const mergedEnv = {
+      ...process.env,
+      ...(projectSettings?.envVariables || {}),
+    }
+
+    const output = await new Promise<string>((resolve, reject) => {
+      exec(command, {
+        cwd,
+        timeout: SCRIPT_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+        env: mergedEnv,
+      }, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`DynamicExecStep "${step.id}" 命令执行失败: ${error.message}\nstderr: ${stderr}`))
+          return
+        }
+        resolve(stdout.trim())
+      })
+    })
+
+    yield { type: 'step_delta', data: { stepId: step.id, content: `执行结果:\n${output}\n` } }
+
+    yield {
+      type: '__step_done',
+      result: {
+        stepId: step.id,
+        output,
         status: 'completed',
         duration: Date.now() - stepStart,
       },

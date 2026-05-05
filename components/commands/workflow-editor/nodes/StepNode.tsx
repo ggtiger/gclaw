@@ -8,6 +8,7 @@ import {
   GitBranch,
   GitMerge,
   Link,
+  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import type { CommandStep } from '@/types/commands'
@@ -78,6 +79,14 @@ const STEP_STYLES: Record<CommandStep['type'], StepStyle> = {
     iconColor: 'text-gray-500',
     defaultTitle: '引用命令',
   },
+  'dynamic-exec': {
+    border: 'border-rose-400',
+    bg: 'bg-rose-50',
+    darkBg: 'dark:bg-rose-950/40',
+    icon: Zap,
+    iconColor: 'text-rose-500',
+    defaultTitle: 'AI 动态执行',
+  },
 }
 
 // ── 预览文本 ──
@@ -102,6 +111,10 @@ function getPreview(data: StepNodeData): string {
     }
     case 'command-ref': {
       return (data.commandId as string) ?? ''
+    }
+    case 'dynamic-exec': {
+      const intent = (data.intent as string) ?? ''
+      return intent.length > 50 ? intent.slice(0, 50) + '…' : intent
     }
     default:
       return ''

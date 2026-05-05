@@ -105,14 +105,15 @@ interface CommandDefinition {
 }
 \`\`\`
 
-## 步骤类型（仅支持以下5种，type 字段只允许这5个值）
+## 步骤类型（仅支持以下6种，type 字段只允许这6个值）
 1. **prompt** - AI 调用: { id, type:"prompt", name, systemPrompt, userMessage, tools?:["Read","Bash","Grep","Write"], agent?, maxTurns?, outputVar?, onError? }
 2. **script** - Shell 脚本/命令执行（bash、sh 等都用此类型）: { id, type:"script", name, command, cwd?, outputVar?, onError? }
 3. **condition** - 条件分支: { id, type:"condition", name, if, then, else?, onError? }
 4. **command-ref** - 引用其他命令: { id, type:"command-ref", name, commandId, params?, outputVar?, onError? }
 5. **parallel** - 并行执行: { id, type:"parallel", name, branches:[[step,...],[step,...]], outputVar?, onError? }
+6. **dynamic-exec** - AI动态生成并执行命令: { id, type:"dynamic-exec", name, intent（意图描述）, cwd?, constraints?（约束）, outputVar?, onError? }
 
-⚠️ 严禁使用 "bash"、"shell"、"exec" 等未列出的类型。执行 shell 命令请使用 type:"script"。
+☹️ 严禁使用 "bash"、"shell"、"exec" 等未列出的类型。执行 shell 命令请使用 type:"script"。如果需要 AI 动态生成命令再执行，使用 type:"dynamic-exec"。
 
 模板变量: {{date}}, {{projectId}}, {{params.xxx}}, {{steps.xxx.output}}
 
@@ -202,7 +203,7 @@ const OPTIMIZE_SYSTEM_PROMPT = `你是一个专业的工作流优化师。你的
 - 所有步骤 id 必须唯一且为 kebab-case
 - 禁止危险命令（rm -rf、sudo 等）
 - prompt 步骤的 systemPrompt 末尾需包含输出规则约束
-- 步骤类型只允许 5 种：prompt、script、condition、command-ref、parallel。严禁使用 "bash"、"shell"、"exec" 等未列出的类型，执行 shell 命令请使用 type:"script"`
+- 步骤类型只允许 6 种：prompt、script、condition、command-ref、parallel、dynamic-exec。严禁使用 "bash"、"shell"、"exec" 等未列出的类型，执行 shell 命令请使用 type:"script"，需要 AI 动态生成命令再执行使用 type:"dynamic-exec"`
 
 /**
  * 优化已有的工作流命令

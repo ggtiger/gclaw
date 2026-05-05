@@ -1,6 +1,6 @@
 ---
 name: workflow-creator
-description: "通过对话方式创建和管理 GClaw 命令工作流。支持引导式创建、AI 自动生成、工作流优化和管理操作。"
+description: "通过对话方式创建和管理 GClaw 命令工作流。支持引导式创建、AI 自动生成、工作流优化和管理操作。支持 6 种步骤类型（含 dynamic-exec）、自动执行模式、环境变量注入、命令行传参等。"
 allowed-tools:
   - Bash(curl:*)
 read_when:
@@ -81,8 +81,11 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands/generate" \
 | `description` | 一句话描述命令功能 | `自动收集项目进展并生成日报` |
 | `category` | 可选值：`development`, `analysis`, `writing`, `automation`, `other` | `automation` |
 | `scope` | `global`（全局可用）或 `project`（仅当前项目） | `project` |
+| `autoExecute` | 可选，布尔值。设为 `true` 时跳过步骤间确认，自动连续执行所有步骤 | `true` |
 
 **提示策略：** 如果用户只给了名称或描述，根据语义自动推导 id 和 category，向用户确认即可。
+
+**autoExecute 使用建议：** 适合全自动流水线任务（如定时构建、批量处理），无需人工干预的场景。默认不设置（等同于 `false`），每步完成后需用户确认才继续。
 
 ### Step 2: 定义参数（可选）
 
@@ -109,6 +112,8 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands/generate" \
 
 **验证规则：** 参数名仅允许字母、数字、下划线，不能以数字开头。
 
+**命令行传参：** 用户可在执行命令时直接传递参数值，格式为 `/command-id arg1 arg2`，参数按定义顺序依次填充。
+
 ### Step 3: 设计步骤
 
 这是核心环节。根据用户需求拆分为具体的执行步骤。最多 20 个步骤。
@@ -118,7 +123,8 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands/generate" \
 **设计策略：**
 - 根据用户描述的流程，拆解为最小执行单元
 - 需要 AI 处理的环节用 `prompt` 步骤
-- 需要执行系统命令的用 `script` 步骤
+- 需要执行固定 Shell 命令的用 `script` 步骤
+- 需要 AI 根据上下文动态生成并执行命令的用 `dynamic-exec` 步骤
 - 有分支逻辑的用 `condition` 步骤
 - 可复用已有命令的用 `command-ref` 步骤
 - 互不依赖可并行的用 `parallel` 步骤
@@ -143,7 +149,8 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands/generate" \
 - `enabled` 设为 `true`
 - `createdAt` 和 `updatedAt` 设为当前 ISO 时间字符串
 - 所有步骤 id 为 kebab-case 格式
-- 步骤类型严格为 5 种之一，**不允许** `bash`/`shell`/`exec` 等类型
+- 步骤类型严格为 6 种之一，**不允许** `bash`/`shell`/`exec` 等类型
+- 如需自动执行，设置 `autoExecute: true`
 
 ### Step 6: 调用 API 创建
 
@@ -189,12 +196,13 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands" \
 | `agent` | 否 | 指定 Agent |
 | `skills` | 否 | 启用的技能列表 |
 | `tools` | 否 | 可用工具列表 |
+| `disallowedTools` | 否 | 禁用的工具列表 |
 | `maxTurns` | 否 | 最大对话轮次，默认 50 |
 | `outputVar` | 否 | 存储输出的变量名 |
 
 ### 2. script — Shell 脚本执行
 
-执行系统命令，获取命令行输出。**脚本超时 30 秒。**
+执行固定的系统命令，获取命令行输出。**脚本超时 30 秒。** 项目环境变量会自动注入到执行环境中。
 
 ```json
 {
@@ -235,8 +243,8 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands" \
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `if` | 是 | 条件表达式字符串，如 `steps.xx.output contains '文本'` |
-| `then` | 是 | 条件为真时执行的步骤 ID 字符串数组 |
-| `else` | 否 | 条件为假时执行的步骤 ID 字符串数组 |
+| `then` | 是 | 条件为真时执行的步骤 ID（字符串或字符串数组） |
+| `else` | 否 | 条件为假时执行的步骤 ID（字符串或字符串数组） |
 
 **条件表达式语法：**
 - `steps.xxx.output contains '文本'`
@@ -296,9 +304,42 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands" \
 | `branches` | 是 | 步骤数组的数组，每个子数组为一个并行分支 |
 | `outputVar` | 否 | 存储所有分支输出的变量名 |
 
+### 6. dynamic-exec — AI 动态生成并执行命令（新增）
+
+让 AI 根据意图描述动态生成 Shell 命令并执行。适合命令不固定、需要 AI 根据上下文智能生成的场景。项目环境变量会自动注入到执行环境中。
+
+**执行流程：**
+1. 将 `intent` 中的模板变量解析后发送给 AI
+2. AI 生成可直接执行的 Shell 命令
+3. 自动执行生成的命令并捕获输出
+
+```json
+{
+  "id": "smart-search",
+  "type": "dynamic-exec",
+  "name": "智能搜索项目文件",
+  "intent": "在项目中搜索所有包含 '{{params.keyword}}' 的 TypeScript 文件，列出文件名和匹配行",
+  "cwd": ".",
+  "constraints": "只使用 grep 或 rg 命令，不要执行删除操作",
+  "outputVar": "searchResult",
+  "onError": "continue"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `intent` | 是 | AI 生成命令的意图描述，支持模板变量 |
+| `cwd` | 否 | 命令执行的工作目录 |
+| `constraints` | 否 | 约束说明，限制 AI 生成的命令范围（如"只生成 git 命令"、"不要执行删除操作"） |
+| `outputVar` | 否 | 存储命令执行输出的变量名 |
+
+**script vs dynamic-exec 选择指南：**
+- 命令已确定、固定不变 → 使用 `script`
+- 命令需根据上下文动态生成 → 使用 `dynamic-exec`
+
 ## 模板变量参考
 
-在步骤的 `userMessage`、`command`、`systemPrompt` 等字段中使用 `{{变量}}` 语法引用数据：
+在步骤的 `userMessage`、`command`、`intent`、`systemPrompt` 等字段中使用 `{{变量}}` 语法引用数据：
 
 | 变量 | 说明 | 示例 |
 |------|------|------|
@@ -306,9 +347,24 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands" \
 | `{{steps.步骤id.output}}` | 前置步骤的输出 | `{{steps.list-files.output}}` |
 | `{{date}}` | 当前日期 | `2026-05-05` |
 | `{{projectId}}` | 当前项目 ID | — |
-| `{{env.变量名}}` | 环境变量 | `{{env.HOME}}` |
+| `{{env.变量名}}` | 环境变量（进程级） | `{{env.HOME}}` |
 
 > **重要：** 模板引擎仅支持简单的 `{{表达式}}` 替换，**不支持** Mustache 块语法（如 `{{#var}}...{{/var}}`）。如需条件逻辑，请使用 `condition` 步骤实现分支。
+
+## 环境变量支持
+
+### 项目级环境变量
+
+在项目设置中配置的 `envVariables`（键值对）会在以下步骤类型执行时**自动注入**到进程环境中：
+
+- `script` 步骤 — 执行 Shell 命令时自动加载
+- `dynamic-exec` 步骤 — AI 生成的命令执行时自动加载
+
+这意味着你可以在 `script` 的 `command` 中直接使用 `$MY_VAR` 引用项目环境变量，无需在命令中手动 export。
+
+### 模板变量中的环境变量
+
+使用 `{{env.变量名}}` 可以在模板中引用进程级环境变量（包括已注入的项目环境变量），适用于 `userMessage`、`intent`、`systemPrompt` 等模板字段。
 
 ## 验证规则清单
 
@@ -316,45 +372,18 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands" \
 
 1. **ID 格式** — kebab-case，仅小写字母、数字、连字符
 2. **ID 唯一性** — 不可与内置命令冲突：`clear`, `theme`, `project`, `skills`, `agents`, `settings`
-3. **步骤类型** — 仅允许 `prompt`, `script`, `condition`, `command-ref`, `parallel`
+3. **步骤类型** — 仅允许 `prompt`, `script`, `condition`, `command-ref`, `parallel`, `dynamic-exec`（共 6 种）
 4. **步骤数量** — 最多 20 个
 5. **参数名** — 字母/数字/下划线，不以数字开头
 6. **危险命令** — script 步骤中禁止 `rm -rf /`, `sudo`, `mkfs`, `dd if=` 等危险命令
-7. **必填字段** — prompt 需要 `userMessage`；script 需要 `command`；condition 需要 `if` 和 `then`；command-ref 需要 `commandId`；parallel 需要 `branches`
+7. **必填字段** — prompt 需要 `userMessage`；script 需要 `command`；condition 需要 `if` 和 `then`；command-ref 需要 `commandId`；parallel 需要 `branches`；dynamic-exec 需要 `intent`
 8. **模板变量引用** — 确保引用的步骤 id 存在且在当前步骤之前
 
-## 完整示例：创建「项目日报生成器」
+## 完整示例
+
+### 示例 1：项目日报生成器
 
 **用户需求：** "帮我创建一个每日项目报告工作流，先获取今天的 git 提交记录，然后让 AI 生成日报摘要"
-
-**Step 1 — 确定基本信息：**
-- id: `daily-report`
-- name: `每日项目报告`
-- description: `获取当日 Git 提交记录并生成日报摘要`
-- category: `writing`
-- scope: `project`
-
-**Step 2 — 定义参数：**
-
-```json
-[
-  {
-    "name": "author",
-    "type": "string",
-    "required": false,
-    "description": "筛选指定作者的提交",
-    "placeholder": "留空则包含所有作者"
-  }
-]
-```
-
-**Step 3 — 设计步骤：**
-
-步骤 1（script）：获取 Git 提交日志
-步骤 2（condition）：检查是否有提交记录
-步骤 3（prompt）：AI 生成日报摘要
-
-**Step 4-5 — 组装完整 JSON：**
 
 ```json
 {
@@ -413,7 +442,57 @@ curl -s -X POST "${GCLAW_API_BASE}/api/commands" \
 }
 ```
 
-**Step 6 — 调用创建 API：**
+### 示例 2：智能代码分析（使用 dynamic-exec + autoExecute）
+
+**用户需求：** "创建一个全自动代码分析工作流，自动找出项目中最大的文件，然后 AI 分析优化建议"
+
+```json
+{
+  "id": "smart-code-analysis",
+  "name": "智能代码分析",
+  "description": "AI 动态搜索项目大文件并给出优化建议",
+  "category": "development",
+  "scope": "project",
+  "enabled": true,
+  "autoExecute": true,
+  "parameters": [
+    {
+      "name": "fileType",
+      "type": "string",
+      "required": false,
+      "default": "ts",
+      "description": "要分析的文件类型",
+      "placeholder": "如 ts, js, py"
+    }
+  ],
+  "steps": [
+    {
+      "id": "find-large-files",
+      "type": "dynamic-exec",
+      "name": "查找大文件",
+      "intent": "找出项目中最大的 10 个 .{{params.fileType}} 文件，按文件大小降序排列，显示文件路径和行数",
+      "constraints": "只使用 find、wc、sort 等安全命令，不要删除任何文件",
+      "outputVar": "largeFiles",
+      "onError": "stop"
+    },
+    {
+      "id": "analyze-files",
+      "type": "prompt",
+      "name": "分析优化建议",
+      "userMessage": "以下是项目中最大的源代码文件：\n\n{{steps.find-large-files.output}}\n\n请分析这些大文件可能存在的问题（如职责过多、可拆分模块等），并给出具体的重构建议。",
+      "systemPrompt": "你是一位资深软件架构师，擅长代码重构和模块化设计。",
+      "outputVar": "analysis"
+    }
+  ],
+  "output": {
+    "format": "markdown"
+  },
+  "createdAt": "2026-05-05T00:00:00.000Z",
+  "updatedAt": "2026-05-05T00:00:00.000Z"
+}
+```
+
+### 调用创建 API
 
 ```bash
 curl -s -X POST "${GCLAW_API_BASE}/api/commands" \

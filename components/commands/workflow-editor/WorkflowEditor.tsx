@@ -20,7 +20,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { Plus, LayoutGrid, Maximize2, Minimize2, ChevronDown } from 'lucide-react'
 import type {
-  CommandStep, PromptStep, ScriptStep, ConditionStep, CommandRefStep, ParallelStep,
+  CommandStep, PromptStep, ScriptStep, ConditionStep, CommandRefStep, ParallelStep, DynamicExecStep,
 } from '@/types/commands'
 import StepNode from './nodes/StepNode'
 import { stepsToFlow, flowToSteps, autoLayout } from './utils'
@@ -41,6 +41,7 @@ const STEP_TYPE_OPTIONS = [
   { value: 'condition', label: '条件判断' },
   { value: 'parallel', label: '并行执行' },
   { value: 'command-ref', label: '引用命令' },
+  { value: 'dynamic-exec', label: 'AI动态执行' },
 ] as const
 
 const ERROR_STRATEGIES = ['stop', 'continue', 'retry'] as const
@@ -63,6 +64,7 @@ function createEmptyStep(type: CommandStep['type']): CommandStep {
     case 'condition': return { ...base, type: 'condition', if: '', then: '' }
     case 'command-ref': return { ...base, type: 'command-ref', commandId: '' }
     case 'parallel': return { ...base, type: 'parallel', branches: [[]] }
+    case 'dynamic-exec': return { ...base, type: 'dynamic-exec', intent: '' }
   }
 }
 
@@ -445,6 +447,7 @@ function PropertyPanel({ step, allSteps, onChange }: {
       {step.type === 'condition' && <ConditionFields step={step} otherSteps={otherSteps} onChange={onChange as (u: Partial<ConditionStep>) => void} />}
       {step.type === 'parallel' && <ParallelFields step={step} onChange={onChange as (u: Partial<ParallelStep>) => void} />}
       {step.type === 'command-ref' && <CommandRefFields step={step} onChange={onChange as (u: Partial<CommandRefStep>) => void} />}
+      {step.type === 'dynamic-exec' && <DynamicExecFields step={step} onChange={onChange as (u: Partial<DynamicExecStep>) => void} />}
     </div>
   )
 }
@@ -586,6 +589,38 @@ function CommandRefFields({ step, onChange }: { step: CommandRefStep; onChange: 
 }
 
 // ── Main export (wrapped in Provider) ──
+
+function DynamicExecFields({ step, onChange }: { step: DynamicExecStep; onChange: (u: Partial<DynamicExecStep>) => void }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className={labelClass} style={labelStyle}>意图描述 (intent) *</label>
+        <textarea
+          value={step.intent || ''}
+          onChange={e => onChange({ intent: e.target.value })}
+          rows={3}
+          placeholder="描述你希望执行的操作"
+          className={`${inputClass} resize-y`}
+          style={inputStyle}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={labelClass} style={labelStyle}>工作目录 (cwd)</label>
+          <input value={step.cwd || ''} onChange={e => onChange({ cwd: e.target.value || undefined })} placeholder="." className={`${inputClass} font-mono`} style={inputStyle} />
+        </div>
+        <div>
+          <label className={labelClass} style={labelStyle}>输出变量名</label>
+          <input value={step.outputVar || ''} onChange={e => onChange({ outputVar: e.target.value || undefined })} placeholder="exec_result" className={`${inputClass} font-mono`} style={inputStyle} />
+        </div>
+      </div>
+      <div>
+        <label className={labelClass} style={labelStyle}>约束说明 (constraints)</label>
+        <input value={step.constraints || ''} onChange={e => onChange({ constraints: e.target.value || undefined })} placeholder="如: 只生成 git 命令" className={inputClass} style={inputStyle} />
+      </div>
+    </div>
+  )
+}
 
 export default function WorkflowEditor(props: WorkflowEditorProps) {
   return (

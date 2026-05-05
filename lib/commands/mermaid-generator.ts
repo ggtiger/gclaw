@@ -103,6 +103,13 @@ function addStepNode(
       lines.push(`  ${step.id}(["${escapeMermaid(step.commandId)}"])`)
       styles.push(`  style ${step.id} fill:#f3f4f6,stroke:#6b7280`)
       break
+
+    case 'dynamic-exec': {
+      const intentPreview = escapeMermaid((step as any).intent ? (step as any).intent.slice(0, 30) : label)
+      lines.push(`  ${step.id}[/"\u26A1 ${intentPreview}"/]`)
+      styles.push(`  style ${step.id} fill:#ffe4e6,stroke:#f43f5e`)
+      break
+    }
   }
 }
 

@@ -57,7 +57,15 @@ export interface ParallelStep extends StepBase {
   outputVar?: string
 }
 
-export type CommandStep = PromptStep | ScriptStep | ConditionStep | CommandRefStep | ParallelStep
+export interface DynamicExecStep extends StepBase {
+  type: 'dynamic-exec'
+  intent: string          // AI 生成命令的意图描述（支持模板变量）
+  cwd?: string            // 执行目录
+  outputVar?: string      // 输出变量名
+  constraints?: string    // 约束说明，如 "只生成 git 命令" 或 "不要执行删除操作"
+}
+
+export type CommandStep = PromptStep | ScriptStep | ConditionStep | CommandRefStep | ParallelStep | DynamicExecStep
 
 // ── 命令定义 ──
 

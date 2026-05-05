@@ -107,7 +107,7 @@ function collectAllSteps(steps: CommandStep[]): CommandStep[] {
 
 /** 校验单个步骤 */
 function validateStep(step: CommandStep, _allStepIds: Set<string>, errors: string[]): void {
-  const validTypes = ['prompt', 'script', 'condition', 'command-ref', 'parallel']
+  const validTypes = ['prompt', 'script', 'condition', 'command-ref', 'parallel', 'dynamic-exec']
   if (!validTypes.includes((step as any).type)) {
     errors.push(`步骤 "${step.id}" 的类型 "${(step as any).type}" 不合法，支持的类型：${validTypes.join('、')}`)
     return
@@ -151,6 +151,12 @@ function validateStep(step: CommandStep, _allStepIds: Set<string>, errors: strin
     case 'parallel': {
       if (!step.branches || step.branches.length === 0) {
         errors.push(`步骤 "${step.id}" 的 branches 不能为空`)
+      }
+      break
+    }
+    case 'dynamic-exec': {
+      if (!(step as any).intent || !(step as any).intent.trim()) {
+        errors.push(`步骤 "${step.id}" 的 intent 不能为空`)
       }
       break
     }

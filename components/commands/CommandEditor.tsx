@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import type {
   CommandDefinition, CommandParameter, CommandStep,
-  PromptStep, ScriptStep, ConditionStep, CommandRefStep, ParallelStep
+  PromptStep, ScriptStep, ConditionStep, CommandRefStep, ParallelStep, DynamicExecStep
 } from '@/types/commands'
 import { generateMermaidCode } from '@/lib/commands/mermaid-generator'
 import { MermaidBlock } from '@/components/chat/MermaidBlock'
@@ -26,6 +26,7 @@ const STEP_TYPES = [
   { value: 'condition', label: 'Condition (条件分支)' },
   { value: 'command-ref', label: 'Command Ref (引用命令)' },
   { value: 'parallel', label: 'Parallel (并行执行)' },
+  { value: 'dynamic-exec', label: 'Dynamic Exec (AI动态执行)' },
 ] as const
 
 const PARAM_TYPES = ['string', 'number', 'boolean', 'enum', 'file'] as const
@@ -54,6 +55,7 @@ function createEmptyStep(type: CommandStep['type']): CommandStep {
     case 'condition': return { ...base, type: 'condition', if: '', then: '' }
     case 'command-ref': return { ...base, type: 'command-ref', commandId: '' }
     case 'parallel': return { ...base, type: 'parallel', branches: [[]] }
+    case 'dynamic-exec': return { ...base, type: 'dynamic-exec', intent: '' }
   }
 }
 
@@ -555,6 +557,7 @@ function StepTypeForm({ step, onChange }: { step: CommandStep; onChange: (update
     case 'condition': return <ConditionStepForm step={step} onChange={onChange} />
     case 'command-ref': return <CommandRefStepForm step={step} onChange={onChange} />
     case 'parallel': return <ParallelStepForm step={step} onChange={onChange} />
+    case 'dynamic-exec': return <DynamicExecStepForm step={step} onChange={onChange} />
     default: return null
   }
 }
@@ -691,6 +694,31 @@ function ParallelStepForm({ step, onChange }: { step: ParallelStep; onChange: (u
       <div>
         <label className={labelClass} style={labelStyle}>输出变量名</label>
         <input value={step.outputVar || ''} onChange={e => onChange({ outputVar: e.target.value || undefined })} placeholder="parallel_result" className={`${inputClass} font-mono`} style={inputStyle} />
+      </div>
+    </>
+  )
+}
+
+function DynamicExecStepForm({ step, onChange }: { step: DynamicExecStep; onChange: (u: Partial<DynamicExecStep>) => void }) {
+  return (
+    <>
+      <div>
+        <label className={labelClass} style={labelStyle}>意图描述 (intent) *</label>
+        <textarea value={step.intent} onChange={e => onChange({ intent: e.target.value })} rows={3} placeholder="描述你希望执行的操作，支持 {{params.xxx}} 模板变量" className={`${inputClass} resize-y`} style={inputStyle} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={labelClass} style={labelStyle}>工作目录 (cwd)</label>
+          <input value={step.cwd || ''} onChange={e => onChange({ cwd: e.target.value || undefined })} placeholder="." className={`${inputClass} font-mono`} style={inputStyle} />
+        </div>
+        <div>
+          <label className={labelClass} style={labelStyle}>输出变量名</label>
+          <input value={step.outputVar || ''} onChange={e => onChange({ outputVar: e.target.value || undefined })} placeholder="exec_result" className={`${inputClass} font-mono`} style={inputStyle} />
+        </div>
+      </div>
+      <div>
+        <label className={labelClass} style={labelStyle}>约束说明 (constraints)</label>
+        <input value={step.constraints || ''} onChange={e => onChange({ constraints: e.target.value || undefined })} placeholder="如: 只生成 git 命令、不要执行删除操作" className={inputClass} style={inputStyle} />
       </div>
     </>
   )

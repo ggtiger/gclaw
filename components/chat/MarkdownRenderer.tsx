@@ -45,13 +45,13 @@ interface MarkdownRendererProps {
 
 // 保护占位符，避免正则匹配到内部内容（含 www. 开头的网址）
 const PROTECT_RE = /```[\s\S]*?```|`[^`\n]+`|\[[^\]]*\]\([^)]+\)|https?:\/\/[^\s)\]"'`|]+|www\.[\w.@+-/?:&=%#]+/g
-// 检测含目录分隔符且带扩展名的路径（绝对或相对）
-const FILE_PATH_RE = /(^|[\s([|"'`])(\/?(?:[\w.@+-]+\/)+[\w.@+-]+\.[a-zA-Z]{1,10})(?=[\s)\]"'`|]|$)/gm
+// 检测含目录分隔符且带扩展名的路径（Unix 绝对/相对 + Windows 绝对/相对）
+const FILE_PATH_RE = /(^|[\s([|"'`])((?:[A-Za-z]:[\\/]|\/)?(?:[\w.@+-]+[\\/])+[\w.@+-]+\.[a-zA-Z]{1,10})(?=[\s)\]"'`|]|$)/gm
 
 // 判断内联代码内容是否为文件路径（参考 genvis isLocalPath）
 function isInlineFilePath(s: string): boolean {
   if (s.startsWith('http') || s.startsWith('www.')) return false
-  return s.includes('/') && /\.[a-zA-Z]{1,10}$/.test(s) && !s.includes(' ')
+  return (s.includes('/') || s.includes('\\')) && /\.[a-zA-Z]{1,10}$/.test(s) && !s.includes(' ')
 }
 
 function preprocessFilePaths(content: string): string {
@@ -94,8 +94,9 @@ function InlineImageCard({ filePath, projectId, projectCwd }: {
   const [imgError, setImgError] = useState(false)
   const [lightbox, setLightbox] = useState(false)
 
-  // 绝对路径用 /api/local-file，相对路径用项目文件 API
-  const imageUrl = filePath.startsWith('/')
+  // 绝对路径（Unix / 开头 或 Windows 盘符）用 /api/local-file，相对路径用项目文件 API
+  const isAbs = filePath.startsWith('/') || /^[A-Za-z]:/.test(filePath)
+  const imageUrl = isAbs
     ? `/api/local-file?path=${encodeURIComponent(filePath)}`
     : `/api/projects/${projectId}/files?action=download&path=${encodeURIComponent(filePath)}`
 
