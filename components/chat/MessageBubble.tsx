@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { User, AlertCircle, FileText, Download, ChevronDown, ThumbsUp, ThumbsDown, Copy, Check, X, Settings, Monitor, Send, Bell, MessageCircle, Terminal, Clock, type LucideIcon } from 'lucide-react'
 import { useAssistantIdentity } from '@/hooks/useAssistantIdentity'
 import { CornerLeftUp } from 'lucide-react'
@@ -22,6 +23,7 @@ const SOURCE_CONFIG: Record<MessageSource, { icon: LucideIcon; label: string; co
 interface MessageBubbleProps {
   message: ChatMessage
   projectId: string
+  projectCwd?: string
   onMessageUpdate?: (message: ChatMessage) => void
   onOpenSettings?: () => void
   replyToMessage?: ChatMessage  // assistant 消息回复的 user 消息
@@ -37,7 +39,7 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-di
 // 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量
 const COLLAPSE_THRESHOLD = 2000
 
-export const MessageBubble = memo(function MessageBubble({ message, projectId, onMessageUpdate, onOpenSettings, replyToMessage, assistantName, assistantIcon, assistantAvatar }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, projectId, projectCwd, onMessageUpdate, onOpenSettings, replyToMessage, assistantName, assistantIcon, assistantAvatar }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const source = message.source || 'web'
@@ -193,6 +195,8 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
               <StreamingBlocksRenderer
                 blocks={adaptContentBlocks(message.contentBlocks)}
                 isStreaming={message.isStreaming}
+                projectId={projectId}
+                projectCwd={projectCwd}
               />
             ) : (
               // 旧模式回退：纯文本渲染
@@ -200,6 +204,8 @@ export const MessageBubble = memo(function MessageBubble({ message, projectId, o
                 <MarkdownRenderer
                   content={expanded || message.isStreaming ? message.content : message.content.slice(0, COLLAPSE_THRESHOLD) + '\n\n...'}
                   isStreaming={message.isStreaming}
+                  projectId={projectId}
+                  projectCwd={projectCwd}
                 />
                 {!expanded && !message.isStreaming && message.content.length > COLLAPSE_THRESHOLD && (
                   <button
@@ -293,7 +299,7 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
             className="w-full h-full object-cover"
           />
         </div>
-        {expanded && (
+        {expanded && typeof window !== 'undefined' && createPortal(
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
             onClick={() => setExpanded(false)}
@@ -311,7 +317,8 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
                 <X size={16} />
               </button>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </>
     )

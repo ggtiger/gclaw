@@ -251,9 +251,12 @@ export async function GET(
         ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav',
         zip: 'application/zip', gz: 'application/gzip', tar: 'application/x-tar',
-        json: 'application/json', xml: 'application/xml', html: 'text/html', htm: 'text/html',
-        txt: 'text/plain', md: 'text/markdown', csv: 'text/csv',
-        js: 'text/javascript', ts: 'text/typescript', css: 'text/css',
+        json: 'application/json; charset=utf-8', xml: 'text/xml; charset=utf-8',
+        html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8',
+        txt: 'text/plain; charset=utf-8', md: 'text/markdown; charset=utf-8',
+        csv: 'text/csv; charset=utf-8',
+        js: 'text/javascript; charset=utf-8', ts: 'text/typescript; charset=utf-8',
+        css: 'text/css; charset=utf-8',
       }
       const contentType = mimeMap[ext] || 'application/octet-stream'
       return new Response(buffer, {

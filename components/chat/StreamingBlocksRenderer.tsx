@@ -28,6 +28,8 @@ interface StreamingBlocksRendererProps {
   isStreaming?: boolean
   askQuestion?: AskUserQuestionRequest | null
   onRespondAskQuestion?: (requestId: string, answers: Record<string, string>) => void
+  projectId?: string
+  projectCwd?: string
 }
 
 // ── 渲染器 ──
@@ -37,6 +39,8 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
   isStreaming,
   askQuestion,
   onRespondAskQuestion,
+  projectId,
+  projectCwd,
 }: StreamingBlocksRendererProps) {
   // 分析块序列：收集 TodoWrite 块、计算工具→任务映射、标记需隐藏的工具
   const { lastTodoBlockId, allTodoBlocks, nestedToolIds, taskToolsMap } = useMemo(() => {
@@ -92,6 +96,8 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
             key={block.id}
             content={block.content}
             isStreaming={isStreaming}
+            projectId={projectId}
+            projectCwd={projectCwd}
           />
         ) : (
           <StreamingToolCard
@@ -101,6 +107,8 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
             onRespondAskQuestion={onRespondAskQuestion}
             allTodoBlocks={allTodoBlocks.length > 0 ? allTodoBlocks : undefined}
             taskToolsMap={taskToolsMap.size > 0 ? taskToolsMap : undefined}
+            projectId={projectId}
+            projectCwd={projectCwd}
           />
         )
       })}

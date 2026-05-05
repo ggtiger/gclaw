@@ -3,6 +3,7 @@
 import { memo, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Circle, Clock, Ban, HelpCircle, MessageSquare, CheckCircle2, Send, Pencil, FileText, FilePen, FileEdit, Search, FolderSearch, Layers } from 'lucide-react'
 import type { StreamingToolBlock, AskUserQuestionRequest } from '@/types/chat'
+import { FilePathAction } from './FilePathAction'
 
 // ── 工具图标映射 ──
 
@@ -512,9 +513,11 @@ interface StreamingToolCardProps {
   allTodoBlocks?: StreamingToolBlock[]
   /** 任务→工具映射（工具按任务分组） */
   taskToolsMap?: Map<string, StreamingToolBlock[]>
+  projectId?: string
+  projectCwd?: string
 }
 
-export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQuestion, onRespondAskQuestion, allTodoBlocks, taskToolsMap }: StreamingToolCardProps) {
+export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQuestion, onRespondAskQuestion, allTodoBlocks, taskToolsMap, projectId, projectCwd }: StreamingToolCardProps) {
   const [expanded, setExpanded] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
@@ -544,6 +547,7 @@ export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQues
   }
 
   const filePath = extractFilePath(tool.input)
+  const fullFilePath = (tool.input.file_path || tool.input.path || '') as string
   const isTaskTool = isTask(tool.toolName)
   const taskDesc = isTaskTool ? getTaskDescription(tool.input) : null
 
@@ -563,7 +567,7 @@ export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQues
     // 对于 Read/Write/Edit 只显示文件路径+内容摘要
     if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(tool.toolName)) {
       const lines: string[] = []
-      if (tool.input.file_path) lines.push(tool.input.file_path as string)
+      // 文件路径通过 FilePathAction 单独显示，这里不重复添加
       if (tool.input.content) {
         const content = tool.input.content as string
         const contentLines = content.split('\n').slice(0, 10).join('\n')
@@ -603,13 +607,17 @@ export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQues
             {tool.toolName}
           </span>
         )}
-        {filePath && (
-          <span className="text-[10px] px-1 py-px rounded truncate max-w-[200px]" style={{
-            backgroundColor: 'var(--color-surface-hover)',
-            color: 'var(--color-text-muted)',
-          }}>
-            {filePath}
-          </span>
+        {filePath && projectId && fullFilePath ? (
+          <FilePathAction filePath={fullFilePath} projectId={projectId} projectCwd={projectCwd} compact />
+        ) : (
+          filePath && (
+            <span className="text-[10px] px-1 py-px rounded truncate max-w-[200px]" style={{
+              backgroundColor: 'var(--color-surface-hover)',
+              color: 'var(--color-text-muted)',
+            }}>
+              {filePath}
+            </span>
+          )
         )}
         <div className="flex-1" />
         {tool.status === 'pending' && tool.elapsedSeconds != null && tool.elapsedSeconds > 0 && (
@@ -651,14 +659,19 @@ export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQues
               <div className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--color-text-muted)' }}>
                 Input
               </div>
-              <pre className="text-[11px] p-1.5 rounded overflow-x-auto whitespace-pre-wrap break-all" style={{
-                backgroundColor: 'var(--color-code-bg)',
-                color: '#e2e8f0',
-                maxHeight: '120px',
-                overflowY: 'auto',
-              }}>
-                {formatInputContent()}
-              </pre>
+              {fullFilePath && projectId && ['Read', 'Write', 'Edit', 'MultiEdit'].includes(tool.toolName) && (
+                <FilePathAction filePath={fullFilePath} projectId={projectId} projectCwd={projectCwd} />
+              )}
+              {formatInputContent() && (
+                <pre className="text-[11px] p-1.5 rounded overflow-x-auto whitespace-pre-wrap break-all" style={{
+                  backgroundColor: 'var(--color-code-bg)',
+                  color: '#e2e8f0',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                }}>
+                  {formatInputContent()}
+                </pre>
+              )}
             </div>
           )}
 

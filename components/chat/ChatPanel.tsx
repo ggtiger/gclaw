@@ -164,6 +164,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
     assistantAvatar: projectSettings?.assistantAvatar,
   }), [projectSettings?.assistantName, projectSettings?.assistantIcon, projectSettings?.assistantAvatar])
   const { name: assistantDisplayName, Icon: AssistantIcon, avatarUrl: assistantAvatarUrl } = useAssistantIdentity(assistantIdentity, projectId)
+  const projectCwd = projectSettings?.cwd || undefined
 
   // 切换项目时重置自动滚动
   useEffect(() => {
@@ -456,6 +457,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                   <MessageBubble
                     message={msg}
                     projectId={projectId}
+                    projectCwd={projectCwd}
                     onMessageUpdate={handleMessageUpdate}
                     onOpenSettings={onOpenSettings}
                     replyToMessage={replyToMap.get(msg.id)}
@@ -524,6 +526,8 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
                       isStreaming
                       askQuestion={askQuestion}
                       onRespondAskQuestion={onRespondAskQuestion}
+                      projectId={projectId}
+                      projectCwd={projectCwd}
                     />
                   )}
                 </div>
