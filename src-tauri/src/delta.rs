@@ -325,17 +325,17 @@ async fn apply_server_patch_windows(
         *guard = None;
     }
     delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Server process killed", t0.elapsed().as_millis()));
-    // 等待文件句柄释放（检测式，最多 2 秒）
+    // 等待文件句柄释放（检测式，最多 5 秒）
     let port = state.port;
-    for i in 0..20 {
+    for i in 0..50 {
         if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
             if i > 0 { delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] 端口 {} 已释放 ({}ms)", t0.elapsed().as_millis(), port, i * 100)); }
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    // 额外等待 300ms 确保文件句柄释放
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // 额外等待 1.5s 确保 Windows 文件句柄完全释放（杀毒软件/索引服务延迟释放）
+    std::thread::sleep(std::time::Duration::from_millis(1500));
     delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Server stopped, file handles released", t0.elapsed().as_millis()));
 
     // 执行补丁（任何失败都走 recovery）
@@ -464,7 +464,7 @@ fn do_windows_patch(
     if !manifest_path.exists() {
         delta_log("[Delta] [Windows] 未发现 __manifest.json，走全量替换流程");
         emit_patch_progress(app, 3, 7, "替换服务器文件...");
-        return apply_full_replace(&tmp_dir, server_dir, backup_dir, expected_version);
+        return apply_full_replace_windows(&tmp_dir, server_dir, backup_dir, expected_version);
     }
 
     // 2. 读取 manifest
@@ -522,7 +522,8 @@ fn do_windows_patch(
     Ok(new_version)
 }
 
-/// 全量替换：解压内容直接替换整个 server 目录
+/// 全量替换：解压内容直接替换整个 server 目录（macOS/Linux 用）
+#[cfg(not(target_os = "windows"))]
 fn apply_full_replace(
     tmp_dir: &Path,
     server_dir: &Path,
@@ -566,6 +567,145 @@ fn apply_full_replace(
     let _ = fs::remove_dir_all(tmp_dir);
     delta_log(&format!("[Delta] 全量替换完成: server version = {}", new_version));
     Ok(new_version)
+}
+
+/// Windows 全量替换：避免 rename/delete 整个目录（防止文件锁 os error 32）
+/// 策略：复制备份 + 就地覆盖所有文件（带重试）+ 清理多余旧文件
+#[cfg(target_os = "windows")]
+fn apply_full_replace_windows(
+    tmp_dir: &Path,
+    server_dir: &Path,
+    backup_dir: &Path,
+    expected_version: &str,
+) -> Result<String, String> {
+    delta_log("[Delta] [Windows] 全量替换: 复制备份 server/ → server.bak/...");
+    if backup_dir.exists() { let _ = fs::remove_dir_all(backup_dir); }
+    // Windows 下用复制做备份（读操作不受文件锁影响）
+    if let Err(e) = copy_dir_recursive(server_dir, backup_dir) {
+        let _ = fs::remove_dir_all(tmp_dir);
+        return Err(format!("备份 server 目录失败（复制模式）: {}", e));
+    }
+    delta_log("[Delta] [Windows] 备份完成（复制模式）");
+
+    // 就地覆盖：将 tmp/ 的所有文件覆盖写入 server/（带重试）
+    delta_log("[Delta] [Windows] 全量替换: 就地覆盖 server/ 文件...");
+    if let Err(e) = windows_overwrite_dir_with_retry(tmp_dir, server_dir, 3, 500) {
+        delta_log(&format!("[Delta] [Windows] 就地覆盖失败: {}，回滚...", e));
+        // 回滚：从备份恢复
+        let _ = windows_overwrite_dir_with_retry(backup_dir, server_dir, 2, 300);
+        let _ = fs::remove_dir_all(tmp_dir);
+        return Err(format!("全量替换覆盖失败: {}", e));
+    }
+
+    // 清理 server/ 中存在但 tmp/ 中不存在的旧文件（尽力删除，不阻断流程）
+    let stale_count = windows_cleanup_stale_files(server_dir, tmp_dir);
+    if stale_count > 0 {
+        delta_log(&format!("[Delta] [Windows] 清理了 {} 个过期文件", stale_count));
+    }
+
+    // 验证版本
+    let new_version = read_server_version(server_dir);
+    if new_version != expected_version {
+        delta_log(&format!("[Delta] [Windows] 全量替换版本验证失败: 期望 {} 实际 {}，回滚...", expected_version, new_version));
+        let _ = windows_overwrite_dir_with_retry(backup_dir, server_dir, 2, 300);
+        let _ = fs::remove_dir_all(tmp_dir);
+        return Err(format!("版本验证失败: 期望 {} 实际 {}", expected_version, new_version));
+    }
+
+    // 验证 build-manifest 引用的 static 资源都存在
+    if let Err(e) = verify_build_manifest_assets(server_dir) {
+        delta_log("[Delta] [Windows] 全量替换静态资源验证失败，回滚...");
+        let _ = windows_overwrite_dir_with_retry(backup_dir, server_dir, 2, 300);
+        let _ = fs::remove_dir_all(tmp_dir);
+        return Err(e);
+    }
+
+    // 清理临时目录（备份留给调用者决定何时清理）
+    let _ = fs::remove_dir_all(tmp_dir);
+    delta_log(&format!("[Delta] [Windows] 全量替换完成: server version = {}", new_version));
+    Ok(new_version)
+}
+
+/// Windows: 将 src 目录的所有文件覆盖写入 dest 目录（带重试）
+/// 核心思路：只做"写"操作覆盖文件，不先删除，避免 os error 32
+#[cfg(target_os = "windows")]
+fn windows_overwrite_dir_with_retry(src: &Path, dest: &Path, max_retries: u32, retry_delay_ms: u64) -> Result<(), String> {
+    let mut failed_files: Vec<(PathBuf, PathBuf, String)> = Vec::new();
+    windows_overwrite_recursive(src, dest, &mut failed_files)?;
+
+    // 对失败文件进行重试
+    if !failed_files.is_empty() {
+        delta_log(&format!("[Delta] [Windows] {} 个文件覆盖失败，开始重试...", failed_files.len()));
+        for attempt in 1..=max_retries {
+            std::thread::sleep(std::time::Duration::from_millis(retry_delay_ms));
+            let mut still_failed = Vec::new();
+            for (src_file, dest_file, _) in &failed_files {
+                if let Err(e) = fs::copy(src_file, dest_file) {
+                    still_failed.push((src_file.clone(), dest_file.clone(), e.to_string()));
+                }
+            }
+            if still_failed.is_empty() {
+                delta_log(&format!("[Delta] [Windows] 重试第 {} 次全部成功", attempt));
+                return Ok(());
+            }
+            failed_files = still_failed;
+            delta_log(&format!("[Delta] [Windows] 重试第 {} 次仍有 {} 个文件失败", attempt, failed_files.len()));
+        }
+        // 仍有失败
+        let sample: Vec<String> = failed_files.iter().take(5).map(|(_, d, e)| format!("{}: {}", d.display(), e)).collect();
+        return Err(format!("{} 个文件覆盖失败（重试 {} 次后）: {:?}", failed_files.len(), max_retries, sample));
+    }
+    Ok(())
+}
+
+/// 递归覆盖：将 src 下所有文件写入 dest 对应位置
+#[cfg(target_os = "windows")]
+fn windows_overwrite_recursive(src: &Path, dest: &Path, failed: &mut Vec<(PathBuf, PathBuf, String)>) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("创建目录 {} 失败: {}", dest.display(), e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录 {} 失败: {}", src.display(), e))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            windows_overwrite_recursive(&src_path, &dest_path, failed)?;
+        } else {
+            // 覆盖写入，失败记录但不中断
+            if let Err(e) = fs::copy(&src_path, &dest_path) {
+                failed.push((src_path, dest_path, e.to_string()));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Windows: 清理 dest 中存在但 src 中不存在的文件（尽力删除，不报错）
+#[cfg(target_os = "windows")]
+fn windows_cleanup_stale_files(dest: &Path, src: &Path) -> u32 {
+    let mut count = 0u32;
+    if let Ok(entries) = fs::read_dir(dest) {
+        for entry in entries.flatten() {
+            let dest_path = entry.path();
+            let rel_name = entry.file_name();
+            let src_path = src.join(&rel_name);
+            if dest_path.is_dir() {
+                if !src_path.exists() {
+                    // 整个子目录在新版本中不存在，尝试删除
+                    if fs::remove_dir_all(&dest_path).is_ok() {
+                        count += 1;
+                    }
+                } else {
+                    // 递归检查子目录
+                    count += windows_cleanup_stale_files(&dest_path, &src_path);
+                }
+            } else if !src_path.exists() {
+                // 文件在新版本中不存在，尝试删除
+                if fs::remove_file(&dest_path).is_ok() {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
 }
 
 /// 读取补丁 manifest
