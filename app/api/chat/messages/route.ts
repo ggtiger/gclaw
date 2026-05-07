@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
-import { getMessages, clearMessages } from '@/lib/store/messages'
+import { getMessages, clearMessages, addMessage } from '@/lib/store/messages'
 import { updateProjectSettings } from '@/lib/store/settings'
 import { isValidProjectId } from '@/lib/store/projects'
+import type { ChatMessage } from '@/types/chat'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,19 @@ export async function GET(request: NextRequest) {
 
   const result = getMessages(projectId, limit, before)
   return Response.json(result)
+}
+
+export async function POST(request: NextRequest) {
+  const projectId = getProjectId(request)
+  if (!projectId || !isValidProjectId(projectId)) {
+    return Response.json({ error: 'Invalid projectId' }, { status: 400 })
+  }
+  const message = await request.json() as ChatMessage
+  if (!message.id || !message.role) {
+    return Response.json({ error: 'Invalid message' }, { status: 400 })
+  }
+  addMessage(projectId, message)
+  return Response.json({ success: true })
 }
 
 export async function DELETE(request: NextRequest) {

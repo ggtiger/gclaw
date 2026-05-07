@@ -88,7 +88,7 @@ interface ChatInputProps {
   contextMaxTokens?: number
   onCompact?: () => void
   onClearChat?: () => void
-  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string) => void
+  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string, commandName?: string) => void
 }
 
 export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings, contextUsage, contextInputTokens, contextMaxTokens, onCompact, onClearChat, onSendCommand }: ChatInputProps) {
@@ -269,7 +269,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
     if (cmd.parameters && cmd.parameters.length > 0) {
       setSlashParamsDialog({ open: true, command: cmd, prefillParams: undefined })
     } else {
-      onSendCommand?.(cmd.id)
+      onSendCommand?.(cmd.id, undefined, undefined, cmd.name)
     }
   }, [onSendCommand])
 
@@ -373,7 +373,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           setSlashParamsDialog({ open: true, command: matchedCmd, prefillParams: params })
         } else {
           // 所有必填参数已提供，直接执行
-          onSendCommand(matchedCmd.id, params)
+          onSendCommand(matchedCmd.id, params, undefined, matchedCmd.name)
         }
         return
       }
@@ -855,9 +855,9 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
           onClose={() => setSlashParamsDialog({ open: false, command: null })}
           defaultCwd={projectSettings?.cwd || effectiveCwd || ''}
           prefillParams={slashParamsDialog.prefillParams}
-          onSubmit={(commandId, params, cwd) => {
+          onSubmit={(commandId, params, cwd, commandName) => {
             setSlashParamsDialog({ open: false, command: null })
-            onSendCommand?.(commandId, params, cwd)
+            onSendCommand?.(commandId, params, cwd, commandName)
           }}
         />
       )}

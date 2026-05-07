@@ -145,6 +145,17 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 持久化用户消息（命令触发）
+    const commandUserMsg: ChatMessage = {
+      id: `msg_${Date.now()}_user`,
+      role: 'user',
+      content: message || `执行命令：${command.name}`,
+      messageType: 'text',
+      createdAt: new Date().toISOString(),
+      source: 'web',
+    }
+    addMessage(projectId, commandUserMsg)
+
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
@@ -180,24 +191,8 @@ export async function POST(request: NextRequest) {
           // 获取累积的 token 统计
           const usageStats = executor.getUsageStats()
 
-          // 持久化 AI 回复消息（与普通聊天一致）
-          if (fullContent.trim()) {
-            const assistantMsg: ChatMessage = {
-              id: `msg_${Date.now()}_assistant`,
-              role: 'assistant',
-              content: fullContent,
-              messageType: 'text',
-              createdAt: new Date().toISOString(),
-              stats: usageStats.usage.inputTokens > 0 ? {
-                costUsd: usageStats.usage.costUsd,
-                inputTokens: usageStats.usage.inputTokens,
-                outputTokens: usageStats.usage.outputTokens,
-                cachedTokens: usageStats.usage.cachedTokens,
-                model: usageStats.model,
-              } : undefined,
-            }
-            addMessage(projectId, assistantMsg)
-          }
+          // 注：AI 回复消息由前端 handleDoneEvent 持久化（含 contentBlocks），
+          // 后端不再单独持久化纯文本 assistant 消息，避免重复
 
           // 发送 done 事件，前端 handleDoneEvent 会据此创建聊天消息
           const doneData = `event: done\ndata: ${JSON.stringify({
@@ -312,26 +307,8 @@ export async function POST(request: NextRequest) {
             fullContent += event.data.content
           }
 
-          // done 时持久化 AI 回复（仅当有文本内容时）
-          if (event.event === 'done' && fullContent.trim()) {
-            const assistantMsg: ChatMessage = {
-              id: `msg_${Date.now()}_assistant`,
-              role: 'assistant',
-              content: fullContent,
-              messageType: 'text',
-              createdAt: new Date().toISOString(),
-              stats: event.data.usage
-                ? {
-                    costUsd: (event.data.costUsd as number) || 0,
-                    inputTokens: (event.data.usage as Record<string, number>).inputTokens || 0,
-                    outputTokens: (event.data.usage as Record<string, number>).outputTokens || 0,
-                    cachedTokens: (event.data.usage as Record<string, number>).cachedTokens || 0,
-                    model: (event.data.model as string) || '',
-                  }
-                : undefined,
-            }
-            addMessage(projectId, assistantMsg)
-          }
+          // 注：AI 回复消息由前端 handleDoneEvent 持久化（含 contentBlocks），
+          // 后端不再单独持久化纯文本 assistant 消息，避免重复
 
           const sseData = `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`
           controller.enqueue(encoder.encode(sseData))

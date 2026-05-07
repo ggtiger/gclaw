@@ -61,7 +61,7 @@ interface ChatPanelProps {
     output: string
   } | null
   onRespondStepConfirmation?: (requestId: string, action: 'continue' | 'modify' | 'abort', modifiedContent?: string) => void
-  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string) => void
+  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string, commandName?: string) => void
 }
 
 function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttachment[]) => void }) {

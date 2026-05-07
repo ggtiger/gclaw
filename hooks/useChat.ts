@@ -679,6 +679,12 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           stats: stats || undefined,
           contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
         }
+        // 持久化到后端（含 contentBlocks），切换项目后不丢失
+        fetch(`/api/chat/messages?projectId=${encodeURIComponent(pid)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(workflowMsg),
+        }).catch(() => {})
         if (currentProjectIdRef.current === pid) {
           setMessages(prev => [...prev, workflowMsg])
         } else {
@@ -725,6 +731,12 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           stats: stats || undefined,
           contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
         }
+        // 持久化到后端（含 contentBlocks），切换项目后不丢失
+        fetch(`/api/chat/messages?projectId=${encodeURIComponent(pid)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(assistantMsg),
+        }).catch(() => {})
         const preview = finalContent.slice(0, 80) || '任务已完成'
         sendDesktopNotification('AI助理 回复完成', preview)
         requestAnimationFrame(() => {

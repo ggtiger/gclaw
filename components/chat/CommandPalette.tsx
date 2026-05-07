@@ -30,7 +30,7 @@ interface CommandPaletteProps {
   projects?: Array<{ id: string; name: string }>
   currentProjectId?: string
   onOpenModal?: (panel: 'skills' | 'agents' | 'channels' | 'settings' | 'schedules') => void
-  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string) => void
+  onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string, commandName?: string) => void
   projectId?: string
 }
 
@@ -214,7 +214,7 @@ export function CommandPalette({
           if (cmd.parameters && cmd.parameters.length > 0) {
             setParamsDialog({ open: true, command: cmd })
           } else {
-            onSendCommand?.(cmd.id)
+            onSendCommand?.(cmd.id, undefined, undefined, cmd.name)
             onClose()
           }
         },
@@ -303,9 +303,9 @@ export function CommandPalette({
   }, [filtered, selectedIdx, onClose])
 
   // 参数弹窗提交
-  const handleParamsSubmit = useCallback((commandId: string, params: Record<string, unknown>, cwd?: string) => {
+  const handleParamsSubmit = useCallback((commandId: string, params: Record<string, unknown>, cwd?: string, commandName?: string) => {
     setParamsDialog({ open: false, command: null })
-    onSendCommand?.(commandId, params, cwd)
+    onSendCommand?.(commandId, params, cwd, commandName)
     onClose()
   }, [onSendCommand, onClose])
 

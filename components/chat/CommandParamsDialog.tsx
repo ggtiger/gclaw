@@ -9,7 +9,7 @@ interface CommandParamsDialogProps {
   command: CommandDefinition
   open: boolean
   onClose: () => void
-  onSubmit: (commandId: string, params: Record<string, unknown>, cwd?: string) => void
+  onSubmit: (commandId: string, params: Record<string, unknown>, cwd?: string, commandName?: string) => void
   defaultCwd?: string
   prefillParams?: Record<string, unknown>
 }
@@ -155,7 +155,7 @@ export const CommandParamsDialog = memo(function CommandParamsDialog({
 
   const handleSubmit = () => {
     if (!validate()) return
-    onSubmit(command.id, params, cwd || undefined)
+    onSubmit(command.id, params, cwd || undefined, command.name)
   }
 
   return (

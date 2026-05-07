@@ -421,8 +421,11 @@ export function ChatLayout() {
             onOpenSchedules={() => setModalOpen('schedules')}
             onOpenSettings={() => { setSettingsInitialTab('settings'); setModalOpen('settings') }}
             workflowState={chat.workflowState}
-            onSendCommand={(commandId, params, cwd) => {
-              chat.sendMessage(`/command ${commandId}`, undefined, commandId, params as Record<string, unknown>, cwd)
+            onSendCommand={(commandId, params, cwd, commandName) => {
+              const paramStr = params && Object.keys(params).length > 0
+                ? Object.entries(params).map(([k, v]) => `${k}=${v}`).join('、')
+                : ''
+              chat.sendMessage(`执行命令：${commandName || commandId}${paramStr ? `（${paramStr}）` : ''}`, undefined, commandId, params as Record<string, unknown>, cwd)
             }}
             onScheduleSend={async (message, schedule) => {
               try {
@@ -632,8 +635,11 @@ export function ChatLayout() {
         currentProjectId={project.currentId}
         onOpenModal={(panel) => setModalOpen(panel as typeof modalOpen)}
         projectId={project.currentId}
-        onSendCommand={(commandId, params, cwd) => {
-          chat.sendMessage(`/command ${commandId}`, undefined, commandId, params as Record<string, unknown>, cwd)
+        onSendCommand={(commandId, params, cwd, commandName) => {
+          const paramStr = params && Object.keys(params).length > 0
+            ? Object.entries(params).map(([k, v]) => `${k}=${v}`).join('、')
+            : ''
+          chat.sendMessage(`执行命令：${commandName || commandId}${paramStr ? `（${paramStr}）` : ''}`, undefined, commandId, params as Record<string, unknown>, cwd)
         }}
       />
 
