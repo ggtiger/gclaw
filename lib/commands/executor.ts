@@ -27,6 +27,48 @@ import type { PermissionRequest, AskUserQuestionRequest } from '@/types/chat'
 import { logger } from '@/lib/logger'
 import { exec } from 'child_process'
 
+// ── Windows 编码兼容 ──
+const isWindows = process.platform === 'win32'
+
+/**
+ * 跨平台命令适配：
+ * - Windows: 添加 chcp 65001 前缀解决 GBK 乱码，将 mkdir 转为 if not exist 形式
+ * - Linux/macOS: 将 mkdir 转为 mkdir -p 以避免目录已存在报错
+ */
+function adaptCommand(command: string): string {
+  if (!isWindows) {
+    // Linux/macOS: 将 mkdir 转换为 mkdir -p 以兼容目录已存在的情况
+    const mkdirMatch = command.match(/^mkdir\s+(?!-)(\S+.*)$/)
+    if (mkdirMatch) {
+      return `mkdir -p ${mkdirMatch[1]}`
+    }
+    return command
+  }
+  // Windows: 将 mkdir 转换为 "if not exist ... mkdir ..." 以避免目录已存在报错
+  const mkdirMatchWin = command.match(/^mkdir\s+(?!-)(\S+.*)$/)
+  let finalCommand = command
+  if (mkdirMatchWin) {
+    const dir = mkdirMatchWin[1].trim()
+    finalCommand = `if not exist "${dir}" mkdir "${dir}"`
+  }
+  // 已经包含 chcp 则不再重复
+  if (finalCommand.includes('chcp')) return finalCommand
+  return `chcp 65001 >nul && ${finalCommand}`
+}
+
+/**
+ * 为 exec 的 options 注入 Windows 兼容的环境变量，
+ * 确保 Python 等子进程也输出 UTF-8。
+ */
+function getExecEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (!isWindows) return baseEnv
+  return {
+    ...baseEnv,
+    PYTHONIOENCODING: 'utf-8',
+    PYTHONUTF8: '1',
+  }
+}
+
 // 待确认的步骤请求 Map — 使用 globalThis 确保跨 Next.js API routes 共享同一实例
 declare global {
   // eslint-disable-next-line no-var
@@ -617,12 +659,13 @@ export class CommandExecutor {
         output = await new Promise<string>((resolve, reject) => {
           // 读取项目环境变量并合并
           const projectSettings = getProjectSettings(this.context.projectId)
-          const mergedEnv = {
+          const mergedEnv: NodeJS.ProcessEnv = getExecEnv({
             ...process.env,
             ...(projectSettings?.envVariables || {}),
-          }
+          })
 
-          const child = exec(resolvedCommand, {
+          const finalCommand = adaptCommand(resolvedCommand)
+          const child = exec(finalCommand, {
             cwd,
             timeout: step.timeout || SCRIPT_TIMEOUT_MS,
             maxBuffer: 1024 * 1024, // 1MB
@@ -895,13 +938,14 @@ ${step.constraints ? `约束: ${step.constraints}` : ''}`
     yield { type: 'step_delta', data: { stepId: step.id, content: `正在执行...\n` } }
 
     const projectSettings = getProjectSettings(this.context.projectId)
-    const mergedEnv = {
+    const mergedEnv: NodeJS.ProcessEnv = getExecEnv({
       ...process.env,
       ...(projectSettings?.envVariables || {}),
-    }
+    })
 
+    const finalCommand = adaptCommand(command)
     const output = await new Promise<string>((resolve, reject) => {
-      exec(command, {
+      exec(finalCommand, {
         cwd,
         timeout: SCRIPT_TIMEOUT_MS,
         maxBuffer: 1024 * 1024,

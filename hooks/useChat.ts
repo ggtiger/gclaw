@@ -384,7 +384,12 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         rafRef.current = 0
         const b = getBuffer(forProjectId)
         if (currentProjectIdRef.current !== forProjectId) return
-        setStreamingBlocks([...b.streamingBlocks])
+        setStreamingBlocks(b.streamingBlocks.map(block => {
+          if (block.type === 'workflow') {
+            return { ...block, steps: [...(block as any).steps] }
+          }
+          return block
+        }))
         setThinkingContent(b.thinkingContent)
         setSending(b.sending)
         setSessionId(b.sessionId)
@@ -1023,16 +1028,17 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               const index = stepInfo.index as number
 
               updateState(sendProjectId, b => {
-                if (!b.workflowState) return
-                b.workflowState.currentStepIndex = index
-                // 添加或更新步骤
-                const existing = b.workflowState.steps.find(s => s.stepId === stepId)
-                if (existing) {
-                  existing.status = 'running'
-                } else {
-                  b.workflowState.steps.push({ stepId, stepName, status: 'running' })
+                if (b.workflowState) {
+                  b.workflowState.currentStepIndex = index
+                  // 添加或更新步骤
+                  const existing = b.workflowState.steps.find(s => s.stepId === stepId)
+                  if (existing) {
+                    existing.status = 'running'
+                  } else {
+                    b.workflowState.steps.push({ stepId, stepName, status: 'running' })
+                  }
                 }
-                // 更新 StreamingWorkflowBlock 中对应步骤的状态
+                // 更新 StreamingWorkflowBlock 中对应步骤的状态（即使 workflowState 为空也要更新）
                 const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
                 if (wfBlock) {
                   const wfStep = wfBlock.steps.find(s => s.stepId === stepId)
@@ -1058,17 +1064,18 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
 
               // 更新步骤状态
               updateState(sendProjectId, b => {
-                if (!b.workflowState) return
-                const step = b.workflowState.steps.find(s => s.stepId === stepId)
-                if (step) {
-                  step.status = (data.status as WorkflowStepState['status']) || 'completed'
-                  step.duration = data.duration as number
-                  // 清理噪声文本（剥离内嵌的 (no content) 子串）
-                  if (step.streamingContent) {
-                    step.streamingContent = step.streamingContent.replace(NOISE_INLINE, '').trim()
+                if (b.workflowState) {
+                  const step = b.workflowState.steps.find(s => s.stepId === stepId)
+                  if (step) {
+                    step.status = (data.status as WorkflowStepState['status']) || 'completed'
+                    step.duration = data.duration as number
+                    // 清理噪声文本（剥离内嵌的 (no content) 子串）
+                    if (step.streamingContent) {
+                      step.streamingContent = step.streamingContent.replace(NOISE_INLINE, '').trim()
+                    }
                   }
                 }
-                // 同步更新 StreamingWorkflowBlock
+                // 同步更新 StreamingWorkflowBlock（即使 workflowState 为空也要更新）
                 const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
                 if (wfBlock) {
                   const wfStep = wfBlock.steps.find(s => s.stepId === stepId)
@@ -1104,7 +1111,21 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                     if (step) step.status = 'failed'
                   }
                 }
-                b.workflowState = null
+                // 同步更新 StreamingWorkflowBlock 中对应步骤的状态为 failed
+                const errorStepId = data.stepId as string | undefined
+                if (errorStepId) {
+                  const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                  if (wfBlock) {
+                    const wfStep = wfBlock.steps.find(s => s.stepId === errorStepId)
+                    if (wfStep) {
+                      wfStep.status = 'failed'
+                      if (wfStep.startTime) {
+                        wfStep.duration = (Date.now() - wfStep.startTime) / 1000
+                      }
+                    }
+                  }
+                }
+                // 不清空 workflowState，让后续 step_done/step_start 事件能继续处理
               })
               {
                 const errorText = (data.error as string) || '工作流执行失败'
