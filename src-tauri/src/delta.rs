@@ -33,7 +33,7 @@ fn emit_patch_progress(app: &tauri::AppHandle, step: u8, total: u8, message: &st
 pub async fn restart_server(app: tauri::AppHandle) -> Result<String, String> {
     // 1. 获取 ServerState，杀掉旧进程
     let state = app.state::<crate::ServerState>();
-    let old_port = state.port;
+    let old_port = state.port.load(std::sync::atomic::Ordering::Relaxed);
     if let Ok(mut guard) = state.child.lock() {
         if let Some(old) = guard.as_mut() {
             delta_log("[Delta] Stopping old server process...");
@@ -61,6 +61,7 @@ pub async fn restart_server(app: tauri::AppHandle) -> Result<String, String> {
     if let Ok(mut guard) = state.child.lock() {
         *guard = Some(child);
     }
+    state.port.store(port, std::sync::atomic::Ordering::Relaxed);
 
     // 5. 等待新 server ready
     crate::wait_for_server(port);
@@ -326,7 +327,7 @@ async fn apply_server_patch_windows(
     }
     delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] Server process killed", t0.elapsed().as_millis()));
     // 等待文件句柄释放（检测式，最多 5 秒）
-    let port = state.port;
+    let port = state.port.load(std::sync::atomic::Ordering::Relaxed);
     for i in 0..50 {
         if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
             if i > 0 { delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] 端口 {} 已释放 ({}ms)", t0.elapsed().as_millis(), port, i * 100)); }
@@ -364,6 +365,7 @@ async fn apply_server_patch_windows(
             if let Ok(mut guard) = state.child.lock() {
                 *guard = Some(child);
             }
+            state.port.store(port, std::sync::atomic::Ordering::Relaxed);
             delta_log(&format!("[Delta] [Windows] [T+{:.0}ms] start_server_process 完成 (port={}), 耗时: {:.1}s", t0.elapsed().as_millis(), port, t_restart.elapsed().as_secs_f64()));
             let t_wait = std::time::Instant::now();
             crate::wait_for_server(port);
@@ -393,6 +395,7 @@ async fn apply_server_patch_windows(
                 if let Ok(mut guard) = state.child.lock() {
                     *guard = Some(child2);
                 }
+                state.port.store(port2, std::sync::atomic::Ordering::Relaxed);
                 crate::wait_for_server(port2);
                 let new_url = format!("http://127.0.0.1:{}", port2);
                 if let Some(main) = app.get_webview_window("main") {
@@ -428,6 +431,7 @@ async fn apply_server_patch_windows(
             if let Ok(mut guard) = state.child.lock() {
                 *guard = Some(child);
             }
+            state.port.store(port, std::sync::atomic::Ordering::Relaxed);
             crate::wait_for_server(port);
             delta_log(&format!("[Delta] [Windows] Server 恢复完成: port {}", port));
 

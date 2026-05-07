@@ -1,6 +1,6 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::Arc;
 use std::process::{Child, Command};
 use std::net::TcpListener;
@@ -10,7 +10,7 @@ mod delta;
 /// 服务器状态
 pub struct ServerState {
     pub child: Mutex<Option<Child>>,
-    pub port: u16,
+    pub port: AtomicU16,
 }
 
 // ============ 常量 ============
@@ -1133,12 +1133,12 @@ fn retry_startup(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn get_server_url(state: tauri::State<ServerState>) -> String {
-    format!("http://127.0.0.1:{}", state.port)
+    format!("http://127.0.0.1:{}", state.port.load(Ordering::Relaxed))
 }
 
 #[tauri::command]
 fn navigate_to(path: String, state: tauri::State<ServerState>, app: tauri::AppHandle) -> Result<(), String> {
-    let url = format!("http://127.0.0.1:{}{}", state.port, path);
+    let url = format!("http://127.0.0.1:{}{}", state.port.load(Ordering::Relaxed), path);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.navigate(url.parse().map_err(|e| format!("Invalid URL: {}", e))?);
         Ok(())
@@ -1257,10 +1257,11 @@ fn run_production_startup(handle: &tauri::AppHandle) {
             }
             *guard = Some(child);
         }
+        state.port.store(port, Ordering::Relaxed);
     } else {
         handle.manage(ServerState {
             child: Mutex::new(Some(child)),
-            port,
+            port: AtomicU16::new(port),
         });
     }
 
@@ -1378,7 +1379,7 @@ pub fn run() {
                 println!("[GClaw] Remote mode — connecting to {}", url);
                 app.manage(ServerState {
                     child: Mutex::new(None),
-                    port: 0,
+                    port: AtomicU16::new(0),
                 });
                 let remote = url.clone();
                 let handle = app.handle().clone();
@@ -1405,7 +1406,7 @@ pub fn run() {
                     println!("[GClaw] Dev mode");
                     app.manage(ServerState {
                         child: Mutex::new(None),
-                        port: 3100,
+                        port: AtomicU16::new(3100),
                     });
 
                     // Dev 模式自动打开 DevTools
