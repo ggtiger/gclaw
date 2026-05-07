@@ -158,16 +158,14 @@ export async function POST(request: NextRequest) {
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
-      async start(controller) {
+      start(controller) {
         // 权限请求回调：直接通过 SSE 推送到前端
         const onPermissionRequest = (req: PermissionRequest) => {
-          const sseData = `event: permission_request\ndata: ${JSON.stringify(req)}\n\n`
-          controller.enqueue(encoder.encode(sseData))
+          controller.enqueue(encoder.encode(`event: permission_request\ndata: ${JSON.stringify(req)}\n\n`))
         }
         // AskUserQuestion 回调：通过 SSE 推送问题到前端
         const onAskUserQuestion = (req: AskUserQuestionRequest) => {
-          const sseData = `event: ask_user_question\ndata: ${JSON.stringify(req)}\n\n`
-          controller.enqueue(encoder.encode(sseData))
+          controller.enqueue(encoder.encode(`event: ask_user_question\ndata: ${JSON.stringify(req)}\n\n`))
         }
 
         const executor = new CommandExecutor(
@@ -178,45 +176,37 @@ export async function POST(request: NextRequest) {
           { onPermissionRequest, onAskUserQuestion }
         )
         let fullContent = ''
-        try {
-          for await (const event of executor.execute(command, commandParams || {})) {
-            // 累积 step_delta 内容，用于最终生成消息
-            if (event.type === 'step_delta' && event.data.content) {
-              fullContent += event.data.content
+        // 后台运行异步处理，start() 立即返回让流变为 readable 状态
+        // 这样回调的 controller.enqueue 数据才能立即推送到前端
+        ;(async () => {
+          try {
+            for await (const event of executor.execute(command, commandParams || {})) {
+              if (event.type === 'step_delta' && event.data.content) {
+                fullContent += event.data.content
+              }
+              controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`))
             }
-            const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`
-            controller.enqueue(encoder.encode(sseData))
+
+            const usageStats = executor.getUsageStats()
+
+            controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({
+              fullContent,
+              usage: usageStats.usage.inputTokens > 0 ? {
+                inputTokens: usageStats.usage.inputTokens,
+                outputTokens: usageStats.usage.outputTokens,
+                cachedTokens: usageStats.usage.cachedTokens,
+              } : undefined,
+              costUsd: usageStats.usage.costUsd || undefined,
+              model: usageStats.model || undefined,
+            })}\n\n`))
+            controller.enqueue(encoder.encode(`event: end\ndata: {}\n\n`))
+          } catch (err) {
+            controller.enqueue(encoder.encode(`event: workflow_error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`))
+            controller.enqueue(encoder.encode(`event: end\ndata: {}\n\n`))
+          } finally {
+            controller.close()
           }
-
-          // 获取累积的 token 统计
-          const usageStats = executor.getUsageStats()
-
-          // 注：AI 回复消息由前端 handleDoneEvent 持久化（含 contentBlocks），
-          // 后端不再单独持久化纯文本 assistant 消息，避免重复
-
-          // 发送 done 事件，前端 handleDoneEvent 会据此创建聊天消息
-          const doneData = `event: done\ndata: ${JSON.stringify({
-            fullContent,
-            usage: usageStats.usage.inputTokens > 0 ? {
-              inputTokens: usageStats.usage.inputTokens,
-              outputTokens: usageStats.usage.outputTokens,
-              cachedTokens: usageStats.usage.cachedTokens,
-            } : undefined,
-            costUsd: usageStats.usage.costUsd || undefined,
-            model: usageStats.model || undefined,
-          })}\n\n`
-          controller.enqueue(encoder.encode(doneData))
-          // 发送 end 事件
-          const endData = `event: end\ndata: {}\n\n`
-          controller.enqueue(encoder.encode(endData))
-        } catch (err) {
-          const errorData = `event: workflow_error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`
-          controller.enqueue(encoder.encode(errorData))
-          const endData = `event: end\ndata: {}\n\n`
-          controller.enqueue(encoder.encode(endData))
-        } finally {
-          controller.close()
-        }
+        })()
       },
     })
 
@@ -270,58 +260,56 @@ export async function POST(request: NextRequest) {
   let fullContent = ''
 
   const stream = new ReadableStream({
-    async start(controller) {
+    start(controller) {
       // 权限请求回调：直接通过 SSE 推送到前端
       const onPermissionRequest = (req: PermissionRequest) => {
-        const sseData = `event: permission_request\ndata: ${JSON.stringify(req)}\n\n`
-        controller.enqueue(encoder.encode(sseData))
+        controller.enqueue(encoder.encode(`event: permission_request\ndata: ${JSON.stringify(req)}\n\n`))
       }
 
       // AskUserQuestion 回调：通过 SSE 推送问题到前端
       const onAskUserQuestion = (req: AskUserQuestionRequest) => {
-        const sseData = `event: ask_user_question\ndata: ${JSON.stringify(req)}\n\n`
-        controller.enqueue(encoder.encode(sseData))
+        controller.enqueue(encoder.encode(`event: ask_user_question\ndata: ${JSON.stringify(req)}\n\n`))
       }
 
       // 订阅 GClaw 事件总线：将技能通知转发为 SSE
       const unsubscribe = gclawEventBus.subscribe(projectId, (event) => {
         try {
-          const sseData = `event: skill_notify\ndata: ${JSON.stringify({
+          controller.enqueue(encoder.encode(`event: skill_notify\ndata: ${JSON.stringify({
             type: event.type,
             source: event.source,
             message: event.data.message || '',
             data: event.data,
             timestamp: event.timestamp,
-          })}\n\n`
-          controller.enqueue(encoder.encode(sseData))
+          })}\n\n`))
         } catch {
           // controller 可能已关闭
         }
       })
 
-      try {
-        console.log(`[ChatStream] 发送给 AI: text="${message.substring(0, 200)}${message.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
-        for await (const event of executeChat(message, { projectId, onAskUserQuestion, attachments: attachmentData }, onPermissionRequest)) {
-          // 累积完整内容
-          if (event.event === 'delta' && typeof event.data.content === 'string') {
-            fullContent += event.data.content
+      // 后台运行异步处理，start() 立即返回让流变为 readable 状态
+      // 这样回调的 controller.enqueue 数据才能立即推送到前端
+      ;(async () => {
+        try {
+          console.log(`[ChatStream] 发送给 AI: text="${message.substring(0, 200)}${message.length > 200 ? '...' : ''}", attachments=${attachmentData?.length ?? 0}`)
+          for await (const event of executeChat(message, { projectId, onAskUserQuestion, attachments: attachmentData }, onPermissionRequest)) {
+            // 累积完整内容
+            if (event.event === 'delta' && typeof event.data.content === 'string') {
+              fullContent += event.data.content
+            }
+
+            // 注：AI 回复消息由前端 handleDoneEvent 持久化（含 contentBlocks），
+            // 后端不再单独持久化纯文本 assistant 消息，避免重复
+
+            controller.enqueue(encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`))
           }
-
-          // 注：AI 回复消息由前端 handleDoneEvent 持久化（含 contentBlocks），
-          // 后端不再单独持久化纯文本 assistant 消息，避免重复
-
-          const sseData = `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`
-          controller.enqueue(encoder.encode(sseData))
+        } catch (err) {
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: String(err) })}\n\n`))
+          controller.enqueue(encoder.encode(`event: end\ndata: {}\n\n`))
+        } finally {
+          unsubscribe()
+          controller.close()
         }
-      } catch (err) {
-        const errorData = `event: error\ndata: ${JSON.stringify({ message: String(err) })}\n\n`
-        controller.enqueue(encoder.encode(errorData))
-        const endData = `event: end\ndata: {}\n\n`
-        controller.enqueue(encoder.encode(endData))
-      } finally {
-        unsubscribe()
-        controller.close()
-      }
+      })()
     },
   })
 

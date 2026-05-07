@@ -568,8 +568,8 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           </div>
         )}
 
-        {/* AskUserQuestion 对话框（工作流模式下 tool_use 可能未到达前端，独立渲染） */}
-        {askQuestion && !streamingBlocks.some(b => b.type === 'tool' && (b.toolName === 'AskUserQuestion' || b.toolName === 'ask_user_question') && b.status === 'pending') && (
+        {/* AskUserQuestion 对话框（工作流模式下已在步骤卡片内展示，不重复显示） */}
+        {askQuestion && !workflowState && !streamingBlocks.some(b => b.type === 'tool' && (b.toolName === 'AskUserQuestion' || b.toolName === 'ask_user_question') && b.status === 'pending') && (
           <div className="px-3 lg:px-4 pb-2">
             <AskQuestionDialog request={askQuestion} onRespond={onRespondAskQuestion} />
           </div>

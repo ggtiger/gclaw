@@ -477,6 +477,15 @@ export class CommandExecutor {
       ? resolveTemplate(step.systemPrompt, this.context)
       : undefined
 
+    // 追加 ask_user 工具使用提示，确保 AI 在需要用户输入时主动发起询问
+    const askUserHint = '\n\n重要：如果你在执行过程中需要用户提供信息（如密码、凭证、选择、确认等），必须使用 ask_user 工具发起询问并等待用户回复，不要仅在输出文本中描述需求。'
+    const finalSystemPrompt = (resolvedSystemPrompt || '') + askUserHint
+
+    // 将步骤系统提示作为上下文前缀注入用户消息（executeChat 不支持独立 systemPrompt 参数）
+    const messageWithContext = finalSystemPrompt
+      ? `[系统指令] ${finalSystemPrompt}\n\n[用户请求] ${resolvedMessage}`
+      : resolvedMessage
+
     // 累积文本输出
     let outputBuffer = ''
 
@@ -490,7 +499,7 @@ export class CommandExecutor {
 
     // 调用 executeChat — 它是 AsyncGenerator<SSEEvent>
     // 使用 abortKey 隔离避免与同项目的其他查询冲突
-    const chatGen = executeChat(resolvedMessage, {
+    const chatGen = executeChat(messageWithContext, {
       projectId: this.context.projectId,
       abortKey: `${this.context.projectId}__cmd_${step.id}`,
       cwd: this.context.cwd || undefined,

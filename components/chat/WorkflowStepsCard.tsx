@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronUp, Check, XCircle, Loader, Circle, Clock } from 'lucide-react'
+import { ChevronDown, ChevronUp, Check, XCircle, Loader, Circle, Clock, Send, SkipForward } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { StreamingToolCard } from './StreamingToolCard'
-import type { StreamingWorkflowBlock, WorkflowBlockStep, WorkflowContentBlock, StreamingToolBlock, StepContentSegment } from '@/types/chat'
+import { AskQuestionDialog } from './AskQuestionDialog'
+import type { StreamingWorkflowBlock, WorkflowBlockStep, WorkflowContentBlock, StreamingToolBlock, StepContentSegment, AskUserQuestionRequest } from '@/types/chat'
 
 // 过滤 SDK 工具调用轮次中的占位文本（如 "(no content)"、"(no content)(no content)"）
 const NOISE_PATTERN = /^[\s()]*(?:no content[\s()]*)+$/i
@@ -15,6 +16,8 @@ interface WorkflowStepsCardProps {
   block: StreamingWorkflowBlock | WorkflowContentBlock
   projectId?: string
   projectCwd?: string
+  askQuestion?: AskUserQuestionRequest | null
+  onRespondAskQuestion?: (requestId: string, answers: Record<string, string>) => void
 }
 
 // 判断步骤内容是否为短文本（可内联显示）
@@ -25,7 +28,7 @@ function isInlineContent(step: WorkflowBlockStep): boolean {
   return trimmed.length < 50 && !step.content.includes('\n')
 }
 
-export function WorkflowStepsCard({ block, projectId, projectCwd }: WorkflowStepsCardProps) {
+export function WorkflowStepsCard({ block, projectId, projectCwd, askQuestion, onRespondAskQuestion }: WorkflowStepsCardProps) {
   // 只展开最后一个已完成步骤 + running/waiting_confirmation 步骤
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(() => {
     const initial = new Set<string>()
@@ -107,6 +110,8 @@ export function WorkflowStepsCard({ block, projectId, projectCwd }: WorkflowStep
           projectId={projectId}
           projectCwd={projectCwd}
           isLast={step === block.steps[block.steps.length - 1]}
+          askQuestion={step.status === 'waiting_confirmation' ? askQuestion : null}
+          onRespondAskQuestion={onRespondAskQuestion}
         />
       ))}
     </div>
@@ -123,13 +128,15 @@ interface StepRowProps {
   projectId?: string
   projectCwd?: string
   isLast: boolean
+  askQuestion?: AskUserQuestionRequest | null
+  onRespondAskQuestion?: (requestId: string, answers: Record<string, string>) => void
 }
 
 function isTodoWrite(name: string) {
   return name === 'TodoWrite' || name === 'todo_write'
 }
 
-function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLast }: StepRowProps) {
+function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLast, askQuestion, onRespondAskQuestion }: StepRowProps) {
   // 剥离内容中的 (no content) 子串后再判断是否有有效内容
   const cleanContent = step.content ? step.content.replace(NOISE_INLINE, '').trim() : ''
   const hasContent = cleanContent.length > 0
@@ -175,7 +182,7 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
   }, [step.toolCalls, step.toolCalls?.length, step.toolCalls?.map(t => t.toolUseId).join(',')])
 
   // 短内容直接行内显示，不需要展开；无内容的已完成步骤也不显示箭头
-  const canExpand = !inline && (hasContent || hasToolCalls || step.status === 'running')
+  const canExpand = !inline && (hasContent || hasToolCalls || step.status === 'running' || step.status === 'waiting_confirmation')
 
   return (
     <div>
@@ -251,6 +258,16 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
             : <ChevronDown size={14} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />
         )}
       </div>
+
+      {/* Inline AskQuestion — 步骤等待用户输入时显示 */}
+      {expanded && step.status === 'waiting_confirmation' && askQuestion && onRespondAskQuestion && (
+        <div
+          className="px-3 py-2"
+          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface-hover)' }}
+        >
+          <AskQuestionDialog request={askQuestion} onRespond={onRespondAskQuestion} />
+        </div>
+      )}
 
       {/* Expanded content — 按推送顺序渲染（参考普通对话模式） */}
       {expanded && canExpand && (hasContent || hasToolCalls) && (

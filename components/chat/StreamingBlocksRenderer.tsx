@@ -119,6 +119,8 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
             block={block}
             projectId={projectId}
             projectCwd={projectCwd}
+            askQuestion={askQuestion}
+            onRespondAskQuestion={onRespondAskQuestion}
           />
         ) : (
           <StreamingToolCard
