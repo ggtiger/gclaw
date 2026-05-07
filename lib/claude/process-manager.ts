@@ -118,6 +118,17 @@ export async function* executeChat(
     existingController.abort()
     projectAbortControllers.delete(abortMapKey)
   }
+  // 清理旧会话残留的挂起请求，防止旧 query() 永久挂起
+  for (const [reqId, resolve] of pendingAskQuestions) {
+    resolve({})
+    pendingAskQuestions.delete(reqId)
+    logger.info(`[GClaw] executeChat: cleaned up stale AskUserQuestion ${reqId}`)
+  }
+  for (const [reqId, resolve] of pendingPermissions) {
+    resolve('deny')
+    pendingPermissions.delete(reqId)
+    logger.info(`[GClaw] executeChat: cleaned up stale PermissionRequest ${reqId}`)
+  }
 
   const abortController = options.externalAbortController || new AbortController()
   projectAbortControllers.set(abortMapKey, abortController)
@@ -811,9 +822,20 @@ export function abortProcess(projectId: string): boolean {
   if (controller) {
     controller.abort()
     projectAbortControllers.delete(projectId)
-    return true
   }
-  return false
+  // 清理该项目的挂起 AskUserQuestion promise，用空回答 resolve 防止旧 query() 永久挂起
+  for (const [reqId, resolve] of pendingAskQuestions) {
+    resolve({})
+    pendingAskQuestions.delete(reqId)
+    logger.info(`[GClaw] abortProcess: cleaned up pending AskUserQuestion ${reqId}`)
+  }
+  // 清理该项目的挂起权限请求
+  for (const [reqId, resolve] of pendingPermissions) {
+    resolve('deny')
+    pendingPermissions.delete(reqId)
+    logger.info(`[GClaw] abortProcess: cleaned up pending PermissionRequest ${reqId}`)
+  }
+  return !!controller
 }
 
 /**
@@ -824,6 +846,15 @@ export function abortCurrentProcess(): boolean {
   for (const [id, controller] of projectAbortControllers) {
     controller.abort()
     projectAbortControllers.delete(id)
+  }
+  // 清理所有挂起的 AskUserQuestion 和权限请求
+  for (const [reqId, resolve] of pendingAskQuestions) {
+    resolve({})
+    pendingAskQuestions.delete(reqId)
+  }
+  for (const [reqId, resolve] of pendingPermissions) {
+    resolve('deny')
+    pendingPermissions.delete(reqId)
   }
   return true
 }

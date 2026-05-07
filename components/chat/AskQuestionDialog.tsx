@@ -7,11 +7,13 @@ import type { AskUserQuestionRequest } from '@/types/chat'
 interface AskQuestionDialogProps {
   request: AskUserQuestionRequest
   onRespond: (requestId: string, answers: Record<string, string>) => void
+  /** 内嵌模式：去掉外边距、阴影、动画，适合嵌入步骤卡片 */
+  embedded?: boolean
 }
 
 const TIMEOUT_SECONDS = 300
 
-export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRespond }: AskQuestionDialogProps) {
+export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRespond, embedded }: AskQuestionDialogProps) {
   const [selections, setSelections] = useState<Record<number, string | string[]>>({})
   const [customInputs, setCustomInputs] = useState<Record<number, string>>({})
   const [customMode, setCustomMode] = useState<Record<number, boolean>>({})
@@ -82,6 +84,8 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
   const handleCustomInputConfirm = (qIndex: number) => {
     const val = customInputs[qIndex]?.trim()
     if (val) {
+      // 退出自定义模式，将输入值作为选中项
+      setCustomMode(prev => ({ ...prev, [qIndex]: false }))
       setSelections(prev => ({ ...prev, [qIndex]: val }))
     }
   }
@@ -116,13 +120,16 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
 
   return (
     <div
-      className="mx-4 mb-2 rounded-lg border overflow-hidden animate-in slide-in-from-bottom-2 duration-200"
+      className={embedded
+        ? "rounded-lg border overflow-hidden"
+        : "mx-4 mb-2 rounded-lg border overflow-hidden animate-in slide-in-from-bottom-2 duration-200"
+      }
       style={{
         borderColor: 'var(--color-primary, #7c3aed)',
         backgroundColor: 'var(--color-surface)',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        maxHeight: '260px',
+        ...(embedded ? {} : { boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxHeight: '260px' }),
       }}
+      onClick={embedded ? (e) => e.stopPropagation() : undefined}
     >
       {/* Header */}
       <div
@@ -197,6 +204,27 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
               </div>
             ) : (
               <div className="flex flex-wrap gap-1">
+                {/* 已确认的自定义回答（不在预定义选项中） */}
+                {(() => {
+                  const sel = selections[qIdx]
+                  const isCustomValue = typeof sel === 'string' && sel !== '' && !q.options.some(o => o.label === sel)
+                  if (!isCustomValue) return null
+                  return (
+                    <button
+                      onClick={() => handleEnableCustomMode(qIdx)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium cursor-pointer"
+                      style={{
+                        borderColor: 'var(--color-primary, #7c3aed)',
+                        backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                        color: 'var(--color-primary, #7c3aed)',
+                      }}
+                    >
+                      <CheckCircle2 size={10} />
+                      {sel}
+                      <Pencil size={8} className="ml-0.5 opacity-60" />
+                    </button>
+                  )
+                })()}
                 {q.options.map((opt, oIdx) => {
                   const isSelected = q.multiSelect
                     ? ((selections[qIdx] as string[]) || []).includes(opt.label)

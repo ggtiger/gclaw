@@ -949,6 +949,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                   if (runningStep) {
                     runningStep.status = 'waiting_confirmation'
                   }
+                  // 同步更新 streamingBlocks 中 workflow block 的步骤状态
+                  const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                  if (wfBlock) {
+                    const wfStep = wfBlock.steps.find(s => s.status === 'running')
+                    if (wfStep) {
+                      wfStep.status = 'waiting_confirmation'
+                    }
+                  }
                 }
               })
               break
@@ -968,6 +976,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                   const step = b.workflowState.steps.find(s => s.stepId === (data.stepId as string))
                   if (step) {
                     step.status = 'waiting_confirmation'
+                  }
+                  // 同步更新 streamingBlocks 中 workflow block 的步骤状态
+                  const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                  if (wfBlock) {
+                    const wfStep = wfBlock.steps.find(s => s.stepId === (data.stepId as string))
+                    if (wfStep) {
+                      wfStep.status = 'waiting_confirmation'
+                    }
                   }
                 }
               })
@@ -1374,6 +1390,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       b.sending = false
       b.streamingBlocks = []
       b.workflowState = null
+      b.askQuestion = null
       b.stepConfirmation = null
     })
     setActive(abortProjectId, false)
@@ -1415,6 +1432,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
           if (step && step.status === 'waiting_confirmation') {
             step.status = action === 'modify' ? 'running' : 'completed'
           }
+          // 同步更新 streamingBlocks 中 workflow block 的步骤状态
+          const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+          if (wfBlock) {
+            const wfStep = wfBlock.steps.find(s => s.stepId === b.stepConfirmation?.stepId)
+            if (wfStep && wfStep.status === 'waiting_confirmation') {
+              wfStep.status = action === 'modify' ? 'running' : 'completed'
+            }
+          }
         }
         b.stepConfirmation = null
       })
@@ -1441,6 +1466,14 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         const waitingStep = b.workflowState.steps.find(s => s.status === 'waiting_confirmation')
         if (waitingStep) {
           waitingStep.status = 'running'
+        }
+        // 同步更新 streamingBlocks 中 workflow block 的步骤状态
+        const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+        if (wfBlock) {
+          const wfStep = wfBlock.steps.find(s => s.status === 'waiting_confirmation')
+          if (wfStep) {
+            wfStep.status = 'running'
+          }
         }
       }
     })

@@ -9,7 +9,6 @@ import { MessageBubble } from './MessageBubble'
 import { StreamingBlocksRenderer } from './StreamingBlocksRenderer'
 import { ChatInput } from './ChatInput'
 import { PermissionDialog } from './PermissionDialog'
-import { AskQuestionDialog } from './AskQuestionDialog'
 import { StepConfirmationDialog } from './StepConfirmationDialog'
 import { SearchBar } from './SearchBar'
 import { ExportButton } from './ExportButton'
@@ -228,15 +227,30 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
   }, [onUpdateMessage])
 
   // 自动滚动到底部（用 RAF 防抖，减少抖动）
+  // askQuestion 出现时强制滚动（不受 shouldAutoScroll 限制）
   useEffect(() => {
-    if (!shouldAutoScroll.current || !scrollContainerRef.current) return
+    const forceScroll = !!askQuestion
+    if ((!shouldAutoScroll.current && !forceScroll) || !scrollContainerRef.current) return
+    if (forceScroll) shouldAutoScroll.current = true
     const raf = requestAnimationFrame(() => {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
       }
     })
-    return () => cancelAnimationFrame(raf)
-  }, [messages, streamingBlocks, workflowState])
+    // askQuestion 时延迟再滚一次，确保内容渲染完成后也能到位
+    let timer: ReturnType<typeof setTimeout> | undefined
+    if (forceScroll) {
+      timer = setTimeout(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+        }
+      }, 300)
+    }
+    return () => {
+      cancelAnimationFrame(raf)
+      if (timer) clearTimeout(timer)
+    }
+  }, [messages, streamingBlocks, workflowState, askQuestion])
 
   // 检测用户是否手动向上滚动 — 使用原生 passive 监听器，不阻塞滚动合成
   const scrollRafRef = useRef<number>(0)
@@ -553,7 +567,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
             )}
 
             {/* 底部间距：为固定输入框留白 */}
-            <div className={askQuestion ? 'h-48' : 'h-32'} />
+            <div className="h-32" />
               </div>
             </div>
           </div>
@@ -568,12 +582,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           </div>
         )}
 
-        {/* AskUserQuestion 对话框（工作流模式下已在步骤卡片内展示，不重复显示） */}
-        {askQuestion && !workflowState && !streamingBlocks.some(b => b.type === 'tool' && (b.toolName === 'AskUserQuestion' || b.toolName === 'ask_user_question') && b.status === 'pending') && (
-          <div className="px-3 lg:px-4 pb-2">
-            <AskQuestionDialog request={askQuestion} onRespond={onRespondAskQuestion} />
-          </div>
-        )}
+        {/* AskUserQuestion 由 StreamingToolCard（普通聊天）或 WorkflowStepsCard（工作流）内嵌处理，无需独立弹窗 */}
 
         {/* 步骤确认对话框 */}
         {stepConfirmation && onRespondStepConfirmation && (
@@ -591,7 +600,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           onSend={handleSend}
           onAbort={onAbort}
           sending={sending}
-          disabled={!!askQuestion || !!stepConfirmation}
+          disabled={!!stepConfirmation}
           projectId={projectId}
           onTemplateSelect={(template) => {
             if (template.firstMessage) {

@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronUp, Check, XCircle, Loader, Circle, Clock, Send, SkipForward } from 'lucide-react'
+import { ChevronDown, ChevronUp, Check, XCircle, Loader, Circle, Clock } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { StreamingToolCard } from './StreamingToolCard'
-import { AskQuestionDialog } from './AskQuestionDialog'
 import type { StreamingWorkflowBlock, WorkflowBlockStep, WorkflowContentBlock, StreamingToolBlock, StepContentSegment, AskUserQuestionRequest } from '@/types/chat'
 
 // 过滤 SDK 工具调用轮次中的占位文本（如 "(no content)"、"(no content)(no content)"）
@@ -136,6 +135,10 @@ function isTodoWrite(name: string) {
   return name === 'TodoWrite' || name === 'todo_write'
 }
 
+function isAskUserQuestion(name: string) {
+  return name === 'AskUserQuestion' || name === 'ask_user_question'
+}
+
 function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLast, askQuestion, onRespondAskQuestion }: StepRowProps) {
   // 剥离内容中的 (no content) 子串后再判断是否有有效内容
   const cleanContent = step.content ? step.content.replace(NOISE_INLINE, '').trim() : ''
@@ -170,8 +173,8 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
           } else {
             currentTaskId = null
           }
-        } else if (currentTaskId) {
-          // 该工具属于当前 IN_PROGRESS 任务
+        } else if (currentTaskId && !isAskUserQuestion(block.toolName)) {
+          // 该工具属于当前 IN_PROGRESS 任务（AskUserQuestion 始终独立显示，不归入任务分组）
           nestedToolIds.add(block.toolUseId)
           taskToolsMap.get(currentTaskId)!.push(block)
         }
@@ -259,15 +262,7 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
         )}
       </div>
 
-      {/* Inline AskQuestion — 步骤等待用户输入时显示 */}
-      {expanded && step.status === 'waiting_confirmation' && askQuestion && onRespondAskQuestion && (
-        <div
-          className="px-3 py-2"
-          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface-hover)' }}
-        >
-          <AskQuestionDialog request={askQuestion} onRespond={onRespondAskQuestion} />
-        </div>
-      )}
+
 
       {/* Expanded content — 按推送顺序渲染（参考普通对话模式） */}
       {expanded && canExpand && (hasContent || hasToolCalls) && (
@@ -314,6 +309,8 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
                       taskToolsMap={taskToolsMap.size > 0 ? taskToolsMap : undefined}
                       projectId={projectId}
                       projectCwd={projectCwd}
+                      askQuestion={step.status === 'waiting_confirmation' ? askQuestion : null}
+                      onRespondAskQuestion={onRespondAskQuestion}
                     />
                   )
                 }
@@ -339,6 +336,8 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
                       taskToolsMap={taskToolsMap.size > 0 ? taskToolsMap : undefined}
                       projectId={projectId}
                       projectCwd={projectCwd}
+                      askQuestion={step.status === 'waiting_confirmation' ? askQuestion : null}
+                      onRespondAskQuestion={onRespondAskQuestion}
                     />
                   )
                 })}
@@ -347,6 +346,7 @@ function StepRow({ step, index, expanded, onToggle, projectId, projectCwd, isLas
           })()}
         </div>
       )}
+
     </div>
   )
 }

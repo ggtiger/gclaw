@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Circle, Clock, Ban, HelpCircle, MessageSquare, CheckCircle2, Send, Pencil, FileText, FilePen, FileEdit, Search, FolderSearch, Layers } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Circle, Clock, Ban, HelpCircle, CheckCircle2, Send, Pencil, FileText, FilePen, FileEdit, Search, FolderSearch, Layers } from 'lucide-react'
 import type { StreamingToolBlock, AskUserQuestionRequest } from '@/types/chat'
 import { FilePathAction } from './FilePathAction'
 
@@ -303,15 +303,7 @@ interface AskQuestion {
   multiSelect?: boolean
 }
 
-function parseQAOutput(output: string): { question: string; answer: string }[] {
-  const qaPairs: { question: string; answer: string }[] = []
-  const regex = /"([^"]+)"="([^"]*)"/g
-  let match
-  while ((match = regex.exec(output)) !== null) {
-    qaPairs.push({ question: match[1], answer: match[2] })
-  }
-  return qaPairs
-}
+const TIMEOUT_SECONDS = 300
 
 function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
   tool: StreamingToolBlock
@@ -321,12 +313,16 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
   const [selections, setSelections] = useState<Record<number, string | string[]>>({})
   const [customInputs, setCustomInputs] = useState<Record<number, string>>({})
   const [customMode, setCustomMode] = useState<Record<number, boolean>>({})
+  const [countdown, setCountdown] = useState(TIMEOUT_SECONDS)
   const customInputRef = useRef<HTMLInputElement>(null)
 
   const isInteractive = !!askQuestion && !tool.output
   const questions: AskQuestion[] = (tool.input?.questions as AskQuestion[]) || []
-  const qaPairs = tool.output ? parseQAOutput(tool.output) : []
+  // 从 tool.input.answers 提取（canUseTool 注入到服务端 SDK，客户端不更新，用 submittedAnswers 兜底）
+  const answersMap = tool.input?.answers as Record<string, string> | undefined
+  const submittedAnswersRef = useRef<Record<string, string> | null>(null)
 
+  // 初始化默认选择
   useEffect(() => {
     if (!askQuestion) return
     const defaults: Record<number, string | string[]> = {}
@@ -339,6 +335,24 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
     setCustomMode({})
     setCustomInputs({})
   }, [askQuestion?.requestId])
+
+  // 超时倒计时
+  useEffect(() => {
+    if (!isInteractive) return
+    setCountdown(TIMEOUT_SECONDS)
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          handleSubmit(true)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInteractive, askQuestion?.requestId])
 
   const handleSingleSelect = (qIndex: number, label: string) => {
     setSelections(prev => ({ ...prev, [qIndex]: label }))
@@ -369,11 +383,13 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
     setCustomMode(prev => ({ ...prev, [qIndex]: false }))
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = (timeout = false) => {
     if (!askQuestion || !onRespondAskQuestion) return
     const answers: Record<string, string> = {}
     askQuestion.questions.forEach((q, i) => {
-      if (customMode[i]) {
+      if (timeout) {
+        answers[q.question] = q.options[0]?.label || ''
+      } else if (customMode[i]) {
         answers[q.question] = customInputs[i]?.trim() || ''
       } else {
         const sel = selections[i]
@@ -385,6 +401,7 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
       }
     })
     onRespondAskQuestion(askQuestion.requestId, answers)
+    submittedAnswersRef.current = answers
   }
 
   const canSubmit = isInteractive && askQuestion
@@ -399,79 +416,176 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
   const displayQuestions = isInteractive && askQuestion ? askQuestion.questions : questions
 
   return (
-    <div className="ml-1 mt-1 space-y-1.5">
-      {displayQuestions.map((q, qIdx) => (
-        <div key={qIdx} className="rounded-lg p-2" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-          <div className="flex items-center gap-1.5 mb-1">
-            {q.header && (
-              <span className="inline-block px-1 py-px rounded text-[10px] font-medium" style={{
-                backgroundColor: 'rgba(124, 58, 237, 0.12)',
-                color: 'var(--color-primary, #7c3aed)',
-              }}>
-                {q.header}
-              </span>
-            )}
-            {q.multiSelect && (
-              <span className="text-[10px] px-1 py-px rounded-full" style={{
-                backgroundColor: 'var(--color-surface-hover)',
-                color: 'var(--color-text-muted)',
-              }}>
-                多选
-              </span>
-            )}
-          </div>
-          <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
-            {q.question}
-          </div>
-          {isInteractive ? (
-            <div className="flex flex-wrap gap-1">
-              {(q.options || []).map((opt, oIdx) => {
-                const isSelected = q.multiSelect
-                  ? ((selections[qIdx] as string[]) || []).includes(opt.label)
-                  : selections[qIdx] === opt.label
-                return (
-                  <button
-                    key={oIdx}
-                    onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label)}
-                    title={opt.description}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
-                    style={{
-                      borderColor: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
-                      backgroundColor: isSelected ? 'rgba(124, 58, 237, 0.12)' : 'transparent',
-                      color: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text)',
-                    }}
-                  >
-                    {isSelected ? <CheckCircle2 size={10} /> : <Circle size={10} />}
-                    {opt.label}
-                  </button>
-                )
-              })}
-              <button
-                onClick={() => handleEnableCustomMode(qIdx)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium cursor-pointer"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
-              >
-                <Pencil size={10} />
-                其他...
-              </button>
-            </div>
-          ) : (
-            q.options && q.options.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {q.options.map((opt, j) => (
-                  <span key={j} title={opt.description} className="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-                    {opt.label}
-                  </span>
-                ))}
-              </div>
-            )
-          )}
-        </div>
-      ))}
+    <div className="ml-1 mt-1 rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-primary, #7c3aed)' }} onClick={e => e.stopPropagation()}>
+      {/* Header */}
       {isInteractive && (
-        <div className="flex justify-end">
+        <div className="flex items-center gap-1.5 px-3 py-1.5" style={{ backgroundColor: 'rgba(124, 58, 237, 0.12)' }}>
+          <HelpCircle size={13} style={{ color: 'var(--color-primary, #7c3aed)' }} />
+          <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
+            Agent 提问
+          </span>
+          <span className="text-[10px] ml-auto" style={{ color: 'var(--color-text-muted)' }}>
+            {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')} 后自动选择
+          </span>
+        </div>
+      )}
+
+      {/* Questions */}
+      <div className="px-3 py-2 space-y-2.5 overflow-y-auto" style={{ maxHeight: '200px' }}>
+        {displayQuestions.map((q, qIdx) => (
+          <div key={qIdx}>
+            <div className="flex items-center gap-1.5 mb-1">
+              {q.header && (
+                <span className="inline-block px-1.5 py-px rounded text-[10px] font-medium" style={{
+                  backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                  color: 'var(--color-primary, #7c3aed)',
+                }}>
+                  {q.header}
+                </span>
+              )}
+              {q.multiSelect && (
+                <span className="text-[10px] px-1 py-px rounded-full" style={{
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text-muted)',
+                }}>
+                  多选
+                </span>
+              )}
+            </div>
+            <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-text)' }}>
+              {q.question}
+            </div>
+            {isInteractive ? (
+              customMode[qIdx] ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    ref={qIdx === 0 ? customInputRef : undefined}
+                    type="text"
+                    value={customInputs[qIdx] || ''}
+                    onChange={e => setCustomInputs(prev => ({ ...prev, [qIdx]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') handleCustomInputConfirm(qIdx) }}
+                    placeholder="输入你的回答..."
+                    className="flex-1 min-w-0 text-xs px-2 py-1 rounded-md border outline-none"
+                    style={{
+                      borderColor: 'var(--color-primary, #7c3aed)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
+                    }}
+                  />
+                  <button
+                    onClick={() => handleCustomInputConfirm(qIdx)}
+                    disabled={!customInputs[qIdx]?.trim()}
+                    className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
+                  >
+                    确认
+                  </button>
+                  <button
+                    onClick={() => setCustomMode(prev => ({ ...prev, [qIdx]: false }))}
+                    className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {/* 已确认的自定义回答（不在预定义选项中） */}
+                  {(() => {
+                    const sel = selections[qIdx]
+                    const isCustomValue = typeof sel === 'string' && sel !== '' && !(q.options || []).some(o => o.label === sel)
+                    if (!isCustomValue) return null
+                    return (
+                      <button
+                        key="__custom"
+                        onClick={() => handleEnableCustomMode(qIdx)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium cursor-pointer"
+                        style={{
+                          borderColor: 'var(--color-primary, #7c3aed)',
+                          backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                          color: 'var(--color-primary, #7c3aed)',
+                        }}
+                      >
+                        <CheckCircle2 size={10} />
+                        {sel}
+                        <Pencil size={8} className="ml-0.5 opacity-60" />
+                      </button>
+                    )
+                  })()}
+                  {(q.options || []).map((opt, oIdx) => {
+                    const isSelected = q.multiSelect
+                      ? ((selections[qIdx] as string[]) || []).includes(opt.label)
+                      : selections[qIdx] === opt.label
+                    return (
+                      <button
+                        key={oIdx}
+                        onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label)}
+                        title={opt.description}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
+                        style={{
+                          borderColor: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
+                          backgroundColor: isSelected ? 'rgba(124, 58, 237, 0.12)' : 'transparent',
+                          color: isSelected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text)',
+                        }}
+                      >
+                        {isSelected ? <CheckCircle2 size={10} /> : <Circle size={10} />}
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                  <button
+                    onClick={() => handleEnableCustomMode(qIdx)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium cursor-pointer"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                  >
+                    <Pencil size={10} />
+                    其他...
+                  </button>
+                </div>
+              )
+            ) : (
+              q.options && q.options.length > 0 && (() => {
+                const userAnswer = submittedAnswersRef.current?.[q.question] || answersMap?.[q.question]
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {q.options.map((opt, j) => {
+                      const selected = userAnswer === opt.label || (userAnswer && opt.label && userAnswer.split(', ').includes(opt.label))
+                      return (
+                        <span key={j} title={opt.description} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
+                          borderColor: selected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
+                          backgroundColor: selected ? 'rgba(124, 58, 237, 0.12)' : 'transparent',
+                          color: selected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text-muted)',
+                          opacity: selected ? 1 : 0.5,
+                        }}>
+                          {selected && <Check size={10} />}
+                          {opt.label}
+                        </span>
+                      )
+                    })}
+                    {/* 自定义回答（不在预定义选项中） */}
+                    {userAnswer && !q.options.some(o => o.label === userAnswer) && (
+                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
+                        borderColor: 'var(--color-primary, #7c3aed)',
+                        backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                        color: 'var(--color-primary, #7c3aed)',
+                      }}>
+                        <Check size={10} />
+                        {userAnswer}
+                      </span>
+                    )}
+                  </div>
+                )
+              })()
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Submit bar with countdown progress */}
+      {isInteractive && (
+        <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderTop: '1px solid var(--color-border)' }}>
           <button
-            onClick={handleSubmit}
+            onClick={() => handleSubmit()}
             disabled={!canSubmit}
             className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
@@ -479,17 +593,15 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
             <Send size={11} />
             提交
           </button>
-        </div>
-      )}
-      {qaPairs.length > 0 && (
-        <div className="p-2 rounded space-y-1" style={{ backgroundColor: 'var(--color-code-bg)' }}>
-          {qaPairs.map((qa, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-xs">
-              <MessageSquare size={11} className="mt-0.5 shrink-0 text-[var(--color-primary)]" />
-              <span style={{ color: 'var(--color-text-muted)' }}>{qa.question}: </span>
-              <span className="font-medium" style={{ color: '#e2e8f0' }}>{qa.answer}</span>
-            </div>
-          ))}
+          <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-1000 ease-linear"
+              style={{
+                width: `${(countdown / TIMEOUT_SECONDS) * 100}%`,
+                backgroundColor: countdown > 60 ? 'var(--color-primary, #7c3aed)' : 'var(--color-warning, #f59e0b)',
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
