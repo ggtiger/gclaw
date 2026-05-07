@@ -699,6 +699,13 @@ export async function* executeChat(
             }
             break
 
+          case 'context_update':
+            yield {
+              event: 'context_update',
+              data: { inputTokens: parsed.inputTokens, model: parsed.model },
+            }
+            break
+
           case 'compact_boundary':
             // 压缩边界信息仅日志记录
             logger.info(`[GClaw] Compact boundary: trigger=${parsed.trigger}, preTokens=${parsed.preTokens}`)

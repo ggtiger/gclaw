@@ -3,16 +3,26 @@
 import { memo, useMemo } from 'react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { StreamingToolCard } from './StreamingToolCard'
+import { WorkflowStepsCard } from './WorkflowStepsCard'
 import type { StreamingBlock, StreamingToolBlock, ContentBlock, AskUserQuestionRequest } from '@/types/chat'
 
 // ── 将 ContentBlock[]（持久化格式）适配为 StreamingBlock[]（渲染格式） ──
 
 export function adaptContentBlocks(blocks: ContentBlock[]): StreamingBlock[] {
-  return blocks.map((b, i) =>
-    b.type === 'text'
-      ? { type: 'text' as const, id: `cb_${i}`, content: b.content }
-      : { type: 'tool' as const, id: b.toolUseId, toolUseId: b.toolUseId, toolName: b.toolName, input: b.input, status: b.status, output: b.output, isError: b.isError, elapsedSeconds: undefined }
-  )
+  return blocks.map((b, i) => {
+    if (b.type === 'text') {
+      return { type: 'text' as const, id: `cb_${i}`, content: b.content }
+    } else if (b.type === 'workflow') {
+      return {
+        type: 'workflow' as const,
+        id: `cb_wf_${i}`,
+        commandName: b.commandName,
+        steps: b.steps,
+      }
+    } else {
+      return { type: 'tool' as const, id: b.toolUseId, toolUseId: b.toolUseId, toolName: b.toolName, input: b.input, status: b.status, output: b.output, isError: b.isError, elapsedSeconds: undefined }
+    }
+  })
 }
 
 // ── 判断是否为 TodoWrite ──
@@ -100,6 +110,13 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
             key={block.id}
             content={block.content}
             isStreaming={isStreaming}
+            projectId={projectId}
+            projectCwd={projectCwd}
+          />
+        ) : block.type === 'workflow' ? (
+          <WorkflowStepsCard
+            key={block.id}
+            block={block}
             projectId={projectId}
             projectCwd={projectCwd}
           />

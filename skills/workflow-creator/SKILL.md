@@ -534,10 +534,71 @@ curl -s -X DELETE "${GCLAW_API_BASE}/api/commands/COMMAND_ID?scope=project&proje
   -H "x-internal-api-key: ${GCLAW_INTERNAL_API_KEY}"
 ```
 
+## 修改现有工作流（重要）
+
+当用户要求修改已有的命令/工作流时，**必须**遵循以下流程避免命令重复：
+
+### 修改流程
+
+1. **先查询现有命令** — 使用 GET API 获取当前命令列表，确认目标命令是否已存在
+2. **存在则用 PUT 更新** — 如果命令 ID 已存在，**必须使用 PUT 更新**，而非 POST 创建
+3. **修改后验证无重复** — 更新完成后再次 GET 查询，确认没有产生重复命令
+
+### 判断规则
+
+- 命令 ID 已存在 → 使用 `PUT /api/commands/COMMAND_ID` 更新
+- 命令 ID 不存在 → 使用 `POST /api/commands` 创建
+
+### 修改示例
+
+```bash
+# 1. 先查询现有命令
+curl -s "${GCLAW_API_BASE}/api/commands?projectId=${GCLAW_PROJECT_ID}" \
+  -H "x-internal-api-key: ${GCLAW_INTERNAL_API_KEY}"
+
+# 2. 如果命令已存在，使用 PUT 更新
+curl -s -X PUT "${GCLAW_API_BASE}/api/commands/COMMAND_ID" \
+  -H "Content-Type: application/json" \
+  -H "x-internal-api-key: ${GCLAW_INTERNAL_API_KEY}" \
+  -d '{
+    "updates": { ...完整的更新字段... },
+    "scope": "project",
+    "projectId": "'"${GCLAW_PROJECT_ID}"'"
+  }'
+
+# 3. 验证无重复
+curl -s "${GCLAW_API_BASE}/api/commands?projectId=${GCLAW_PROJECT_ID}" \
+  -H "x-internal-api-key: ${GCLAW_INTERNAL_API_KEY}"
+```
+
+> **警告：** 对已有 ID 使用 POST 创建会导致命令重复。后端有去重保护（自动转为更新），但最佳实践仍是主动使用 PUT。
+
 ## 交互策略
 
 1. **简单需求** — 直接使用 AI 自动生成模式，生成后展示给用户确认
 2. **复杂需求** — 使用引导式创建，逐步与用户确认每个部分
 3. **优化请求** — 获取现有命令 JSON，调用优化 API 改进
-4. **始终确认** — 在调用创建/更新 API 前，先向用户展示完整 JSON 并获得确认
-5. **错误处理** — API 返回错误时，解析错误信息，修正后重试
+4. **修改请求** — 先 GET 查询确认命令存在，再用 PUT 更新，避免重复创建
+5. **始终确认** — 在调用创建/更新 API 前，先向用户展示完整 JSON 并获得确认
+6. **错误处理** — API 返回错误时，解析错误信息，修正后重试
+
+## 目录结构规范
+
+每个项目的命令相关文件统一存放在 `.commands/` 目录下：
+
+```
+项目数据目录/
+└── .commands/
+    ├── commands.json          # 命令定义文件
+    └── scripts/               # 命令引用的脚本文件
+        ├── build.sh
+        ├── deploy.sh
+        └── ...
+```
+
+### 创建脚本文件的规范
+- 当工作流步骤需要执行较长的脚本时，建议将脚本保存到 `.commands/scripts/` 目录
+- `script` 步骤的 `command` 字段可以引用脚本文件路径，格式为 `scripts/文件名`（如 `scripts/build.sh`）
+- 执行器会自动从 `.commands/scripts/` 目录查找并执行对应脚本
+- 脚本文件名应该有意义，与工作流/步骤名相关联
+- 短命令（单行）直接写在 `command` 字段中即可，无需创建脚本文件

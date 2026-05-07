@@ -15,6 +15,7 @@ export type ParsedEvent =
   | { kind: 'tool_progress'; toolUseId: string; toolName: string; elapsedSeconds: number }
   | { kind: 'status'; status: 'compacting' | null }
   | { kind: 'compact_boundary'; trigger: 'manual' | 'auto'; preTokens: number }
+  | { kind: 'context_update'; inputTokens: number; model: string }
   | { kind: 'hook_response'; hookName: string; hookEvent: string; stdout: string; stderr: string; exitCode?: number }
   | { kind: 'done'; sessionId: string | null; usage: { inputTokens: number; outputTokens: number; cachedTokens: number } | null; costUsd: number | null; summary: string }
   | { kind: 'error'; message: string }

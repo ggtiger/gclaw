@@ -45,7 +45,38 @@ function getProjectCommandsFile(projectId: string): string {
   if (projectId.includes('..') || projectId.includes('/') || projectId.includes('\\')) {
     throw new Error(`Invalid projectId: ${projectId}`)
   }
-  return path.join(DATA_DIR, 'projects', projectId, 'commands.json')
+  // 自动迁移旧路径数据
+  migrateCommandsIfNeeded(projectId)
+  const dir = path.join(DATA_DIR, 'projects', projectId, '.commands')
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  return path.join(dir, 'commands.json')
+}
+
+/** 迁移旧路径 commands.json 到 .commands/commands.json */
+function migrateCommandsIfNeeded(projectId: string): void {
+  const oldPath = path.join(DATA_DIR, 'projects', projectId, 'commands.json')
+  const newDir = path.join(DATA_DIR, 'projects', projectId, '.commands')
+  const newPath = path.join(newDir, 'commands.json')
+
+  if (fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+    fs.mkdirSync(newDir, { recursive: true })
+    fs.renameSync(oldPath, newPath)
+    logger.info(`[Commands] Migrated commands.json for project ${projectId}`)
+  }
+}
+
+/** 获取项目的 scripts 脚本目录 */
+export function getProjectScriptsDir(projectId: string): string {
+  if (projectId.includes('..') || projectId.includes('/') || projectId.includes('\\')) {
+    throw new Error(`Invalid projectId: ${projectId}`)
+  }
+  const dir = path.join(DATA_DIR, 'projects', projectId, '.commands', 'scripts')
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  return dir
 }
 
 /** 读取 JSON 文件中的命令列表，文件不存在或解析失败时返回空数组 */
@@ -176,12 +207,25 @@ export function createCommand(
     const filePath = getProjectCommandsFile(projectId)
     logger.info('[Commands] Target file:', filePath)
     const commands = readProjectCommands(projectId)
-    commands.push(newCmd)
+    const existingIndex = commands.findIndex(c => c.id === newCmd.id)
+    if (existingIndex !== -1) {
+      // ID 已存在，直接更新（保留原始 createdAt）
+      commands[existingIndex] = { ...newCmd, createdAt: commands[existingIndex].createdAt }
+      logger.info('[Commands] Command ID already exists, updating:', newCmd.id)
+    } else {
+      commands.push(newCmd)
+    }
     writeCommandsFile(filePath, commands)
   } else {
     logger.info('[Commands] Target file:', GLOBAL_COMMANDS_FILE)
     const commands = readGlobalCommands()
-    commands.push(newCmd)
+    const existingIndex = commands.findIndex(c => c.id === newCmd.id)
+    if (existingIndex !== -1) {
+      commands[existingIndex] = { ...newCmd, createdAt: commands[existingIndex].createdAt }
+      logger.info('[Commands] Command ID already exists, updating:', newCmd.id)
+    } else {
+      commands.push(newCmd)
+    }
     writeCommandsFile(GLOBAL_COMMANDS_FILE, commands)
   }
 

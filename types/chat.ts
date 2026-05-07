@@ -28,7 +28,37 @@ export interface StreamingToolBlock {
   isError?: boolean
   elapsedSeconds?: number
 }
-export type StreamingBlock = StreamingTextBlock | StreamingToolBlock
+export interface StreamingWorkflowBlock {
+  type: 'workflow'
+  id: string
+  commandName: string
+  steps: WorkflowBlockStep[]
+}
+
+export interface WorkflowToolCall {
+  toolUseId: string
+  toolName: string
+  input?: Record<string, unknown>
+  output?: string
+  status: 'running' | 'completed' | 'failed'
+}
+
+export type StepContentSegment =
+  | { type: 'text'; id: string; content: string }
+  | { type: 'tool_ref'; toolUseId: string }
+
+export interface WorkflowBlockStep {
+  stepId: string
+  name: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'waiting_confirmation'
+  content: string      // 步骤的流式内容
+  duration?: number    // 执行耗时（秒）
+  startTime?: number   // 开始时间戳
+  toolCalls?: StreamingToolBlock[]  // 直接用 StreamingToolBlock，无需转换
+  orderedBlocks?: StepContentSegment[]  // 按推送顺序记录的内容段，用于自然顺序渲染
+}
+
+export type StreamingBlock = StreamingTextBlock | StreamingToolBlock | StreamingWorkflowBlock
 
 // ── 持久化块（存储到 ChatMessage，done 时从 streamingBlocks 构造） ──
 
@@ -45,7 +75,13 @@ export interface ContentToolBlock {
   output?: string
   isError?: boolean
 }
-export type ContentBlock = ContentTextBlock | ContentToolBlock
+export interface WorkflowContentBlock {
+  type: 'workflow'
+  commandName: string
+  steps: WorkflowBlockStep[]
+}
+
+export type ContentBlock = ContentTextBlock | ContentToolBlock | WorkflowContentBlock
 
 // ── 消息 ──
 
@@ -131,6 +167,7 @@ export type SSEEventType =
   | 'tool_result'
   | 'tool_progress'
   | 'status'
+  | 'context_update'
   | 'permission_request'
   | 'ask_user_question'
   | 'skill_notify'
@@ -144,6 +181,8 @@ export type SSEEventType =
   | 'workflow_error'
   | 'step_delta'
   | 'step_tool_use'
+  | 'step_tool_result'
+  | 'step_tool_progress'
 
 export interface SSEEvent {
   event: SSEEventType

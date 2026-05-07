@@ -479,12 +479,6 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
               </div>
             )}
 
-            {/* 工作流进度卡片 */}
-            {workflowState && (
-              <div className="px-2 my-1 animate-fade-in">
-                <WorkflowProgress workflowState={workflowState} />
-              </div>
-            )}
 
             {/* 流式输出：文本 + 工具交错渲染 */}
             {(streamingBlocks.length > 0 || thinkingContent) && (
@@ -597,6 +591,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           onSend={handleSend}
           onAbort={onAbort}
           sending={sending}
+          disabled={!!askQuestion || !!stepConfirmation}
           projectId={projectId}
           onTemplateSelect={(template) => {
             if (template.firstMessage) {

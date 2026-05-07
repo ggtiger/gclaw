@@ -645,6 +645,11 @@ export async function POST(
   const upstreamModel = provider.model || body.model
   openaiBody.model = upstreamModel
 
+  // 截断 max_tokens：不同模型有不同的输出上限，超出会报错
+  if (provider.maxOutputTokens && openaiBody.max_tokens && openaiBody.max_tokens > provider.maxOutputTokens) {
+    openaiBody.max_tokens = provider.maxOutputTokens
+  }
+
   const baseUrl = provider.baseUrl.replace(/\/+$/, '')
   const upstreamUrl = `${baseUrl}/v1/chat/completions`
 

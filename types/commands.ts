@@ -35,6 +35,9 @@ export interface ScriptStep extends StepBase {
   command: string
   cwd?: string
   outputVar?: string
+  timeout?: number  // 单步骤超时（毫秒），默认使用全局超时
+  retryCount?: number   // 重试次数，默认 0（不重试）
+  retryDelay?: number   // 重试间隔毫秒，默认 3000
 }
 
 export interface ConditionStep extends StepBase {
@@ -123,9 +126,9 @@ export interface WorkflowDoneInfo {
 // ── 工作流 SSE 事件 ──
 
 export type CommandSSEEvent =
-  | { type: 'workflow_start'; data: { commandId: string; commandName: string; totalSteps: number } }
+  | { type: 'workflow_start'; data: { commandId: string; commandName: string; totalSteps: number; steps?: { id: string; name: string; type: string }[] } }
   | { type: 'workflow_step_start'; data: WorkflowStepInfo }
-  | { type: 'workflow_step_done'; data: { stepId: string; status: string; duration: number } }
+  | { type: 'workflow_step_done'; data: { stepId: string; stepName?: string; status: string; duration: number } }
   | { type: 'workflow_done'; data: WorkflowDoneInfo }
   | { type: 'workflow_error'; data: { error: string; stepId?: string } }
   | { type: 'step_delta'; data: { stepId: string; content: string } }
@@ -135,3 +138,4 @@ export type CommandSSEEvent =
   | { type: 'permission_request'; data: { requestId: string; toolName: string; toolInput: Record<string, unknown>; description: string } }
   | { type: 'ask_user_question'; data: { requestId: string; questions: any[] } }
   | { type: 'step_confirmation_request'; data: { requestId: string; stepId: string; stepName: string; stepIndex: number; totalSteps: number; output: string } }
+  | { type: 'context_update'; data: { inputTokens: number; model: string } }

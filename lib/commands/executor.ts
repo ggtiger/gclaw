@@ -12,12 +12,14 @@ import type {
   WorkflowStepInfo,
   CommandSSEEvent,
 } from '@/types/commands'
+import fs from 'fs'
+import path from 'path'
 // 安全的 ID 生成（避免 crypto.randomUUID 在某些 Next.js 环境不可用）
 function generateRequestId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 import { resolveTemplate, evaluateCondition } from './variables'
-import { resolveCommand } from './registry'
+import { resolveCommand, getProjectScriptsDir } from './registry'
 import { executeChat } from '@/lib/claude/process-manager'
 import { getProjectSettings } from '@/lib/store/settings'
 import { callLLM, callLLMStream } from '@/lib/llm'
@@ -51,7 +53,7 @@ export function resolveStepConfirmation(requestId: string, response: { action: s
 // ── 安全限制 ──
 const MAX_STEPS = 20
 const MAX_WORKFLOW_TIMEOUT_MS = 30 * 60 * 1000  // 30 分钟
-const SCRIPT_TIMEOUT_MS = 30 * 1000              // 30 秒
+const SCRIPT_TIMEOUT_MS = 60 * 1000              // 60 秒
 const MAX_RECURSION_DEPTH = 3
 const DEFAULT_STEP_TIMEOUT_MS = 5 * 60 * 1000    // 单步默认超时 5 分钟
 const DEFAULT_MAX_TURNS = 50                      // 默认最大 AI 交互轮次
@@ -128,6 +130,7 @@ export class CommandExecutor {
         commandId: command.id,
         commandName: command.name,
         totalSteps: command.steps.length,
+        steps: command.steps.map(s => ({ id: s.id, name: s.name || s.id, type: s.type })),
       },
     }
 
@@ -192,7 +195,7 @@ export class CommandExecutor {
         if (onError === 'stop') {
           this.context.steps[step.id] = result
           stepResults.push(result)
-          yield { type: 'workflow_step_done', data: { stepId: step.id, status: 'failed', duration: result.duration } }
+          yield { type: 'workflow_step_done', data: { stepId: step.id, stepName: step.name || step.id, status: 'failed', duration: result.duration } }
           break
         }
         // continue: 记录错误但继续
@@ -207,7 +210,7 @@ export class CommandExecutor {
 
       yield {
         type: 'workflow_step_done',
-        data: { stepId: step.id, status: result!.status, duration: result!.duration },
+        data: { stepId: step.id, stepName: step.name || step.id, status: result!.status, duration: result!.duration },
       }
 
       // 步骤完成后等待用户确认（最后一个步骤不需要确认；autoExecute 模式跳过确认）
@@ -479,11 +482,14 @@ export class CommandExecutor {
           }
           case 'tool_use': {
             const data = sseEvent.data as { toolUseId?: string; toolName?: string; input?: any }
+            const resolvedToolUseId = data.toolUseId || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+            // 存储最后使用的 toolUseId，供 tool_result 匹配
+            ;(step as any)._lastToolUseId = resolvedToolUseId
             yield {
               type: 'step_tool_use',
               data: {
                 stepId: step.id,
-                toolUseId: data.toolUseId || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                toolUseId: resolvedToolUseId,
                 toolName: data.toolName || '',
                 input: data.input || {},
               },
@@ -496,7 +502,7 @@ export class CommandExecutor {
               type: 'step_tool_result',
               data: {
                 stepId: step.id,
-                toolUseId: data.toolUseId || '',
+                toolUseId: data.toolUseId || (step as any)._lastToolUseId || '',
                 content: data.content || '',
                 isError: data.isError || false,
               },
@@ -535,6 +541,16 @@ export class CommandExecutor {
             const errMsg = (sseEvent.data as { message?: string }).message || 'Unknown error'
             throw new Error(`PromptStep "${step.id}" error: ${errMsg}`)
           }
+          case 'context_update': {
+            const ctxData = sseEvent.data as { inputTokens?: number; model?: string }
+            if (ctxData.inputTokens) {
+              yield {
+                type: 'context_update',
+                data: { inputTokens: ctxData.inputTokens, model: ctxData.model || '' },
+              }
+            }
+            break
+          }
           // start, init, thinking, tool_result, tool_progress, status, end — 忽略或透传
           default:
             break
@@ -571,37 +587,73 @@ export class CommandExecutor {
     step: ScriptStep
   ): AsyncGenerator<StepEvent> {
     const stepStart = Date.now()
-    const resolvedCommand = resolveTemplate(step.command, this.context)
+    let resolvedCommand = resolveTemplate(step.command, this.context)
+
+    // 如果 command 是相对路径脚本文件引用（如 scripts/build.sh），从 .commands/scripts/ 目录查找
+    if (/^scripts\/[\w.\-]+$/.test(resolvedCommand.trim())) {
+      const scriptsDir = getProjectScriptsDir(this.context.projectId)
+      const scriptFile = path.join(scriptsDir, resolvedCommand.trim().replace(/^scripts\//, ''))
+      if (fs.existsSync(scriptFile)) {
+        resolvedCommand = `bash "${scriptFile}"`
+      }
+    }
+
     const cwd = step.cwd
       ? resolveTemplate(step.cwd, this.context)
       : this.context.cwd
 
-    const output = await new Promise<string>((resolve, reject) => {
-      // 读取项目环境变量并合并
-      const projectSettings = getProjectSettings(this.context.projectId)
-      const mergedEnv = {
-        ...process.env,
-        ...(projectSettings?.envVariables || {}),
-      }
+    const maxAttempts = (step.retryCount || 0) + 1
+    const retryDelay = step.retryDelay || 3000
+    let lastError: Error | null = null
+    let output = ''
 
-      const child = exec(resolvedCommand, {
-        cwd,
-        timeout: SCRIPT_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024, // 1MB
-        env: mergedEnv,
-      }, (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(`ScriptStep "${step.id}" failed: ${error.message}\nstderr: ${stderr}`))
-          return
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          yield { type: 'step_delta', data: { stepId: step.id, content: `\n⏳ 第 ${attempt} 次重试（共 ${maxAttempts} 次）...\n` } }
+          await new Promise(resolve => setTimeout(resolve, retryDelay))
         }
-        resolve(stdout.trim())
-      })
 
-      // 安全释放：超时后 kill
-      child.on('error', (err) => {
-        reject(new Error(`ScriptStep "${step.id}" process error: ${err.message}`))
-      })
-    })
+        output = await new Promise<string>((resolve, reject) => {
+          // 读取项目环境变量并合并
+          const projectSettings = getProjectSettings(this.context.projectId)
+          const mergedEnv = {
+            ...process.env,
+            ...(projectSettings?.envVariables || {}),
+          }
+
+          const child = exec(resolvedCommand, {
+            cwd,
+            timeout: step.timeout || SCRIPT_TIMEOUT_MS,
+            maxBuffer: 1024 * 1024, // 1MB
+            env: mergedEnv,
+          }, (error, stdout, stderr) => {
+            if (error) {
+              const output = stderr || stdout || ''
+              reject(new Error(`ScriptStep "${step.id}" failed: ${error.message}\n${output}`))
+              return
+            }
+            resolve(stdout.trim())
+          })
+
+          // 安全释放：超时后 kill
+          child.on('error', (err) => {
+            reject(new Error(`ScriptStep "${step.id}" process error: ${err.message}`))
+          })
+        })
+
+        // 成功：跳出重试循环
+        break
+      } catch (err: any) {
+        lastError = err
+        if (attempt < maxAttempts) {
+          yield { type: 'step_delta', data: { stepId: step.id, content: `\n⚠️ 执行失败: ${err.message}\n` } }
+        } else {
+          // 所有重试都失败
+          throw lastError
+        }
+      }
+    }
 
     yield { type: 'step_delta', data: { stepId: step.id, content: output } }
 

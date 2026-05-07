@@ -107,7 +107,7 @@ interface CommandDefinition {
 
 ## 步骤类型（仅支持以下6种，type 字段只允许这6个值）
 1. **prompt** - AI 调用: { id, type:"prompt", name, systemPrompt, userMessage, tools?:["Read","Bash","Grep","Write"], agent?, maxTurns?, outputVar?, onError? }
-2. **script** - Shell 脚本/命令执行（bash、sh 等都用此类型）: { id, type:"script", name, command, cwd?, outputVar?, onError? }
+2. **script** - Shell 脚本/命令执行（bash、sh 等都用此类型）: { id, type:"script", name, command, cwd?, outputVar?, timeout?, retryCount?(重试次数，默认0), retryDelay?(重试间隔ms，默认3000), onError? }
 3. **condition** - 条件分支: { id, type:"condition", name, if, then, else?, onError? }
 4. **command-ref** - 引用其他命令: { id, type:"command-ref", name, commandId, params?, outputVar?, onError? }
 5. **parallel** - 并行执行: { id, type:"parallel", name, branches:[[step,...],[step,...]], outputVar?, onError? }
@@ -120,10 +120,16 @@ interface CommandDefinition {
 ## 规则
 - id 只允许小写字母、数字、连字符
 - 禁止危险命令(rm -rf, sudo等)
-- prompt步骤的systemPrompt末尾必须包含："【输出规则】\\n- 当你使用工具将内容写入文件后，不要在对话中重复输出文件内容\\n- 只需简洁确认操作结果，保持输出简洁"
+- prompt步骤的systemPrompt末尾必须包含："【输出规则】\n- 当你使用工具将内容写入文件后，不要在对话中重复输出文件内容\n- 只需简洁确认操作结果，保持输出简洁"
 - 只输出一个合法JSON对象，不包含其他文本
 - scope默认'project'，enabled设为true
-- autoExecute 默认不设置（false），当工作流为全自动流水线且无需用户介入时可设为 true`
+- autoExecute 默认不设置（false），当工作流为全自动流水线且无需用户介入时可设为 true
+
+## 脚本目录规范
+- 项目命令文件存放在 .commands/commands.json
+- 较长的脚本应保存到 .commands/scripts/ 目录
+- script 步骤可以用 "scripts/文件名" 引用脚本文件（如 "scripts/build.sh"）
+- 短命令直接写在 command 字段中即可`
 
 /**
  * 根据自然语言描述生成一个工作流命令

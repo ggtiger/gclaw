@@ -6,6 +6,7 @@ export interface ModelProvider {
   baseUrl: string
   apiKey: string   // 加密存储
   model?: string   // 上游模型名（openai-compatible 供应商必填，用于替换 SDK 发送的 Claude 模型名）
+  maxOutputTokens?: number  // 上游模型最大输出 token 限制（如 Kimi K2.6 = 16384）
 }
 
 export interface SkillInfo {

@@ -33,7 +33,7 @@ interface MessageBubbleProps {
 }
 
 // 模块级常量，避免每次渲染重建
-const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
+const NOISE_PATTERN = /^[\s()]*(?:no content[\s()]*)+$/i
 const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
 
 // 长消息折叠阈值（字符数）— 超过此长度默认折叠，减少 DOM 点数量

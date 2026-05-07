@@ -612,6 +612,16 @@ function ScriptStepForm({ step, onChange }: { step: ScriptStep; onChange: (u: Pa
           <input value={step.outputVar || ''} onChange={e => onChange({ outputVar: e.target.value || undefined })} placeholder="script_result" className={`${inputClass} font-mono`} style={inputStyle} />
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={labelClass} style={labelStyle}>重试次数</label>
+          <input type="number" min={0} value={step.retryCount ?? ''} onChange={e => onChange({ retryCount: e.target.value ? parseInt(e.target.value) : undefined })} placeholder="0（不重试）" className={`${inputClass} font-mono`} style={inputStyle} />
+        </div>
+        <div>
+          <label className={labelClass} style={labelStyle}>重试间隔 (ms)</label>
+          <input type="number" min={0} step={1000} value={step.retryDelay ?? ''} onChange={e => onChange({ retryDelay: e.target.value ? parseInt(e.target.value) : undefined })} placeholder="3000" className={`${inputClass} font-mono`} style={inputStyle} />
+        </div>
+      </div>
     </>
   )
 }

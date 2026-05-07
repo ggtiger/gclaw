@@ -1,8 +1,8 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ParsedEvent, ConvertContext } from '@/types/claude'
 
-// 过滤 SDK 工具调用轮次中的占位文本（如 "(no content)"）
-const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
+// 过滤 SDK 工具调用轮次中的占位文本（如 "(no content)"、"(no content)(no content)"）
+const NOISE_PATTERN = /^[\s()]*(?:no content[\s()]*)+$/i
 
 /**
  * 创建新的转换上下文 — 每次 executeChat 调用时初始化一个
@@ -89,6 +89,18 @@ export function convertSDKMessage(
       if (!event || typeof event !== 'object') break
 
       const eventType = event.type as string | undefined
+
+      // 每次新 API 调用开始：提取当前上下文 input_tokens
+      if (eventType === 'message_start') {
+        const message = event.message as { usage?: { input_tokens?: number }; model?: string } | undefined
+        if (message?.usage?.input_tokens) {
+          results.push({
+            kind: 'context_update',
+            inputTokens: message.usage.input_tokens,
+            model: message.model || ctx.lastModel,
+          })
+        }
+      }
 
       // 文本增量
       if (eventType === 'content_block_delta') {

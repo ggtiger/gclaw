@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem, StreamingBlock, ContentBlock } from '@/types/chat'
+import type { ChatMessage, ChatAttachment, ToolCallItem, ToolSummary, ConversationStats, PermissionRequest, AskUserQuestionRequest, ActivityData, FileChangeEntry, ActivityTodoItem, StreamingBlock, StreamingToolBlock, ContentBlock, StreamingWorkflowBlock, WorkflowBlockStep } from '@/types/chat'
 
 // ── Tauri 系统通知：窗口隐藏时推送 ──
 let __tauri_notification_shown = false // 避免重复请求权限弹窗
@@ -37,7 +37,10 @@ async function sendDesktopNotification(title: string, body: string) {
 }
 
 // 模块级常量，避免每次渲染重建
-const NOISE_PATTERN = /^[\s()]*(?:no content[)\s]*)+$/i
+// 匹配 SDK 占位文本如 "(no content)"、"(no content)(no content)" 等组合
+const NOISE_PATTERN = /^[\s()]*(?:no content[\s()]*)+$/i
+// 用于从内容中剥离内嵌的 (no content) 子串
+const NOISE_INLINE = /\(?no content\)?/gi
 
 // ============================================================
 // 模块级 per-project 流状态缓冲
@@ -82,6 +85,8 @@ interface StreamBuffer {
   } | null
   pendingMessages: ChatMessage[]       // 流结束后产生的消息（assistant/error）
   statusText: string | null            // 当前状态文本（如 'compacting'）
+  contextInputTokens: number | null    // 当前上下文 token 数（单次 API 调用，非累积）
+  contextModel: string | null          // 当前上下文对应的模型
   planContent: string | null
   fileChanges: FileChangeEntry[]
   todos: ActivityTodoItem[]
@@ -109,6 +114,8 @@ function getBuffer(projectId: string): StreamBuffer {
       stepConfirmation: null,
       pendingMessages: [],
       statusText: null,
+      contextInputTokens: null,
+      contextModel: null,
       planContent: null,
       fileChanges: [],
       todos: [],
@@ -204,6 +211,18 @@ function buildContentFromBlocks(streamingBlocks: StreamingBlock[]): {
         contentBlocks.push({ type: 'text', content: block.content })
         fullContent += block.content
       }
+    } else if (block.type === 'workflow') {
+      contentBlocks.push({
+        type: 'workflow',
+        commandName: block.commandName,
+        steps: block.steps,
+      })
+      // 将工作流内容汇总到 fullContent（过滤噪声文本）
+      for (const step of block.steps) {
+        if (step.content && !NOISE_PATTERN.test(step.content.trim())) {
+          fullContent += `### 📌 ${step.name}\n\n${step.content}\n\n`
+        }
+      }
     } else {
       // block.type === 'tool'
       contentBlocks.push({
@@ -250,6 +269,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
   const [askQuestion, setAskQuestion] = useState<AskUserQuestionRequest | null>(null)
   const [stepConfirmation, setStepConfirmation] = useState<StreamBuffer['stepConfirmation']>(null)
   const [statusText, setStatusText] = useState<string | null>(null)
+  const [contextInputTokens, setContextInputTokens] = useState<number | null>(null)
+  const [contextModel, setContextModel] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -329,6 +350,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       setAskQuestion(buf.askQuestion)
       setStepConfirmation(buf.stepConfirmation)
       setStatusText(buf.statusText)
+      setContextInputTokens(buf.contextInputTokens)
+      setContextModel(buf.contextModel)
       setActivityData({ planContent: buf.planContent, fileChanges: buf.fileChanges, todos: buf.todos })
       setWorkflowState(buf.workflowState)
 
@@ -370,6 +393,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         setAskQuestion(b.askQuestion)
         setStepConfirmation(b.stepConfirmation)
         setStatusText(b.statusText)
+        setContextInputTokens(b.contextInputTokens)
+        setContextModel(b.contextModel)
         setActivityData({ planContent: b.planContent, fileChanges: [...b.fileChanges], todos: b.todos })
         // 创建新引用，确保 React 检测到变更并重渲染
         setWorkflowState(b.workflowState ? { ...b.workflowState, steps: [...b.workflowState.steps] } : null)
@@ -638,53 +663,86 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         }
       : null
 
-    // 从 streamingBlocks 构造 contentBlocks 和 fullContent
     const buf = getBuffer(pid)
-    const { contentBlocks, fullContent } = buildContentFromBlocks(buf.streamingBlocks)
-    // 如果 streamingBlocks 为空，回退到 accContent 或 fullContent
-    let finalContent = fullContent || accContent || (data.fullContent as string) || ''
-    if (NOISE_PATTERN.test(finalContent)) finalContent = ''
+    const isWorkflowMode = !!buf.workflowState
 
-    // 立即清理 buffer（同步），防止切换项目时读到旧状态
-    buf.streamingBlocks = []
-    buf.textBlockCounter = 0
-    buf.thinkingContent = ''
-    buf.lastStats = stats
-    buf.sending = false
-    setActive(pid, false)
-
-    if (contentBlocks.length > 0 || (finalContent.trim() && !NOISE_PATTERN.test(finalContent))) {
-      const assistantMsg: ChatMessage = {
-        id: `msg_${Date.now()}_assistant`,
-        role: 'assistant',
-        content: finalContent,
-        messageType: 'text',
-        createdAt: new Date().toISOString(),
-        stats: stats || undefined,
-        contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
-      }
-      // 窗口隐藏时推送桌面通知
-      const preview = finalContent.slice(0, 80) || '任务已完成'
-      sendDesktopNotification('AI助理 回复完成', preview)
-      // 不再推入 pendingMessages：后端已持久化，切换回来时 loadHistory 会取到
-      // 延迟一帧更新 React state，确保流式内容先渲染出来
-      requestAnimationFrame(() => {
-        if (currentProjectIdRef.current === pid) {
-          setMessages(prev => [...prev, assistantMsg])
-          // 同步 React 状态
-          setStreamingBlocks([])
-          setThinkingContent('')
-          setSending(false)
-          setLastStats(stats)
+    if (isWorkflowMode) {
+      // 工作流模式：整个工作流完成，把 streamingBlocks 转为一条正式消息
+      const { contentBlocks, fullContent } = buildContentFromBlocks(buf.streamingBlocks)
+      if (fullContent.trim() || contentBlocks.length > 0) {
+        const workflowMsg: ChatMessage = {
+          id: `msg_${Date.now()}_workflow`,
+          role: 'assistant',
+          content: fullContent,
+          messageType: 'text',
+          createdAt: new Date().toISOString(),
+          stats: stats || undefined,
+          contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
         }
-      })
-    } else {
-      // 无内容，直接同步 React state
+        if (currentProjectIdRef.current === pid) {
+          setMessages(prev => [...prev, workflowMsg])
+        } else {
+          buf.pendingMessages.push(workflowMsg)
+        }
+      }
+
+      buf.workflowState = null
+      buf.streamingBlocks = []
+      buf.textBlockCounter = 0
+      buf.thinkingContent = ''
+      buf.lastStats = stats
+      buf.sending = false
+      setActive(pid, false)
+
+      // 同步 React state
       if (currentProjectIdRef.current === pid) {
         setStreamingBlocks([])
         setThinkingContent('')
         setSending(false)
         setLastStats(stats)
+        setWorkflowState(null)
+      }
+    } else {
+      // 普通聊天模式：保持原有逻辑
+      const { contentBlocks, fullContent } = buildContentFromBlocks(buf.streamingBlocks)
+      let finalContent = fullContent || accContent || (data.fullContent as string) || ''
+      if (NOISE_PATTERN.test(finalContent)) finalContent = ''
+
+      buf.streamingBlocks = []
+      buf.textBlockCounter = 0
+      buf.thinkingContent = ''
+      buf.lastStats = stats
+      buf.sending = false
+      setActive(pid, false)
+
+      if (contentBlocks.length > 0 || (finalContent.trim() && !NOISE_PATTERN.test(finalContent))) {
+        const assistantMsg: ChatMessage = {
+          id: `msg_${Date.now()}_assistant`,
+          role: 'assistant',
+          content: finalContent,
+          messageType: 'text',
+          createdAt: new Date().toISOString(),
+          stats: stats || undefined,
+          contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
+        }
+        const preview = finalContent.slice(0, 80) || '任务已完成'
+        sendDesktopNotification('AI助理 回复完成', preview)
+        requestAnimationFrame(() => {
+          if (currentProjectIdRef.current === pid) {
+            setMessages(prev => [...prev, assistantMsg])
+            setStreamingBlocks([])
+            setThinkingContent('')
+            setSending(false)
+            setLastStats(stats)
+          }
+        })
+      } else {
+        if (currentProjectIdRef.current === pid) {
+          setStreamingBlocks([])
+          setThinkingContent('')
+          setSending(false)
+          setLastStats(stats)
+        }
       }
     }
   }
@@ -723,6 +781,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       buf.stepConfirmation = null
       buf.pendingMessages = []
       buf.statusText = null
+      buf.workflowState = null
     })
     setActive(sendProjectId, true)
 
@@ -843,6 +902,13 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               })
               break
 
+            case 'context_update':
+              updateState(sendProjectId, b => {
+                b.contextInputTokens = (data.inputTokens as number) || null
+                b.contextModel = (data.model as string) || null
+              })
+              break
+
             case 'permission_request':
               updateState(sendProjectId, b => {
                 b.permissionRequest = {
@@ -859,6 +925,13 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                 b.askQuestion = {
                   requestId: data.requestId as string,
                   questions: data.questions as AskUserQuestionRequest['questions'],
+                }
+                // 如果在工作流执行中，更新当前步骤为等待状态
+                if (b.workflowState) {
+                  const runningStep = b.workflowState.steps.find(s => s.status === 'running')
+                  if (runningStep) {
+                    runningStep.status = 'waiting_confirmation'
+                  }
                 }
               })
               break
@@ -902,24 +975,43 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
 
             case 'workflow_start':
               updateState(sendProjectId, b => {
+                const stepsFromServer = (data.steps as { id: string; name: string; type: string }[]) || []
                 b.workflowState = {
                   commandId: data.commandId as string,
                   commandName: data.commandName as string,
                   totalSteps: data.totalSteps as number,
                   currentStepIndex: 0,
-                  steps: [],
+                  steps: stepsFromServer.map(s => ({
+                    stepId: s.id,
+                    stepName: s.name || s.id,
+                    status: 'pending' as const,
+                  })),
                   startTime: Date.now(),
                 }
+                // 创建 StreamingWorkflowBlock
+                const workflowBlock: StreamingWorkflowBlock = {
+                  type: 'workflow',
+                  id: `workflow_${Date.now()}`,
+                  commandName: data.commandName as string || '',
+                  steps: stepsFromServer.map(s => ({
+                    stepId: s.id,
+                    name: s.name || s.id,
+                    status: 'pending' as const,
+                    content: '',
+                  })),
+                }
+                b.streamingBlocks.push(workflowBlock)
               })
               break
 
-            case 'workflow_step_start':
+            case 'workflow_step_start': {
+              const stepInfo = data as Record<string, unknown>
+              const stepId = stepInfo.stepId as string
+              const stepName = stepInfo.stepName as string | undefined
+              const index = stepInfo.index as number
+
               updateState(sendProjectId, b => {
                 if (!b.workflowState) return
-                const stepInfo = data as Record<string, unknown>
-                const stepId = stepInfo.stepId as string
-                const stepName = stepInfo.stepName as string | undefined
-                const index = stepInfo.index as number
                 b.workflowState.currentStepIndex = index
                 // 添加或更新步骤
                 const existing = b.workflowState.steps.find(s => s.stepId === stepId)
@@ -928,25 +1020,67 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                 } else {
                   b.workflowState.steps.push({ stepId, stepName, status: 'running' })
                 }
+                // 更新 StreamingWorkflowBlock 中对应步骤的状态
+                const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                if (wfBlock) {
+                  const wfStep = wfBlock.steps.find(s => s.stepId === stepId)
+                  if (wfStep) {
+                    wfStep.status = 'running'
+                    wfStep.startTime = Date.now()
+                  } else {
+                    wfBlock.steps.push({
+                      stepId,
+                      name: stepName || stepId,
+                      status: 'running',
+                      content: '',
+                      startTime: Date.now(),
+                    })
+                  }
+                }
               })
               break
+            }
 
-            case 'workflow_step_done':
+            case 'workflow_step_done': {
+              const stepId = data.stepId as string
+
+              // 更新步骤状态
               updateState(sendProjectId, b => {
                 if (!b.workflowState) return
-                const stepId = data.stepId as string
                 const step = b.workflowState.steps.find(s => s.stepId === stepId)
                 if (step) {
                   step.status = (data.status as WorkflowStepState['status']) || 'completed'
                   step.duration = data.duration as number
+                  // 清理噪声文本（剥离内嵌的 (no content) 子串）
+                  if (step.streamingContent) {
+                    step.streamingContent = step.streamingContent.replace(NOISE_INLINE, '').trim()
+                  }
+                }
+                // 同步更新 StreamingWorkflowBlock
+                const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                if (wfBlock) {
+                  const wfStep = wfBlock.steps.find(s => s.stepId === stepId)
+                  if (wfStep) {
+                    const finalStatus = (data.status as string) || 'completed'
+                    wfStep.status = (finalStatus === 'completed' || finalStatus === 'failed') ? finalStatus : 'completed'
+                    if (data.duration != null) {
+                      wfStep.duration = (data.duration as number) / 1000 // 转换为秒
+                    } else if (wfStep.startTime) {
+                      wfStep.duration = (Date.now() - wfStep.startTime) / 1000
+                    }
+                    // 清理噪声文本 content（先剥离内嵌的 (no content)，再判断是否完全为噪声）
+                    if (wfStep.content) {
+                      wfStep.content = wfStep.content.replace(NOISE_INLINE, '').trim()
+                    }
+                  }
                 }
               })
               break
+            }
 
             case 'workflow_done':
-              updateState(sendProjectId, b => {
-                b.workflowState = null
-              })
+              // 不在此处清空 workflowState，由 handleDoneEvent 根据该标记判断工作流模式
+              // workflowState 的清理在 handleDoneEvent 和 finally 中完成
               break
 
             case 'workflow_error':
@@ -980,14 +1114,34 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
             case 'step_delta': {
               const stepContent = data.content as string
               if (stepContent) {
-                handleDeltaEvent(sendProjectId, stepContent)
-                // 同步更新 workflowState 中当前步骤的流式内容
+                // 过滤 SDK 占位文本：如果单次 delta 内容完全是噪声则跳过
+                if (NOISE_PATTERN.test(stepContent.trim())) break
+                // 更新 StreamingWorkflowBlock 中对应步骤的内容
                 updateState(sendProjectId, b => {
-                  if (!b.workflowState) return
-                  const sid = data.stepId as string
-                  const step = b.workflowState.steps.find(s => s.stepId === sid)
-                  if (step) {
-                    step.streamingContent = (step.streamingContent || '') + stepContent
+                  // 更新 workflowState 中当前步骤的流式内容
+                  if (b.workflowState) {
+                    const sid = data.stepId as string
+                    const step = b.workflowState.steps.find(s => s.stepId === sid)
+                    if (step) {
+                      step.streamingContent = (step.streamingContent || '') + stepContent
+                    }
+                  }
+                  // 更新 workflow block 中步骤的 content + orderedBlocks
+                  const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                  if (wfBlock) {
+                    const sid = data.stepId as string
+                    const wfStep = wfBlock.steps.find(s => s.stepId === sid)
+                    if (wfStep) {
+                      wfStep.content += stepContent
+                      // 维护 orderedBlocks：追加到最后一个 text 段，或新建一个
+                      if (!wfStep.orderedBlocks) wfStep.orderedBlocks = []
+                      const lastBlock = wfStep.orderedBlocks[wfStep.orderedBlocks.length - 1]
+                      if (lastBlock && lastBlock.type === 'text') {
+                        lastBlock.content += stepContent
+                      } else {
+                        wfStep.orderedBlocks.push({ type: 'text', id: `text_${Date.now()}`, content: stepContent })
+                      }
+                    }
                   }
                 })
               }
@@ -1000,37 +1154,100 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
               if (!toolData.toolUseId && toolData.stepId) {
                 toolData.toolUseId = `step_tool_${toolData.stepId}_${Date.now()}`
               }
-              handleToolUseEvent(sendProjectId, toolData)
-              // 同步更新 workflowState 工具状态
+              // 工作流模式：将工具调用融入步骤卡片
               updateState(sendProjectId, b => {
-                if (!b.workflowState) return
-                const sid = data.stepId as string
-                const step = b.workflowState.steps.find(s => s.stepId === sid)
-                if (step) {
-                  step.activeToolName = data.toolName as string || ''
-                  step.activeToolElapsed = 0
+                if (b.workflowState) {
+                  const sid = data.stepId as string
+                  const wfStep = b.workflowState.steps.find(s => s.stepId === sid)
+                  if (wfStep) {
+                    wfStep.activeToolName = data.toolName as string || ''
+                    wfStep.activeToolElapsed = 0
+                  }
+                  // 将工具调用信息追加到 workflow block 的对应步骤
+                  const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                  if (wfBlock) {
+                    const blockStep = wfBlock.steps.find(s => s.stepId === sid)
+                    if (blockStep) {
+                      if (!blockStep.toolCalls) blockStep.toolCalls = []
+                      const incomingToolName = data.toolName as string || ''
+                      const newBlock: StreamingToolBlock = {
+                        type: 'tool',
+                        id: toolData.toolUseId as string || `wf-${Date.now()}`,
+                        toolUseId: toolData.toolUseId as string || `wf-${Date.now()}`,
+                        toolName: incomingToolName,
+                        input: (data.input as Record<string, unknown>) || {},
+                        status: 'pending',
+                      }
+                      // 去重：如果已有相同 toolUseId，更新 input
+                      const existingIdx = blockStep.toolCalls.findIndex(t => t.toolUseId === newBlock.toolUseId)
+                      if (existingIdx >= 0) {
+                        blockStep.toolCalls[existingIdx] = {
+                          ...blockStep.toolCalls[existingIdx],
+                          input: newBlock.input || blockStep.toolCalls[existingIdx].input,
+                        }
+                      } else {
+                        // TodoWrite 不去重，保留所有调用记录以保持任务分组的顺序信息
+                        // （WorkflowStepsCard 已通过 lastTodoId 只显示最后一个）
+                        blockStep.toolCalls.push(newBlock)
+                        // 维护 orderedBlocks：插入 tool_ref
+                        if (!blockStep.orderedBlocks) blockStep.orderedBlocks = []
+                        blockStep.orderedBlocks.push({ type: 'tool_ref', toolUseId: newBlock.toolUseId })
+                      }
+                    }
+                  }
+                } else {
+                  // 普通聊天模式：保持原有逻辑（在 updateState 外调用）
                 }
               })
+              // 普通聊天模式仍创建独立 tool block
+              if (!getBuffer(sendProjectId).workflowState) {
+                handleToolUseEvent(sendProjectId, toolData)
+              }
               break
             }
 
-            case 'step_tool_result':
-              handleToolResultEvent(sendProjectId, data)
-              // 清除工具执行状态
+            case 'step_tool_result': {
+              const sid = data.stepId as string
+              // 工作流模式：将工具结果融入步骤卡片
               updateState(sendProjectId, b => {
-                if (!b.workflowState) return
-                const sid = data.stepId as string
-                const step = b.workflowState.steps.find(s => s.stepId === sid)
-                if (step) {
-                  step.activeToolName = undefined
-                  step.activeToolElapsed = undefined
+                if (b.workflowState) {
+                  const wfStep = b.workflowState.steps.find(s => s.stepId === sid)
+                  if (wfStep) {
+                    wfStep.activeToolName = undefined
+                    wfStep.activeToolElapsed = undefined
+                  }
+                  // 更新 workflow block 中对应工具调用的状态
+                  const wfBlock = b.streamingBlocks.find(bl => bl.type === 'workflow') as StreamingWorkflowBlock | undefined
+                  if (wfBlock) {
+                    const blockStep = wfBlock.steps.find(s => s.stepId === sid)
+                    if (blockStep && blockStep.toolCalls) {
+                      // 简单匹配：先按 toolUseId 精确匹配，找不到就取第一个 pending 的（按顺序配对）
+                      const toolUseId = data.toolUseId as string
+                      let tcIdx = toolUseId ? blockStep.toolCalls.findIndex(t => t.toolUseId === toolUseId) : -1
+                      if (tcIdx < 0) {
+                        tcIdx = blockStep.toolCalls.findIndex(t => t.status === 'pending')
+                      }
+                      if (tcIdx >= 0) {
+                        blockStep.toolCalls[tcIdx] = {
+                          ...blockStep.toolCalls[tcIdx],
+                          status: (data.isError as boolean) ? 'error' : 'completed',
+                          isError: (data.isError as boolean) || false,
+                          output: data.content as string | undefined,
+                        }
+                      }
+                    }
+                  }
                 }
               })
+              // 普通聊天模式仍更新独立 tool block
+              if (!getBuffer(sendProjectId).workflowState) {
+                handleToolResultEvent(sendProjectId, data)
+              }
               break
+            }
 
             case 'step_tool_progress':
-              handleToolProgressEvent(sendProjectId, data)
-              // 同步更新工具耗时
+              // 工作流模式：同步更新工具耗时
               updateState(sendProjectId, b => {
                 if (!b.workflowState) return
                 const sid = data.stepId as string
@@ -1039,6 +1256,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                   step.activeToolElapsed = data.elapsedSeconds as number || 0
                 }
               })
+              // 普通聊天模式
+              if (!getBuffer(sendProjectId).workflowState) {
+                handleToolProgressEvent(sendProjectId, data)
+              }
               break
 
             case 'done':
@@ -1088,6 +1309,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       const b = getBuffer(sendProjectId)
       b.sending = false
       b.streamingBlocks = []
+      b.workflowState = null
+      b.stepConfirmation = null
       delete (b as StreamBuffer & { _controller?: AbortController })._controller
       setActive(sendProjectId, false)
       // 延迟一帧同步 React state，确保流式内容先渲染出来
@@ -1095,6 +1318,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         if (currentProjectIdRef.current === sendProjectId) {
           setSending(false)
           setStreamingBlocks([])
+          setWorkflowState(null)
+          setStepConfirmation(null)
         }
       })
     }
@@ -1115,6 +1340,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     updateState(abortProjectId, b => {
       b.sending = false
       b.streamingBlocks = []
+      b.workflowState = null
+      b.stepConfirmation = null
     })
     setActive(abortProjectId, false)
   }, [updateState])
@@ -1146,8 +1373,11 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         body: JSON.stringify({ requestId, action, modifiedContent }),
       })
       updateState(currentProjectIdRef.current, b => {
-        // 将等待确认的步骤恢复为正确状态
-        if (b.workflowState && b.stepConfirmation) {
+        if (action === 'abort') {
+          // 中止工作流：清除所有工作流状态
+          b.workflowState = null
+        } else if (b.workflowState && b.stepConfirmation) {
+          // 将等待确认的步骤恢复为正确状态
           const step = b.workflowState.steps.find(s => s.stepId === b.stepConfirmation?.stepId)
           if (step && step.status === 'waiting_confirmation') {
             step.status = action === 'modify' ? 'running' : 'completed'
@@ -1171,24 +1401,38 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     } catch (err) {
       console.error('Failed to respond ask question:', err)
     }
-    updateState(currentProjectIdRef.current, b => { b.askQuestion = null })
+    updateState(currentProjectIdRef.current, b => {
+      b.askQuestion = null
+      // 恢复工作流步骤状态为 running
+      if (b.workflowState) {
+        const waitingStep = b.workflowState.steps.find(s => s.status === 'waiting_confirmation')
+        if (waitingStep) {
+          waitingStep.status = 'running'
+        }
+      }
+    })
   }, [updateState])
 
   // 会话上下文统计
   const sessionStats = useMemo(() => {
-    // 从最近一条带 stats 的消息获取当前上下文信息
+    // 从最近一条带 stats 的消息获取累积统计信息
     const lastMsgWithStats = [...messages].reverse().find(m => m.stats)
     const stats = lastMsgWithStats?.stats || lastStats
-    const inputTokens = stats?.inputTokens || 0
+    const cumulativeInputTokens = stats?.inputTokens || 0
     const outputTokens = stats?.outputTokens || 0
     const cachedTokens = stats?.cachedTokens || 0
     const costUsd = stats?.costUsd || 0
     const model = stats?.model || ''
+    // 实时上下文大小：使用流式 message_start 中的 input_tokens（单次 API 调用）
+    const inputTokens = contextInputTokens ?? cumulativeInputTokens
     // 根据模型推断最大上下文窗口
     let maxContext = 200_000
-    if (model.includes('haiku')) maxContext = 200_000
-    else if (model.includes('opus')) maxContext = 200_000
-    else if (model.includes('sonnet')) maxContext = 200_000
+    const modelLower = (contextModel || model).toLowerCase()
+    if (modelLower.includes('1m') || modelLower.includes('context-1m')) maxContext = 1_000_000
+    else if (modelLower.includes('kimi') || modelLower.includes('moonshot')) maxContext = 196_608
+    else if (modelLower.includes('deepseek-r1') || modelLower.includes('deepseek-reasoner')) maxContext = 128_000
+    else if (modelLower.includes('deepseek')) maxContext = 128_000
+    else if (modelLower.includes('qwen') || modelLower.includes('qwq')) maxContext = 131_072
     const contextUsage = maxContext > 0 ? Math.min(inputTokens / maxContext, 1) : 0
     return {
       inputTokens,
@@ -1200,7 +1444,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       contextUsage,
       messageCount: messages.length,
     }
-  }, [messages, lastStats])
+  }, [messages, lastStats, contextInputTokens, contextModel])
 
   // 清空对话
   const clearChat = useCallback(async () => {
@@ -1338,6 +1582,13 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
             case 'status':
               updateState(targetProjectId, b => {
                 b.statusText = (data.status as string) || null
+              })
+              break
+
+            case 'context_update':
+              updateState(targetProjectId, b => {
+                b.contextInputTokens = (data.inputTokens as number) || null
+                b.contextModel = (data.model as string) || null
               })
               break
 

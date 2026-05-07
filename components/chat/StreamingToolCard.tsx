@@ -5,6 +5,9 @@ import { ChevronDown, ChevronUp, Loader, Check, XCircle, Terminal, ListTodo, Cir
 import type { StreamingToolBlock, AskUserQuestionRequest } from '@/types/chat'
 import { FilePathAction } from './FilePathAction'
 
+// 过滤 SDK 占位文本
+const NOISE_PATTERN = /^[\s()]*(?:no content[\s()]*)+$/i
+
 // ── 工具图标映射 ──
 
 const TOOL_ICONS: Record<string, React.ReactNode> = {
@@ -122,7 +125,7 @@ function NestedToolRow({ tool }: { tool: StreamingToolBlock }) {
               {formatContent()}
             </pre>
           )}
-          {tool.output && (
+          {tool.output && !NOISE_PATTERN.test(tool.output.trim()) && (
             <pre className="text-[10px] p-1 rounded overflow-x-auto whitespace-pre-wrap break-all" style={{
               backgroundColor: 'var(--color-code-bg)',
               color: tool.isError ? 'var(--color-error)' : '#e2e8f0',
@@ -676,7 +679,7 @@ export const StreamingToolCard = memo(function StreamingToolCard({ tool, askQues
           )}
 
           {/* 通用工具：Output */}
-          {!isTodo && !isAsk && tool.output && (
+          {!isTodo && !isAsk && tool.output && !NOISE_PATTERN.test(tool.output.trim()) && (
             <div>
               <div className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--color-text-muted)' }}>
                 Output

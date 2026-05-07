@@ -232,6 +232,7 @@ function SettingsTabContent({
     baseUrl: '',
     apiKey: '',
     model: '',
+    maxOutputTokens: '',
   })
   const [showProviderApiKey, setShowProviderApiKey] = useState<Record<string, boolean>>({})
   const [providerModels, setProviderModels] = useState<{ id: string; name: string }[]>([])
@@ -242,7 +243,7 @@ function SettingsTabContent({
   const providers = settings.providers || []
 
   const resetProviderForm = () => {
-    setProviderForm({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '' })
+    setProviderForm({ name: '', type: 'anthropic', baseUrl: '', apiKey: '', model: '', maxOutputTokens: '' })
     setEditingProviderId(null)
     setShowAddProvider(false)
     setProviderModels([])
@@ -251,7 +252,7 @@ function SettingsTabContent({
   const handleStartEdit = (p: ModelProvider) => {
     setEditingProviderId(p.id)
     setShowAddProvider(false)
-    setProviderForm({ name: p.name, type: p.type, baseUrl: p.baseUrl, apiKey: '', model: p.model || '' })
+    setProviderForm({ name: p.name, type: p.type, baseUrl: p.baseUrl, apiKey: '', model: p.model || '', maxOutputTokens: p.maxOutputTokens ? String(p.maxOutputTokens) : '' })
   }
 
   const handleSaveProvider = () => {
@@ -275,6 +276,7 @@ function SettingsTabContent({
               baseUrl: providerForm.baseUrl.trim(),
               apiKey: providerForm.apiKey.trim() || p.apiKey,
               model: providerForm.model.trim(),
+              maxOutputTokens: providerForm.maxOutputTokens ? Number(providerForm.maxOutputTokens) : undefined,
             }
           : p
       )
@@ -284,7 +286,7 @@ function SettingsTabContent({
       const id = crypto.randomUUID()
       const updated = [
         ...providers,
-        { id, name: providerForm.name.trim(), type: providerForm.type, baseUrl: providerForm.baseUrl.trim(), apiKey: providerForm.apiKey.trim(), model: providerForm.model.trim() },
+        { id, name: providerForm.name.trim(), type: providerForm.type, baseUrl: providerForm.baseUrl.trim(), apiKey: providerForm.apiKey.trim(), model: providerForm.model.trim(), maxOutputTokens: providerForm.maxOutputTokens ? Number(providerForm.maxOutputTokens) : undefined },
       ]
       updateField('providers', updated)
     }
@@ -505,6 +507,17 @@ function SettingsTabContent({
                 )}
               </div>
             )}
+            <div>
+              <label className="text-[10px] text-gray-500 dark:text-gray-400">最大输出 Tokens</label>
+              <input
+                type="number"
+                value={providerForm.maxOutputTokens}
+                onChange={e => setProviderForm({ ...providerForm, maxOutputTokens: e.target.value })}
+                placeholder="留空则不限制，如 16384"
+                className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+                min={1}
+              />
+            </div>
             <div className="flex justify-end gap-1.5">
               <button
                 type="button"

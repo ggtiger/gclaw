@@ -81,7 +81,9 @@ export function CommandsPanel({ projectId }: CommandsPanelProps) {
   const handleSave = useCallback(async (command: CommandDefinition) => {
     try {
       const existing = commands.find(c => c.id === command.id)
-      if (existing) {
+      // 也检查 createdAt：如果有 createdAt 说明是已有命令
+      const shouldUpdate = existing || !!command.createdAt
+      if (shouldUpdate) {
         const res = await fetch(`/api/commands/${encodeURIComponent(command.id)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
