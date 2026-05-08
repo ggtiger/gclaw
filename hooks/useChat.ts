@@ -617,8 +617,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         if (tool.type === 'tool') {
           // AskUserQuestion 被前端拦截后 SDK 返回 isError=true，
           // 但实际是用户回答而非错误，前端不显示为错误
-          const isAskQuestion = tool.toolName === 'AskUserQuestion'
-          const effectiveIsError = isAskQuestion ? false : isError
+          // 注意：仅当 output 包含 "User has answered" 时才抑制（区分 SDK schema 验证失败）
+          const isAskQuestion = tool.toolName === 'AskUserQuestion' || tool.toolName === 'ask_user_question'
+          const isUserAnswered = isAskQuestion && resultContent && resultContent.includes('User has answered')
+          const effectiveIsError = isUserAnswered ? false : isError
           b.streamingBlocks[idx] = {
             ...tool,
             status: effectiveIsError ? 'error' : 'completed',
@@ -631,8 +633,9 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       const fc = b.fileChanges.find(c => c.toolUseId === resultId)
       if (fc) {
         const toolAtIdx = b.streamingBlocks.find(bl => bl.type === 'tool' && bl.toolUseId === resultId)
-        const isAskQuestion = toolAtIdx?.type === 'tool' && toolAtIdx.toolName === 'AskUserQuestion'
-        fc.status = (isAskQuestion ? false : isError) ? 'error' : 'completed'
+        const isAskQuestion = toolAtIdx?.type === 'tool' && (toolAtIdx.toolName === 'AskUserQuestion' || toolAtIdx.toolName === 'ask_user_question')
+        const isUserAnsweredFc = isAskQuestion && resultContent && resultContent.includes('User has answered')
+        fc.status = (isUserAnsweredFc ? false : isError) ? 'error' : 'completed'
       }
     })
   }
@@ -1277,10 +1280,18 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                         tcIdx = blockStep.toolCalls.findIndex(t => t.status === 'pending')
                       }
                       if (tcIdx >= 0) {
+                        // AskUserQuestion 被前端拦截后 SDK 返回 isError=true，
+                        // 但实际是用户回答而非错误，前端不显示为错误（与普通聊天模式一致）
+                        // 仅当 output 包含 "User has answered" 时才抑制（区分 SDK schema 验证失败）
+                        const toolName = blockStep.toolCalls[tcIdx].toolName
+                        const isAskQuestion = toolName === 'AskUserQuestion' || toolName === 'ask_user_question'
+                        const outputContent = data.content as string | undefined
+                        const isUserAnswered = isAskQuestion && outputContent && outputContent.includes('User has answered')
+                        const effectiveIsError = isUserAnswered ? false : (data.isError as boolean)
                         blockStep.toolCalls[tcIdx] = {
                           ...blockStep.toolCalls[tcIdx],
-                          status: (data.isError as boolean) ? 'error' : 'completed',
-                          isError: (data.isError as boolean) || false,
+                          status: effectiveIsError ? 'error' : 'completed',
+                          isError: effectiveIsError,
                           output: data.content as string | undefined,
                         }
                       }
@@ -1289,12 +1300,17 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
                 }
               })
               // 普通聊天模式仍更新独立 tool block
-              if (!getBuffer(sendProjectId).workflowState) {
-                handleToolResultEvent(sendProjectId, data)
+              // 工作流模式下，检查是否有匹配的独立 tool block 需要更新（如 AskUserQuestion）
+              {
+                const buf = getBuffer(sendProjectId)
+                const hasToolBlock = buf.streamingBlocks.some(bl => bl.type === 'tool' && bl.toolUseId === (data.toolUseId as string))
+                if (!buf.workflowState || hasToolBlock) {
+                  handleToolResultEvent(sendProjectId, data)
+                }
               }
-              break
+              break;
             }
-
+            
             case 'step_tool_progress':
               // 工作流模式：同步更新工具耗时
               updateState(sendProjectId, b => {

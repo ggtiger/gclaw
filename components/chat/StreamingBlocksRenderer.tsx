@@ -89,6 +89,14 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
     return { lastTodoBlockId, allTodoBlocks, nestedToolIds, taskToolsMap }
   }, [blocks])
 
+  // 找到最后一个可见的 text 块 id，只在它上面显示 streaming cursor
+  const lastVisibleTextId = useMemo(() => {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].type === 'text') return blocks[i].id
+    }
+    return null
+  }, [blocks])
+
   return (
     <div className="space-y-2">
       {blocks.map(block => {
@@ -109,7 +117,7 @@ export const StreamingBlocksRenderer = memo(function StreamingBlocksRenderer({
           <MarkdownRenderer
             key={block.id}
             content={block.content}
-            isStreaming={isStreaming}
+            isStreaming={isStreaming && block.id === lastVisibleTextId}
             projectId={projectId}
             projectCwd={projectCwd}
           />

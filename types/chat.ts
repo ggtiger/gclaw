@@ -144,13 +144,15 @@ export interface AskUserQuestionOption {
   label: string
   description: string
   preview?: string
+  /** 选中此选项后自动切换到文本输入模式（用于"输入xxx"类选项） */
+  requiresInput?: boolean
 }
 
 export interface AskUserQuestionItem {
   question: string
-  header: string
-  options: AskUserQuestionOption[]
-  multiSelect: boolean
+  header?: string
+  options?: AskUserQuestionOption[]
+  multiSelect?: boolean
 }
 
 export interface AskUserQuestionRequest {

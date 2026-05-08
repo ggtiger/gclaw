@@ -1,7 +1,7 @@
 {
   "name": "gujing-automation",
-  "version": "1.0.0",
-  "description": "古井网站浏览器自动化操作，支持登录、页面内容读取和交互操作",
+  "version": "1.2.0",
+  "description": "古井网站浏览器自动化操作，支持登录、滑块验证码自动处理、页面内容读取和交互操作",
   "author": "GClaw User",
   "createdAt": "2026-05-04",
   "tags": ["browser-automation", "gujing", "login"],

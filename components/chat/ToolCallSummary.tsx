@@ -154,7 +154,7 @@ function TodoWriteView({ tools }: { tools: ToolCallItem[] }) {
 interface AskQuestion {
   question: string
   header?: string
-  options?: { label: string; description?: string; preview?: string }[]
+  options?: { label: string; description?: string; preview?: string; requiresInput?: boolean }[]
   multiSelect?: boolean
 }
 
@@ -189,7 +189,8 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
     if (!askQuestion) return
     const defaults: Record<number, string | string[]> = {}
     askQuestion.questions.forEach((q, i) => {
-      if (q.options.length > 0) {
+      const opts = q.options || []
+      if (opts.length > 0) {
         defaults[i] = q.multiSelect ? [] : ''
       }
     })
@@ -210,7 +211,11 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
   }
 
   // ── 交互逻辑 ──
-  const handleSingleSelect = (qIndex: number, label: string) => {
+  const handleSingleSelect = (qIndex: number, label: string, requiresInput?: boolean) => {
+    if (requiresInput) {
+      handleEnableCustomMode(qIndex)
+      return
+    }
     setSelections(prev => ({ ...prev, [qIndex]: label }))
   }
 
@@ -249,7 +254,11 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
     if (!askQuestion || !onRespondAskQuestion) return
     const answers: Record<string, string> = {}
     askQuestion.questions.forEach((q, i) => {
+      const opts = q.options || []
       if (customMode[i]) {
+        answers[q.question] = customInputs[i]?.trim() || ''
+      } else if (opts.length === 0) {
+        // 无选项的纯文本输入
         answers[q.question] = customInputs[i]?.trim() || ''
       } else {
         const sel = selections[i]
@@ -265,6 +274,8 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
 
   const canSubmit = isInteractive && askQuestion
     ? askQuestion.questions.every((q, i) => {
+        const opts = q.options || []
+        if (opts.length === 0) return (customInputs[i]?.trim() || '').length > 0
         if (customMode[i]) return (customInputs[i]?.trim() || '').length > 0
         const sel = selections[i]
         if (q.multiSelect) return Array.isArray(sel) && sel.length > 0
@@ -337,7 +348,8 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                     </div>
                     {/* 交互 or 只读 */}
                     {isInteractive ? (
-                      customMode[qIdx] ? (
+                      // 无选项时直接显示输入框；有选项时根据 customMode 切换
+                      (!q.options || q.options.length === 0) || customMode[qIdx] ? (
                         <div className="flex items-center gap-1.5">
                           <input
                             ref={customInputRef}
@@ -345,7 +357,7 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                             value={customInputs[qIdx] || ''}
                             onChange={e => setCustomInputs(prev => ({ ...prev, [qIdx]: e.target.value }))}
                             onKeyDown={e => { if (e.key === 'Enter') handleCustomInputConfirm(qIdx) }}
-                            placeholder="输入你的回答..."
+                            placeholder={q.options?.length ? '输入你的回答...' : '请输入...'}
                             className="flex-1 text-xs px-2 py-1 rounded-md border outline-none"
                             style={{
                               borderColor: 'var(--color-primary, #7c3aed)',
@@ -353,21 +365,26 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                               color: 'var(--color-text)',
                             }}
                           />
-                          <button
-                            onClick={() => handleCustomInputConfirm(qIdx)}
-                            disabled={!customInputs[qIdx]?.trim()}
-                            className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
-                          >
-                            确认
-                          </button>
-                          <button
-                            onClick={() => handleCancelCustomMode(qIdx)}
-                            className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
-                            style={{ color: 'var(--color-text-muted)' }}
-                          >
-                            取消
-                          </button>
+                          {/* 有选项的自定义模式才显示确认/取消按钮 */}
+                          {q.options && q.options.length > 0 && (
+                            <>
+                              <button
+                                onClick={() => handleCustomInputConfirm(qIdx)}
+                                disabled={!customInputs[qIdx]?.trim()}
+                                className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
+                              >
+                                确认
+                              </button>
+                              <button
+                                onClick={() => handleCancelCustomMode(qIdx)}
+                                className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
+                                style={{ color: 'var(--color-text-muted)' }}
+                              >
+                                取消
+                              </button>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <div className="flex flex-wrap gap-1">
@@ -378,7 +395,7 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                             return (
                               <button
                                 key={oIdx}
-                                onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label)}
+                                onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label, opt.requiresInput)}
                                 title={opt.description}
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
                                 style={{
@@ -396,11 +413,11 @@ function AskUserQuestionRow({ tool, askQuestion, onRespondAskQuestion }: {
                           })}
                           <button
                             onClick={() => handleEnableCustomMode(qIdx)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed text-[11px] font-medium transition-all duration-150 cursor-pointer hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
                             style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
                           >
                             <Pencil size={10} />
-                            其他...
+                            自定义输入
                           </button>
                         </div>
                       )

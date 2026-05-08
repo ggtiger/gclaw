@@ -24,7 +24,8 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
   useEffect(() => {
     const defaults: Record<number, string | string[]> = {}
     request.questions.forEach((q, i) => {
-      if (q.options.length > 0) {
+      const opts = q.options || []
+      if (opts.length > 0) {
         defaults[i] = q.multiSelect ? [] : ''
       }
     })
@@ -49,7 +50,11 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request.requestId])
 
-  const handleSingleSelect = (qIndex: number, label: string) => {
+  const handleSingleSelect = (qIndex: number, label: string, requiresInput?: boolean) => {
+    if (requiresInput) {
+      handleEnableCustomMode(qIndex)
+      return
+    }
     setSelections(prev => ({ ...prev, [qIndex]: label }))
   }
 
@@ -70,7 +75,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
     setSelections(prev => {
       const defaults: Record<number, string | string[]> = {}
       request.questions.forEach((q, i) => {
-        if (i !== qIndex && q.options.length > 0) {
+        if (i !== qIndex && (q.options || []).length > 0) {
           defaults[i] = prev[i] !== undefined ? prev[i] : (q.multiSelect ? [] : '')
         }
       })
@@ -93,12 +98,13 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
   const handleSubmit = (timeout = false) => {
     const answers: Record<string, string> = {}
     request.questions.forEach((q, i) => {
+      const opts = q.options || []
       const sel = selections[i]
       if (timeout) {
         // 超时时选择第一个选项
-        answers[q.question] = q.options[0]?.label || ''
-      } else if (customMode[i]) {
-        // 自定义输入模式
+        answers[q.question] = opts[0]?.label || ''
+      } else if (customMode[i] || opts.length === 0) {
+        // 自定义输入模式或无选项纯文本输入
         answers[q.question] = customInputs[i]?.trim() || ''
       } else if (Array.isArray(sel)) {
         answers[q.question] = sel.join(', ')
@@ -110,6 +116,10 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
   }
 
   const canSubmit = request.questions.every((q, i) => {
+    const opts = q.options || []
+    if (opts.length === 0) {
+      return (customInputs[i]?.trim() || '').length > 0
+    }
     if (customMode[i]) {
       return (customInputs[i]?.trim() || '').length > 0
     }
@@ -166,8 +176,8 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
               {q.question}
             </div>
             {/* Options as compact pills */}
-            {customMode[qIdx] ? (
-              /* 自定义输入模式 */
+            {(!q.options || q.options.length === 0) || customMode[qIdx] ? (
+              /* 无选项或自定义输入模式 */
               <div className="flex items-center gap-1.5">
                 <input
                   ref={qIdx === Object.keys(customMode).findIndex(k => customMode[Number(k)]) ? customInputRef : undefined}
@@ -175,7 +185,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                   value={customInputs[qIdx] || ''}
                   onChange={e => setCustomInputs(prev => ({ ...prev, [qIdx]: e.target.value }))}
                   onKeyDown={e => { if (e.key === 'Enter') handleCustomInputConfirm(qIdx) }}
-                  placeholder="输入你的回答..."
+                  placeholder={q.options?.length ? '输入你的回答...' : '请输入...'}
                   className="flex-1 text-xs px-2 py-1 rounded-md border outline-none"
                   style={{
                     borderColor: 'var(--color-primary, #7c3aed)',
@@ -183,31 +193,36 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                     color: 'var(--color-text)',
                   }}
                 />
-                <button
-                  onClick={() => handleCustomInputConfirm(qIdx)}
-                  disabled={!customInputs[qIdx]?.trim()}
-                  className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: 'var(--color-primary, #7c3aed)',
-                    color: '#fff',
-                  }}
-                >
-                  确认
-                </button>
-                <button
-                  onClick={() => setCustomMode(prev => ({ ...prev, [qIdx]: false }))}
-                  className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  取消
-                </button>
+                {/* 有选项的自定义模式才显示确认/取消按钮 */}
+                {q.options && q.options.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => handleCustomInputConfirm(qIdx)}
+                      disabled={!customInputs[qIdx]?.trim()}
+                      className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: 'var(--color-primary, #7c3aed)',
+                        color: '#fff',
+                      }}
+                    >
+                      确认
+                    </button>
+                    <button
+                      onClick={() => setCustomMode(prev => ({ ...prev, [qIdx]: false }))}
+                      className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      取消
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex flex-wrap gap-1">
                 {/* 已确认的自定义回答（不在预定义选项中） */}
                 {(() => {
                   const sel = selections[qIdx]
-                  const isCustomValue = typeof sel === 'string' && sel !== '' && !q.options.some(o => o.label === sel)
+                  const isCustomValue = typeof sel === 'string' && sel !== '' && !(q.options || []).some(o => o.label === sel)
                   if (!isCustomValue) return null
                   return (
                     <button
@@ -225,7 +240,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                     </button>
                   )
                 })()}
-                {q.options.map((opt, oIdx) => {
+                {(q.options || []).map((opt, oIdx) => {
                   const isSelected = q.multiSelect
                     ? ((selections[qIdx] as string[]) || []).includes(opt.label)
                     : selections[qIdx] === opt.label
@@ -233,7 +248,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                   return (
                     <button
                       key={oIdx}
-                      onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label)}
+                      onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label, opt.requiresInput)}
                       title={opt.description}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
                       style={{
@@ -254,7 +269,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                 {/* 其他... 选项 */}
                 <button
                   onClick={() => handleEnableCustomMode(qIdx)}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed text-[11px] font-medium transition-all duration-150 cursor-pointer hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
                   style={{
                     borderColor: 'var(--color-border)',
                     color: 'var(--color-text-muted)',
@@ -262,7 +277,7 @@ export const AskQuestionDialog = memo(function AskQuestionDialog({ request, onRe
                   }}
                 >
                   <Pencil size={10} />
-                  其他...
+                  自定义输入
                 </button>
               </div>
             )}

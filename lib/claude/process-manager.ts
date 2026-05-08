@@ -464,9 +464,25 @@ export async function* executeChat(
         const reqId = randomUUID()
         logger.info(`[GClaw] canUseTool: AskUserQuestion | reqId=${reqId} | questions=${questions.length}`)
 
+        // 自动检测 "输入xxx" 类选项，添加 requiresInput 标记
+        // SDK 要求 options.min(2)，AI 会提供 "输入xxx" + "跳过" 的组合
+        // 前端收到 requiresInput 后会自动切换到文本输入模式
+        const enrichedQuestions = questions.map((q: Record<string, unknown>) => {
+          const opts = Array.isArray(q.options) ? q.options : []
+          const enrichedOpts = opts.map((opt: Record<string, unknown>) => {
+            const label = (opt.label || '') as string
+            // 匹配 "输入xxx"、"请输入xxx"、"填写xxx" 等标签
+            if (/^(请?输入|填写|键入|提供)/.test(label) && !opt.requiresInput) {
+              return { ...opt, requiresInput: true }
+            }
+            return opt
+          })
+          return { ...q, options: enrichedOpts }
+        })
+
         // 通知前端展示问题对话框
         if (onAskUserQuestion) {
-          onAskUserQuestion({ requestId: reqId, questions: questions as AskUserQuestionRequest['questions'] })
+          onAskUserQuestion({ requestId: reqId, questions: enrichedQuestions as unknown as AskUserQuestionRequest['questions'] })
         }
 
         // 等待用户回答（5 分钟超时）
@@ -476,8 +492,8 @@ export async function* executeChat(
             if (pendingAskQuestions.has(reqId)) {
               // 超时：默认选第一个选项
               const defaultAnswers: Record<string, string> = {}
-              for (const q of questions as Array<{ question: string; options: Array<{ label: string }> }>) {
-                defaultAnswers[q.question] = q.options[0]?.label || ''
+              for (const q of questions as Array<{ question: string; options?: Array<{ label: string }> }>) {
+                defaultAnswers[q.question] = (q.options || [])[0]?.label || ''
               }
               resolve(defaultAnswers)
               pendingAskQuestions.delete(reqId)

@@ -299,7 +299,7 @@ function TodoWriteView({ tool, allBlocks, taskToolsMap }: {
 interface AskQuestion {
   question: string
   header?: string
-  options?: { label: string; description?: string; preview?: string }[]
+  options?: { label: string; description?: string; preview?: string; requiresInput?: boolean }[]
   multiSelect?: boolean
 }
 
@@ -330,9 +330,11 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
     if (!askQuestion) return
     const defaults: Record<number, string | string[]> = {}
     askQuestion.questions.forEach((q, i) => {
-      if (q.options.length > 0) {
+      const opts = q.options || []
+      if (opts.length > 0) {
         defaults[i] = q.multiSelect ? [] : ''
       }
+      // 无选项的纯文本输入不设置默认值（由 customInputs 管理）
     })
     setSelections(defaults)
     setCustomMode({})
@@ -357,7 +359,12 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInteractive, askQuestion?.requestId])
 
-  const handleSingleSelect = (qIndex: number, label: string) => {
+  const handleSingleSelect = (qIndex: number, label: string, requiresInput?: boolean) => {
+    if (requiresInput) {
+      // 选中带 requiresInput 的选项时，自动切入文本输入模式
+      handleEnableCustomMode(qIndex)
+      return
+    }
     setSelections(prev => ({ ...prev, [qIndex]: label }))
   }
 
@@ -390,11 +397,12 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
     if (!askQuestion || !onRespondAskQuestion) return
     const answers: Record<string, string> = {}
     askQuestion.questions.forEach((q, i) => {
+      const opts = q.options || []
       if (timeout) {
-        answers[q.question] = q.options[0]?.label || ''
+        answers[q.question] = opts[0]?.label || ''
       } else if (customMode[i]) {
         answers[q.question] = customInputs[i]?.trim() || ''
-      } else if (!q.options || q.options.length === 0) {
+      } else if (opts.length === 0) {
         // 无选项的纯文本输入
         answers[q.question] = customInputs[i]?.trim() || ''
       } else {
@@ -412,7 +420,8 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
 
   const canSubmit = isInteractive && askQuestion
     ? askQuestion.questions.every((q, i) => {
-        if (!q.options || q.options.length === 0) return (customInputs[i]?.trim() || '').length > 0
+        const opts = q.options || []
+        if (opts.length === 0) return (customInputs[i]?.trim() || '').length > 0
         if (customMode[i]) return (customInputs[i]?.trim() || '').length > 0
         const sel = selections[i]
         if (q.multiSelect) return Array.isArray(sel) && sel.length > 0
@@ -471,7 +480,16 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
                     type="text"
                     value={customInputs[qIdx] || ''}
                     onChange={e => setCustomInputs(prev => ({ ...prev, [qIdx]: e.target.value }))}
-                    placeholder={q.options?.length ? '输入你的回答...' : '请输入...'}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        if (q.options && q.options.length > 0) {
+                          handleCustomInputConfirm(qIdx)
+                        } else {
+                          handleSubmit()
+                        }
+                      }
+                    }}
+                    placeholder={q.options?.length ? '输入你的回答...' : '请输入...（Enter提交）'}
                     className="flex-1 min-w-0 text-xs px-2 py-1 rounded-md border outline-none"
                     style={{
                       borderColor: 'var(--color-primary, #7c3aed)',
@@ -531,7 +549,7 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
                     return (
                       <button
                         key={oIdx}
-                        onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label)}
+                        onClick={() => q.multiSelect ? handleMultiSelect(qIdx, opt.label) : handleSingleSelect(qIdx, opt.label, opt.requiresInput)}
                         title={opt.description}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer"
                         style={{
@@ -547,11 +565,11 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
                   })}
                   <button
                     onClick={() => handleEnableCustomMode(qIdx)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed text-[11px] font-medium cursor-pointer hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
                     style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
                   >
                     <Pencil size={10} />
-                    其他...
+                    自定义输入
                   </button>
                 </div>
               )
