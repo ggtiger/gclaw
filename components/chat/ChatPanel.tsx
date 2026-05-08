@@ -227,30 +227,30 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
   }, [onUpdateMessage])
 
   // 自动滚动到底部（用 RAF 防抖，减少抖动）
-  // askQuestion 出现时强制滚动（不受 shouldAutoScroll 限制）
   useEffect(() => {
-    const forceScroll = !!askQuestion
-    if ((!shouldAutoScroll.current && !forceScroll) || !scrollContainerRef.current) return
-    if (forceScroll) shouldAutoScroll.current = true
+    if (!shouldAutoScroll.current || !scrollContainerRef.current) return
     const raf = requestAnimationFrame(() => {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
       }
     })
-    // askQuestion 时延迟再滚一次，确保内容渲染完成后也能到位
-    let timer: ReturnType<typeof setTimeout> | undefined
-    if (forceScroll) {
-      timer = setTimeout(() => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
-        }
-      }, 300)
+    return () => cancelAnimationFrame(raf)
+  }, [messages, streamingBlocks, workflowState])
+
+  // AskUserQuestion 出现后 2s 内持续滚动（内容逐步渲染，高度持续增长），之后停止让用户自由翻阅
+  useEffect(() => {
+    if (!askQuestion) return
+    shouldAutoScroll.current = true
+    const scrollToBottom = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+      }
     }
-    return () => {
-      cancelAnimationFrame(raf)
-      if (timer) clearTimeout(timer)
-    }
-  }, [messages, streamingBlocks, workflowState, askQuestion])
+    scrollToBottom()
+    const timer = setInterval(scrollToBottom, 200)
+    const stop = setTimeout(() => clearInterval(timer), 2000)
+    return () => { clearInterval(timer); clearTimeout(stop) }
+  }, [askQuestion])
 
   // 检测用户是否手动向上滚动 — 使用原生 passive 监听器，不阻塞滚动合成
   const scrollRafRef = useRef<number>(0)

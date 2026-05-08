@@ -478,7 +478,7 @@ export class CommandExecutor {
       : undefined
 
     // 追加 ask_user 工具使用提示，确保 AI 在需要用户输入时主动发起询问
-    const askUserHint = '\n\n重要：如果你在执行过程中需要用户提供信息（如密码、凭证、选择、确认等），必须使用 ask_user 工具发起询问并等待用户回复，不要仅在输出文本中描述需求。'
+    const askUserHint = '\n\n重要：如果你在执行过程中需要用户提供信息（如密码、凭证、选择、确认等）或者需要用户回复的，必须使用 ask_user_question 工具发起询问并等待用户回复，发起的问题可以没有选项，需要用户填什么就问什么，不要仅在输出文本中描述需求，并直接跳过。'
     const finalSystemPrompt = (resolvedSystemPrompt || '') + askUserHint
 
     // 将步骤系统提示作为上下文前缀注入用户消息（executeChat 不支持独立 systemPrompt 参数）

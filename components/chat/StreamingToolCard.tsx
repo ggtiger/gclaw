@@ -305,6 +305,9 @@ interface AskQuestion {
 
 const TIMEOUT_SECONDS = 300
 
+// 模块级缓存：以 toolUseId 为 key 存储已提交的答案，防止组件重渲染/重挂载丢失
+const submittedAnswersCache = new Map<string, Record<string, string>>()
+
 function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
   tool: StreamingToolBlock
   askQuestion?: AskUserQuestionRequest | null
@@ -318,9 +321,9 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
 
   const isInteractive = !!askQuestion && !tool.output
   const questions: AskQuestion[] = (tool.input?.questions as AskQuestion[]) || []
-  // 从 tool.input.answers 提取（canUseTool 注入到服务端 SDK，客户端不更新，用 submittedAnswers 兜底）
+  // 从 tool.input.answers 提取（canUseTool 注入到服务端 SDK，客户端不更新，用 cache 兜底）
   const answersMap = tool.input?.answers as Record<string, string> | undefined
-  const submittedAnswersRef = useRef<Record<string, string> | null>(null)
+  const cachedAnswers = submittedAnswersCache.get(tool.toolUseId)
 
   // 初始化默认选择
   useEffect(() => {
@@ -391,6 +394,9 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
         answers[q.question] = q.options[0]?.label || ''
       } else if (customMode[i]) {
         answers[q.question] = customInputs[i]?.trim() || ''
+      } else if (!q.options || q.options.length === 0) {
+        // 无选项的纯文本输入
+        answers[q.question] = customInputs[i]?.trim() || ''
       } else {
         const sel = selections[i]
         if (Array.isArray(sel)) {
@@ -401,11 +407,12 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
       }
     })
     onRespondAskQuestion(askQuestion.requestId, answers)
-    submittedAnswersRef.current = answers
+    submittedAnswersCache.set(tool.toolUseId, answers)
   }
 
   const canSubmit = isInteractive && askQuestion
     ? askQuestion.questions.every((q, i) => {
+        if (!q.options || q.options.length === 0) return (customInputs[i]?.trim() || '').length > 0
         if (customMode[i]) return (customInputs[i]?.trim() || '').length > 0
         const sel = selections[i]
         if (q.multiSelect) return Array.isArray(sel) && sel.length > 0
@@ -456,15 +463,15 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
               {q.question}
             </div>
             {isInteractive ? (
-              customMode[qIdx] ? (
+              // 无选项时直接显示输入框；有选项时根据 customMode 切换
+              (!q.options || q.options.length === 0) || customMode[qIdx] ? (
                 <div className="flex items-center gap-1.5">
                   <input
                     ref={qIdx === 0 ? customInputRef : undefined}
                     type="text"
                     value={customInputs[qIdx] || ''}
                     onChange={e => setCustomInputs(prev => ({ ...prev, [qIdx]: e.target.value }))}
-                    onKeyDown={e => { if (e.key === 'Enter') handleCustomInputConfirm(qIdx) }}
-                    placeholder="输入你的回答..."
+                    placeholder={q.options?.length ? '输入你的回答...' : '请输入...'}
                     className="flex-1 min-w-0 text-xs px-2 py-1 rounded-md border outline-none"
                     style={{
                       borderColor: 'var(--color-primary, #7c3aed)',
@@ -472,21 +479,26 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
                       color: 'var(--color-text)',
                     }}
                   />
-                  <button
-                    onClick={() => handleCustomInputConfirm(qIdx)}
-                    disabled={!customInputs[qIdx]?.trim()}
-                    className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
-                  >
-                    确认
-                  </button>
-                  <button
-                    onClick={() => setCustomMode(prev => ({ ...prev, [qIdx]: false }))}
-                    className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    取消
-                  </button>
+                  {/* 有选项的自定义模式才显示确认/取消按钮 */}
+                  {q.options && q.options.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => handleCustomInputConfirm(qIdx)}
+                        disabled={!customInputs[qIdx]?.trim()}
+                        className="px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: 'var(--color-primary, #7c3aed)', color: '#fff' }}
+                      >
+                        确认
+                      </button>
+                      <button
+                        onClick={() => setCustomMode(prev => ({ ...prev, [qIdx]: false }))}
+                        className="px-2 py-1 rounded-md text-[11px] cursor-pointer"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        取消
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1">
@@ -543,40 +555,51 @@ function AskUserQuestionView({ tool, askQuestion, onRespondAskQuestion }: {
                   </button>
                 </div>
               )
-            ) : (
-              q.options && q.options.length > 0 && (() => {
-                const userAnswer = submittedAnswersRef.current?.[q.question] || answersMap?.[q.question]
-                return (
-                  <div className="flex flex-wrap gap-1">
-                    {q.options.map((opt, j) => {
-                      const selected = userAnswer === opt.label || (userAnswer && opt.label && userAnswer.split(', ').includes(opt.label))
-                      return (
-                        <span key={j} title={opt.description} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
-                          borderColor: selected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
-                          backgroundColor: selected ? 'rgba(124, 58, 237, 0.12)' : 'transparent',
-                          color: selected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text-muted)',
-                          opacity: selected ? 1 : 0.5,
-                        }}>
-                          {selected && <Check size={10} />}
-                          {opt.label}
-                        </span>
-                      )
-                    })}
-                    {/* 自定义回答（不在预定义选项中） */}
-                    {userAnswer && !q.options.some(o => o.label === userAnswer) && (
-                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
-                        borderColor: 'var(--color-primary, #7c3aed)',
-                        backgroundColor: 'rgba(124, 58, 237, 0.12)',
-                        color: 'var(--color-primary, #7c3aed)',
+            ) : (() => {
+              const userAnswer = cachedAnswers?.[q.question] || answersMap?.[q.question]
+              // 无选项时显示纯文本回答
+              if (!q.options || q.options.length === 0) {
+                return userAnswer ? (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
+                    borderColor: 'var(--color-primary, #7c3aed)',
+                    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                    color: 'var(--color-primary, #7c3aed)',
+                  }}>
+                    <Check size={10} />
+                    {userAnswer}
+                  </span>
+                ) : null
+              }
+              // 有选项时高亮选中项
+              return (
+                <div className="flex flex-wrap gap-1">
+                  {q.options.map((opt, j) => {
+                    const selected = userAnswer === opt.label || (userAnswer && opt.label && userAnswer.split(', ').includes(opt.label))
+                    return (
+                      <span key={j} title={opt.description} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
+                        borderColor: selected ? 'var(--color-primary, #7c3aed)' : 'var(--color-border)',
+                        backgroundColor: selected ? 'rgba(124, 58, 237, 0.12)' : 'transparent',
+                        color: selected ? 'var(--color-primary, #7c3aed)' : 'var(--color-text-muted)',
+                        opacity: selected ? 1 : 0.5,
                       }}>
-                        <Check size={10} />
-                        {userAnswer}
+                        {selected && <Check size={10} />}
+                        {opt.label}
                       </span>
-                    )}
-                  </div>
-                )
-              })()
-            )}
+                    )
+                  })}
+                  {userAnswer && !q.options.some(o => o.label === userAnswer) && (
+                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border text-[11px] font-medium" style={{
+                      borderColor: 'var(--color-primary, #7c3aed)',
+                      backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                      color: 'var(--color-primary, #7c3aed)',
+                    }}>
+                      <Check size={10} />
+                      {userAnswer}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         ))}
       </div>
