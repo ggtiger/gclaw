@@ -763,6 +763,15 @@ export async function* executeChat(
                 fullContent,
               },
             }
+            // 记录 Token 使用日志
+            logTokenUsage({
+              projectId,
+              sessionId: lastSessionId,
+              model: lastModel,
+              userMessage: message,
+              usage: lastUsage,
+              costUsd: lastCost,
+            })
             break
 
           case 'error': {
@@ -956,6 +965,78 @@ interface PromptLogEntry {
   attachments: Array<{ filename: string; mimeType: string; isImage: boolean; size?: number }>
   /** SDK 配置 */
   sdkOptions: { cwd: string; resume: boolean }
+  /** Session 历史摘要（实际发送给 API 的历史数据） */
+  sessionHistory?: {
+    /** 消息记录行数 */
+    recordCount: number
+    /** 用户消息数 */
+    userMessageCount: number
+    /** AI 回复数 */
+    assistantMessageCount: number
+    /** 图片数量 */
+    imageCount: number
+    /** 图片 base64 数据总大小（字节） */
+    imageBytesTotal: number
+    /** 文本内容总大小（字节） */
+    textBytesTotal: number
+    /** Session 文件大小（字节） */
+    fileBytesTotal: number
+  }
+}
+
+// ======================== Token 使用日志 ========================
+
+interface TokenUsageLogEntry {
+  timestamp: string
+  projectId: string
+  sessionId: string | null
+  model: string
+  /** 用户消息摘要（前 100 字符） */
+  userMessageSummary: string
+  /** 输入 token 数 */
+  inputTokens: number
+  /** 输出 token 数 */
+  outputTokens: number
+  /** 缓存读取 token 数 */
+  cachedTokens: number
+  /** 美元成本 */
+  costUsd: number | null
+}
+
+/**
+ * 记录 Token 使用情况到日志文件
+ * 写入 data/token-usage-log.jsonl，每行一条 JSON 记录
+ */
+function logTokenUsage(params: {
+  projectId: string
+  sessionId: string | null
+  model: string
+  userMessage: string
+  usage: { inputTokens: number; outputTokens: number; cachedTokens: number } | null
+  costUsd: number | null
+}): void {
+  if (!params.usage) return
+
+  const entry: TokenUsageLogEntry = {
+    timestamp: new Date().toISOString(),
+    projectId: params.projectId,
+    sessionId: params.sessionId,
+    model: params.model,
+    userMessageSummary: params.userMessage.slice(0, 100),
+    inputTokens: params.usage.inputTokens,
+    outputTokens: params.usage.outputTokens,
+    cachedTokens: params.usage.cachedTokens,
+    costUsd: params.costUsd,
+  }
+
+  const logDir = PROMPT_LOG_DIR
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true })
+  }
+  const logFile = path.join(logDir, 'token-usage-log.jsonl')
+  fs.appendFileSync(logFile, JSON.stringify(entry) + '\n', 'utf-8')
+
+  logger.info(`[GClaw] Token 使用已记录: input=${params.usage.inputTokens} output=${params.usage.outputTokens} cached=${params.usage.cachedTokens} cost=$${params.costUsd?.toFixed(4) || 'N/A'} → token-usage-log.jsonl`)
 }
 
 /**
@@ -981,6 +1062,77 @@ function logAiPrompt(params: {
       }
     } catch { /* ignore */ }
 
+    // 读取 Session 历史摘要（实际发送给 API 的历史数据）
+    let sessionHistory: PromptLogEntry['sessionHistory'] | undefined = undefined
+    if (params.sessionId) {
+      const homeDir = process.env.HOME || process.env.USERPROFILE || ''
+      // SDK 的目录命名规则：cwd 的所有路径分隔符（/ 和 \）替换为 -
+      // macOS/Linux: "/Users/xxx" → "-Users-xxx"
+      // Windows: "C:\Users\xxx" → "C:-Users-xxx" 或 "D:/xxx" → "D:-xxx"
+      const normalizedCwd = params.sdkCwd.replace(/[/\\]/g, '-')
+      const sessionFile = path.join(homeDir, '.claude', 'projects', normalizedCwd, `${params.sessionId}.jsonl`)
+      try {
+        if (fs.existsSync(sessionFile)) {
+          const sessionContent = fs.readFileSync(sessionFile, 'utf-8')
+          const lines = sessionContent.trim().split('\n')
+          const fileBytesTotal = sessionContent.length
+          let userMessageCount = 0
+          let assistantMessageCount = 0
+          let imageCount = 0
+          let imageBytesTotal = 0
+          let textBytesTotal = 0
+
+          for (const line of lines) {
+            try {
+              const record = JSON.parse(line)
+              if (record.type === 'user') {
+                userMessageCount++
+                const content = record.message?.content
+                if (Array.isArray(content)) {
+                  for (const block of content) {
+                    if (block.type === 'image' && block.source?.data) {
+                      imageCount++
+                      imageBytesTotal += block.source.data.length
+                    } else if (block.type === 'text' && block.text) {
+                      textBytesTotal += block.text.length
+                    } else if (block.type === 'tool_result' && typeof block.content === 'string') {
+                      textBytesTotal += block.content.length
+                    }
+                  }
+                } else if (typeof content === 'string') {
+                  textBytesTotal += content.length
+                }
+              } else if (record.type === 'assistant') {
+                assistantMessageCount++
+                const content = record.message?.content
+                if (Array.isArray(content)) {
+                  for (const block of content) {
+                    if (block.type === 'text' && block.text) {
+                      textBytesTotal += block.text.length
+                    } else if (block.type === 'thinking' && block.thinking) {
+                      textBytesTotal += block.thinking.length
+                    }
+                  }
+                } else if (typeof content === 'string') {
+                  textBytesTotal += content.length
+                }
+              }
+            } catch { /* 跳过解析失败的行 */ }
+          }
+
+          sessionHistory = {
+            recordCount: lines.length,
+            userMessageCount,
+            assistantMessageCount,
+            imageCount,
+            imageBytesTotal,
+            textBytesTotal,
+            fileBytesTotal,
+          }
+        }
+      } catch { /* ignore session read errors */ }
+    }
+
     const entry: PromptLogEntry = {
       timestamp: new Date().toISOString(),
       projectId: params.projectId,
@@ -995,6 +1147,7 @@ function logAiPrompt(params: {
         size: att.content.length,
       })),
       sdkOptions: params.sdkOptions,
+      sessionHistory,
     }
 
     const logDir = PROMPT_LOG_DIR
@@ -1004,7 +1157,11 @@ function logAiPrompt(params: {
     const logFile = path.join(logDir, 'ai-prompt-log.jsonl')
     fs.appendFileSync(logFile, JSON.stringify(entry) + '\n', 'utf-8')
 
-    logger.info(`[GClaw] 提示词已记录: ${(systemPrompt.length / 1024).toFixed(1)}KB 系统提示 + ${params.message.length}字用户消息 + ${entry.attachments.length}附件 → ai-prompt-log.jsonl`)
+    // 日志摘要：包含 session 历史的关键指标
+    const historyInfo = sessionHistory
+      ? ` | Session历史: ${sessionHistory.recordCount}条记录 (${sessionHistory.userMessageCount}用户/${sessionHistory.assistantMessageCount}AI) | ${sessionHistory.imageCount}张图片(${(sessionHistory.imageBytesTotal/1024/1024).toFixed(1)}MB) | 文本${(sessionHistory.textBytesTotal/1024).toFixed(1)}KB`
+      : ''
+    logger.info(`[GClaw] 提示词已记录: ${(systemPrompt.length / 1024).toFixed(1)}KB 系统提示 + ${params.message.length}字用户消息${historyInfo} → ai-prompt-log.jsonl`)
   } catch (err) {
     logger.warn('[GClaw] 记录提示词日志失败:', err instanceof Error ? err.message : err)
   }
