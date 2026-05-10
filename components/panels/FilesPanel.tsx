@@ -47,6 +47,7 @@ import { FileIconSm } from './files/FileTree'
 import { ImagePreview, JitViewerPreview } from './files/previews'
 import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor, DiffEditor } from './files/editors'
 import { isTauri, openWithSystemApp, revealInFinder, selectDirectory } from '@/lib/tauri'
+import { useFilePreview } from '@/contexts/FilePreviewContext'
 
 // ─── Git 状态标记字母 ───
 
@@ -222,6 +223,7 @@ export default function FilesPanel({
   // 文件树
   const [tree, setTree] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const filePreviewCtx = useFilePreview()
   const [error, setError] = useState<string | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
@@ -1572,7 +1574,7 @@ export default function FilesPanel({
                   const cat = getFileCategory(selectedFile.name)
                   if (cat === 'image') return <ImagePreview key={previewKey} projectId={projectId} filePath={selectedFile.path} refreshKey={previewKey} />
                   if (['pdf', 'word', 'excel', 'ppt'].includes(cat)) return <JitViewerPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} fileName={selectedFile.name} refreshKey={previewKey} />
-                  if (cat === 'html') return <HtmlEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
+                  if (cat === 'html') return <HtmlEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} onSendToChat={filePreviewCtx?.sendToChat} />
                   if (cat === 'code') return <CodeEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
                   if (cat === 'markdown') return <MarkdownEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} projectId={projectId} filePath={selectedFile.path} />
                   if (cat === 'text') return <TextEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />

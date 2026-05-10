@@ -4,6 +4,7 @@ import { createContext, useContext } from 'react'
 
 const FilePreviewContext = createContext<{
   previewFile: (filePath: string) => void
+  sendToChat?: (data: { html: string; css: string; element: string }) => void
 } | null>(null)
 
 export const FilePreviewProvider = FilePreviewContext.Provider

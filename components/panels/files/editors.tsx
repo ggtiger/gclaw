@@ -18,6 +18,11 @@ import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
 
 const CodeMirror = dynamic(() => import('@uiw/react-codemirror'), { ssr: false })
 
+const VisualEditor = dynamic(() => import('./visual-editor').then(m => ({ default: m.VisualEditor })), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" style={{ color: 'var(--color-text-muted)' }} /></div>,
+})
+
 // ─── HTML 编辑器 ───
 
 interface HtmlEditorProps {
@@ -25,11 +30,12 @@ interface HtmlEditorProps {
   fileName: string
   onSave: (content: string) => void
   saving: boolean
+  onSendToChat?: (data: { html: string; css: string; element: string }) => void
 }
 
-export function HtmlEditor({ content, fileName, onSave, saving }: HtmlEditorProps) {
+export function HtmlEditor({ content, fileName, onSave, saving, onSendToChat }: HtmlEditorProps) {
   const [editContent, setEditContent] = useState(content)
-  const [mode, setMode] = useState<'edit' | 'preview' | 'split'>('split')
+  const [mode, setMode] = useState<'edit' | 'preview' | 'split' | 'visual'>('split')
   const extensions = getCodeMirrorExtensions(fileName)
   const isDark = useIsDark()
 
@@ -53,6 +59,10 @@ export function HtmlEditor({ content, fileName, onSave, saving }: HtmlEditorProp
           <button onClick={() => setMode('preview')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
             style={{ color: mode === 'preview' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'preview' ? 'var(--color-primary-subtle)' : 'transparent' }}>
             预览
+          </button>
+          <button onClick={() => setMode('visual')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
+            style={{ color: mode === 'visual' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'visual' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+            可视化
           </button>
           <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer ml-1"
             style={{ color: 'var(--color-primary)' }} title="Ctrl+S 保存">
@@ -81,6 +91,18 @@ export function HtmlEditor({ content, fileName, onSave, saving }: HtmlEditorProp
             sandbox="allow-scripts allow-same-origin"
             title="HTML 预览"
           />
+        )}
+        {mode === 'visual' && (
+          <div className="w-full h-full">
+            <VisualEditor
+              content={editContent}
+              onChange={setEditContent}
+              onSave={handleSave}
+              onSendToChat={onSendToChat}
+              fileName={fileName}
+              saving={saving}
+            />
+          </div>
         )}
       </div>
     </div>

@@ -417,7 +417,10 @@ export function ChatLayout() {
         <main
           className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden glass relative`}
         >
-          <FilePreviewProvider value={{ previewFile }}>
+          <FilePreviewProvider value={{ previewFile, sendToChat: (data) => {
+            const message = `请修改 HTML 文件中的以下内容：\n\n选中元素：\n\`\`\`html\n${data.element.length > 2000 ? data.element.slice(0, 2000) + '\n...（已截断）' : data.element}\n\`\`\`\n\n请帮我修改这个元素`
+            chat.sendMessage(message)
+          } }}>
             <ChatPanel
             messages={chat.messages}
             initialLoading={chat.initialLoading}
