@@ -345,6 +345,29 @@ export function ProjectSettingsPanel({ projectId, onClose }: ProjectSettingsPane
         </div>
       </div>
 
+      {/* Auto Compact Threshold */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+          自动压缩阈值
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          value={settings.autoCompactThreshold ?? ''}
+          onChange={e => {
+            const v = e.target.value
+            updateField('autoCompactThreshold', v === '' ? undefined as unknown as number : parseFloat(v))
+          }}
+          placeholder="0.6（即上下文使用60%时触发压缩）"
+          className="w-full text-xs bg-gray-100 dark:bg-white/10 rounded-lg px-3 py-1.5 outline-none"
+        />
+        <div className="text-xs mt-1 text-gray-400">
+          范围 0-1，达到此比例时触发上下文压缩，默认 0.6
+        </div>
+      </div>
+
       {/* CWD */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3">
         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">

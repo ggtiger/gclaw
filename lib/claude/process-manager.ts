@@ -216,6 +216,22 @@ export async function* executeChat(
   }
   const sdkEnv: Record<string, string | undefined> = { ...process.env, ...skillEnv, ...gclawEnv }
 
+  // 将供应商的 maxOutputTokens 传给 SDK 作为自动压缩窗口
+  const activeProvider = (globalSettings.providers || []).find(p => p.id === providerConfig.providerId)
+  if (activeProvider?.maxOutputTokens && activeProvider.maxOutputTokens > 0) {
+    sdkEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = activeProvider.maxOutputTokens.toString()
+  }
+
+  // 设置自动压缩触发百分比
+  const compactThreshold = settings.autoCompactThreshold
+  if (compactThreshold && compactThreshold > 0 && compactThreshold <= 1) {
+    sdkEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = Math.round(compactThreshold * 100).toString()
+  }
+
+  if (sdkEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW || sdkEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE) {
+    logger.info(`[GClaw] Auto-compact config: window=${sdkEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW || 'default'}, threshold=${sdkEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || 'default'}%`)
+  }
+
   // 加载启用的子 Agent 定义
   const agentDefs = getEnabledAgentDefinitions(projectId)
 
@@ -793,6 +809,8 @@ export async function* executeChat(
                 event: 'context_update',
                 data: { inputTokens: errorInputTokens, model: lastModel },
               }
+              updateProjectSettings(projectId, { sessionId: '' })
+              logger.info(`[GClaw] Session cleared due to context overflow, will start new session on next message`)
             }
             yield { event: 'error', data: { message: errorMessage } }
             break
@@ -841,6 +859,8 @@ export async function* executeChat(
             event: 'context_update',
             data: { inputTokens: errorInputTokens, model: lastModel },
           }
+          updateProjectSettings(projectId, { sessionId: '' })
+          logger.info(`[GClaw] Session cleared due to context overflow, will start new session on next message`)
         }
         yield { event: 'error', data: { message: fullError } }
       }
