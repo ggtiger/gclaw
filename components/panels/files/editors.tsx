@@ -197,10 +197,8 @@ function splitTextByEmoji(text: string): { text: string; isEmoji: boolean }[] {
 // 导出辅助：从 DOM 元素递归提取带格式的 TextRun[]，emoji 字符使用专用字体
 function extractTextRuns(el: HTMLElement, docx: any, fmt: Record<string, any> = {}): any[] {
   const runs: any[] = []
-  // emoji runs：只保留 size 和 color，去掉 bold/italics/font 等文字样式
-  const emojiFmt: Record<string, any> = {}
-  if (fmt.size) emojiFmt.size = fmt.size
-  if (fmt.color) emojiFmt.color = fmt.color
+  // 统一字体设置，确保行高一致
+  const baseFont = fmt.font || 'Microsoft YaHei'
 
   for (const node of Array.from(el.childNodes)) {
     if (node.nodeType === 3) {
@@ -209,9 +207,10 @@ function extractTextRuns(el: HTMLElement, docx: any, fmt: Record<string, any> = 
         const segments = splitTextByEmoji(text)
         for (const seg of segments) {
           if (seg.isEmoji) {
-            runs.push(new docx.TextRun({ text: seg.text, font: 'Segoe UI Emoji', size: 21, ...emojiFmt }))
+            // emoji 使用 Segoe UI Emoji，但保持相同 size
+            runs.push(new docx.TextRun({ text: seg.text, font: 'Segoe UI Emoji', size: fmt.size || 21, color: fmt.color || '24292f' }))
           } else if (seg.text) {
-            runs.push(new docx.TextRun({ text: seg.text, size: 21, color: fmt.color || '24292f', ...fmt }))
+            runs.push(new docx.TextRun({ text: seg.text, font: baseFont, size: fmt.size || 21, color: fmt.color || '24292f', ...fmt }))
           }
         }
       }
@@ -219,11 +218,11 @@ function extractTextRuns(el: HTMLElement, docx: any, fmt: Record<string, any> = 
       const child = node as HTMLElement
       const tag = child.tagName.toLowerCase()
       if (tag === 'br') { runs.push(new docx.TextRun({ break: 1 })); continue }
-      const childFmt = { ...fmt }
+      const childFmt = { ...fmt, font: baseFont }
       if (tag === 'strong' || tag === 'b') childFmt.bold = true
       else if (tag === 'em' || tag === 'i') childFmt.italics = true
       else if (tag === 'del' || tag === 's') childFmt.strike = true
-      else if (tag === 'code') { childFmt.font = 'Consolas'; childFmt.size = 19 }
+      else if (tag === 'code') { childFmt.font = 'Consolas'; childFmt.size = fmt.size ? fmt.size - 2 : 19 }
       runs.push(...extractTextRuns(child, docx, childFmt))
     }
   }
@@ -298,7 +297,8 @@ async function svgToImageData(svg: SVGSVGElement): Promise<{ data: Uint8Array; w
       const img = new Image()
       img.onload = () => {
         const c = document.createElement('canvas')
-        const scale = 2
+        // 高分辨率渲染（6x）确保 Word 导出清晰
+        const scale = 6
         c.width = w * scale
         c.height = h * scale
         const ctx = c.getContext('2d')
@@ -311,7 +311,8 @@ async function svgToImageData(svg: SVGSVGElement): Promise<{ data: Uint8Array; w
     if (!canvas) return null
     const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
     if (!pngBlob) return null
-    return { data: new Uint8Array(await pngBlob.arrayBuffer()), width: w, height: h }
+    // 返回 canvas 实际尺寸（4x 分辨率）
+    return { data: new Uint8Array(await pngBlob.arrayBuffer()), width: w * 6, height: h * 6 }
   } finally {
     URL.revokeObjectURL(url)
   }
@@ -385,7 +386,7 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
         children: extractTextRuns(el, docx, { bold: true, size: cfg.size, color: cfg.color }),
         heading: [docx.HeadingLevel.HEADING_1, docx.HeadingLevel.HEADING_2, docx.HeadingLevel.HEADING_3,
           docx.HeadingLevel.HEADING_4, docx.HeadingLevel.HEADING_5, docx.HeadingLevel.HEADING_6][level - 1],
-        spacing: { before: 280, after: 160 },
+        spacing: { before: 280, after: 160, line: 240 },
         border: level <= 2 ? { bottom: { style: docx.BorderStyle.SINGLE, size: 1, color: 'd0d7de', space: 4 } } : undefined,
       }))
       return
@@ -394,11 +395,15 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
       try {
         const imgData = await svgToImageData(el as unknown as SVGSVGElement)
         if (imgData) {
-          const maxW = 480, scale = Math.min(1, maxW / imgData.width)
+          // SVG 图片：目标宽度 550（接近 Word 页面宽度），按比例缩放
+          const targetW = 550
+          const scale = targetW / imgData.width
+          const imgW = Math.round(imgData.width * scale)
+          const imgH = Math.round(imgData.height * scale)
           result.push(new docx.Paragraph({
-            children: [new docx.ImageRun({ data: imgData.data, transformation: { width: Math.round(imgData.width * scale), height: Math.round(imgData.height * scale) }, type: 'png' })],
+            children: [new docx.ImageRun({ data: imgData.data, transformation: { width: imgW, height: imgH }, type: 'png' })],
             alignment: docx.AlignmentType.CENTER,
-            spacing: { before: 240, after: 240 },
+            spacing: { before: 240, after: 240, line: 360 },
           }))
         }
       } catch (e) {
@@ -429,7 +434,7 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
           alignment: docx.AlignmentType.LEFT,
           wordWrap: false,
           autoSpaceEastAsianText: false,
-          spacing: { before: 0, after: 0, line: 240, lineRule: docx.LineRuleType.EXACT },
+          spacing: { before: 0, after: 0, line: 200, lineRule: docx.LineRuleType.EXACT },
         }))
       }
       return
@@ -441,19 +446,21 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
         result.push(new docx.Paragraph({
           children: [new docx.TextRun({ text: isOrdered ? `${idx}. ` : '• ', size: 21 }), ...extractTextRuns(li as HTMLElement, docx)],
           indent: { left: 420, hanging: 280 },
-          spacing: { before: 40, after: 40 },
+          spacing: { before: 40, after: 40, line: 240 },
         }))
         if (isOrdered) idx++
       }
       return
     }
     if (tag === 'blockquote') {
+      // blockquote 前面添加间距
+      result.push(new docx.Paragraph({ children: [], spacing: { before: 160, after: 0, line: 150  } }))
       // 用单列表格模拟 blockquote：左侧边框 + 底色连续覆盖，避免段落间距导致错位
       const children = Array.from(el.children)
       const cellParagraphs = children.map(child =>
         new docx.Paragraph({
           children: extractTextRuns(child as HTMLElement, docx, { color: '57606a', italics: true }),
-          spacing: { before: 40, after: 40, line: 360 },
+          spacing: { before: 40, after: 40, line: 300 },
         })
       )
       result.push(new docx.Table({
@@ -472,42 +479,70 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
         })],
         width: { size: 100, type: docx.WidthType.PERCENTAGE },
       }))
+      // blockquote 后面添加间距
+      result.push(new docx.Paragraph({ children: [], spacing: { before: 0, after: 160, line: 150 } }))
       return
     }
     if (tag === 'hr') {
       result.push(new docx.Paragraph({
         children: [],
         border: { bottom: { style: docx.BorderStyle.SINGLE, size: 6, color: '#D4D4D4' } },
-        spacing: { before: 200, after: 200 },
+        spacing: { before: 200, after: 200, line: 240 },
       }))
       return
     }
     // mermaid 容器：当前 div 直接包含 svg（非递归查找）
+    // 图片容器：当前 div 直接包含 img（居中显示的图片）
     if (tag === 'div') {
       const directSvgs = Array.from(el.children).filter(c => c.tagName.toLowerCase() === 'svg')
       if (directSvgs.length > 0) { for (const svg of directSvgs) { await processElement(svg as HTMLElement) }; return }
+      // 检查是否是图片容器 div（flex justify-center 包裹的图片）
+      const directImg = Array.from(el.children).find(c => c.tagName.toLowerCase() === 'img')
+      if (directImg) { await processElement(directImg as HTMLElement); return }
     }
     if (tag === 'img') {
-      // 图片：尝试获取 src 转 ImageRun（仅支持 base64 / data URL）
+      // 图片：支持 data URL 和 HTTP/API URL
       const src = (el as HTMLImageElement).src
-      if (src.startsWith('data:')) {
-        try {
+      try {
+        let imageData: Uint8Array | null = null
+        let imgType: string = 'png'
+
+        if (src.startsWith('data:')) {
+          // base64 data URL
           const match = src.match(/^data:image\/(\w+);base64,(.+)$/)
           if (match) {
-            const ext = match[1] === 'jpeg' ? 'jpg' : match[1]
+            imgType = match[1] === 'jpeg' ? 'jpg' : match[1]
             const binary = atob(match[2])
-            const data = new Uint8Array(binary.length)
-            for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i)
-            const imgEl = el as HTMLImageElement
-            const imgW = Math.min(480, imgEl.width || 400)
-            const imgH = imgEl.height ? Math.round(imgW * imgEl.height / imgEl.width) : 300
-            result.push(new docx.Paragraph({
-              children: [new docx.ImageRun({ data, transformation: { width: imgW, height: imgH }, type: ext as any })],
-              alignment: docx.AlignmentType.CENTER,
-              spacing: { before: 160, after: 160 },
-            }))
+            imageData = new Uint8Array(binary.length)
+            for (let i = 0; i < binary.length; i++) imageData[i] = binary.charCodeAt(i)
           }
-        } catch {}
+        } else if (src.startsWith('/') || src.startsWith('http')) {
+          // API URL 或 HTTP URL，fetch 图片
+          const res = await fetch(src)
+          if (res.ok) {
+            const blob = await res.blob()
+            imageData = new Uint8Array(await blob.arrayBuffer())
+            // 从 MIME 类型推断图片类型
+            const mime = blob.type || 'image/png'
+            imgType = mime.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
+          }
+        }
+
+        if (imageData) {
+          const imgEl = el as HTMLImageElement
+          // 使用图片原始尺寸（naturalWidth/naturalHeight），最大 600（接近 Word 页面宽度）
+          const naturalW = imgEl.naturalWidth || imgEl.width || 400
+          const naturalH = imgEl.naturalHeight || imgEl.height || 300
+          const imgW = Math.min(600, naturalW)
+          const imgH = Math.round(imgW * naturalH / naturalW)
+          result.push(new docx.Paragraph({
+            children: [new docx.ImageRun({ data: imageData, transformation: { width: imgW, height: imgH }, type: imgType as any })],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 160, after: 160, line: 300 },
+          }))
+        }
+      } catch (e) {
+        console.warn('Word export: failed to fetch image', src, e)
       }
       return
     }
@@ -531,7 +566,7 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
                 return new docx.TableCell({
                   children: [new docx.Paragraph({
                     children: extractTextRuns(cell as HTMLElement, docx, isHeader ? { bold: true, color: '1a1a2e' } : {}),
-                    spacing: { before: 60, after: 60 },
+                    spacing: { before: 60, after: 60, line: 240 },
                   })],
                   margins: { top: 40, bottom: 40, left: 80, right: 80 },
                   shading: isHeader ? { fill: 'E8E8E8' } : undefined,
@@ -545,10 +580,14 @@ async function domToDocxParagraphs(container: HTMLElement, docx: any): Promise<a
       }
       return
     }
-    if (el.textContent?.trim()) {
-      const hasBlocks = Array.from(el.children).some(c => ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'pre', 'blockquote', 'table', 'div'].includes(c.tagName.toLowerCase()))
+    // 检查是否有子元素需要递归处理（即使没有文本内容）
+    const hasChildren = el.children.length > 0
+    if (hasChildren) {
+      const hasBlocks = Array.from(el.children).some(c => ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'pre', 'blockquote', 'table', 'div', 'img', 'svg'].includes(c.tagName.toLowerCase()))
       if (hasBlocks) { for (const child of Array.from(el.children)) { await processElement(child as HTMLElement) } }
-      else { result.push(new docx.Paragraph({ children: extractTextRuns(el, docx), spacing: { after: 160, line: 360 } })) }
+      else if (el.textContent?.trim()) { result.push(new docx.Paragraph({ children: extractTextRuns(el, docx), spacing: { after: 160, line: 300 } })) }
+    } else if (el.textContent?.trim()) {
+      result.push(new docx.Paragraph({ children: extractTextRuns(el, docx), spacing: { after: 160, line: 300 } }))
     }
   }
   for (const child of Array.from(container.children)) { await processElement(child as HTMLElement) }
@@ -560,9 +599,11 @@ interface MarkdownEditorProps {
   fileName: string
   onSave: (content: string) => void
   saving: boolean
+  projectId?: string
+  filePath?: string // 文件完整路径，用于解析相对路径图片
 }
 
-export function MarkdownEditor({ content, fileName, onSave, saving }: MarkdownEditorProps) {
+export function MarkdownEditor({ content, fileName, onSave, saving, projectId, filePath }: MarkdownEditorProps) {
   const [editContent, setEditContent] = useState(content)
   const [mode, setMode] = useState<'edit' | 'preview' | 'split'>('split')
   const [exporting, setExporting] = useState<'pdf' | 'word' | null>(null)
@@ -751,6 +792,7 @@ export function MarkdownEditor({ content, fileName, onSave, saving }: MarkdownEd
   }
 
   const handleExportWord = async () => {
+    console.log('[Word Export] Starting...')
     setExporting('word')
     try {
       if (!previewRef.current) return
@@ -762,6 +804,9 @@ export function MarkdownEditor({ content, fileName, onSave, saving }: MarkdownEd
           default: {
             document: {
               run: { font: { eastAsia: 'Microsoft YaHei' }, size: 21, color: '24292f' },
+              paragraph: {
+                spacing: { line: 300, lineRule: docx.LineRuleType.AUTO },
+              },
             },
           },
         },
@@ -873,7 +918,7 @@ export function MarkdownEditor({ content, fileName, onSave, saving }: MarkdownEd
         )}
         {(mode === 'preview' || mode === 'split') && (
           <div className={`${mode === 'split' ? 'w-1/2' : 'w-full'} h-full overflow-auto p-3`}>
-            <div ref={previewRef} className="markdown-body text-sm leading-[1.6]"><MarkdownRenderer content={editContent} /></div>
+            <div ref={previewRef} className="markdown-body text-sm leading-[1.6]"><MarkdownRenderer content={editContent} projectId={projectId} filePath={filePath} /></div>
           </div>
         )}
       </div>

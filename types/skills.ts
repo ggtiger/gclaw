@@ -85,6 +85,8 @@ export interface ProjectSettings {
   assistantAvatar?: string
   /** 项目级环境变量 {KEY: value}，命令执行时自动加载 */
   envVariables?: Record<string, string>
+  /** 自动压缩阈值（0-1），达到此比例时触发上下文压缩，默认 0.6 */
+  autoCompactThreshold?: number
 }
 
 export const DEFAULT_PROJECT: ProjectSettings = {
@@ -98,6 +100,7 @@ export const DEFAULT_PROJECT: ProjectSettings = {
   assistantName: '',
   assistantIcon: '',
   assistantAvatar: '',
+  autoCompactThreshold: 0.6,
 }
 
 // 合并类型，向后兼容

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { requireAdmin } from '@/lib/auth/helpers'
+import AdmZip from 'adm-zip'
 
 const SKILLS_DIR = process.env.GCLAW_SKILLS_DIR || path.join(process.cwd(), 'skills')
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -31,21 +32,40 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: '仅支持 zip 格式文件' }, { status: 400 })
     }
 
-    // 解压到临时目录获取技能名
+    // 使用 adm-zip 解压（支持中文编码）
+    const zip = new AdmZip(buffer)
+    const zipEntries = zip.getEntries()
+
+    // 解压到临时目录
     const os = await import('os')
     const tmpDir = path.join(os.tmpdir(), `gclaw-upload-${Date.now()}`)
     fs.mkdirSync(tmpDir, { recursive: true })
 
-    const tmpZip = path.join(os.tmpdir(), `gclaw-upload-${Date.now()}.zip`)
-    fs.writeFileSync(tmpZip, buffer)
+    // 解压所有条目
+    for (const entry of zipEntries) {
+      if (!entry.isDirectory) {
+        // 处理文件名编码：尝试 GBK 解码（Windows 中文 zip 常用）
+        let entryName = entry.entryName
+        try {
+          // 如果文件名看起来是乱码（非 UTF-8），尝试 GBK 解码
+          const decoded = Buffer.from(entryName, 'binary').toString('utf8')
+          if (!decoded.includes('\ufffd')) {
+            entryName = decoded
+          }
+        } catch { /* 保持原名 */ }
 
-    try {
-      const { exec } = await import('child_process')
-      const { promisify } = await import('util')
-      const execAsync = promisify(exec)
-      await execAsync(`unzip -o "${tmpZip}" -d "${tmpDir}"`, { timeout: 30000 })
-    } finally {
-      try { fs.unlinkSync(tmpZip) } catch { /* ignore */ }
+        const fullPath = path.join(tmpDir, entryName)
+        const dirPath = path.dirname(fullPath)
+
+        // 安全检查：防止 zip slip
+        const resolved = path.resolve(fullPath)
+        if (!resolved.startsWith(path.resolve(tmpDir))) {
+          continue // 跳过危险路径
+        }
+
+        fs.mkdirSync(dirPath, { recursive: true })
+        fs.writeFileSync(fullPath, entry.getData())
+      }
     }
 
     // 确定技能名：读取解压后目录结构

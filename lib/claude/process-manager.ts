@@ -779,6 +779,21 @@ export async function* executeChat(
             const errorMessage = stderrDetail
               ? `${parsed.message}\nstderr: ${stderrDetail}`
               : parsed.message
+            // 尝试从错误消息中提取 input_tokens（上下文超限错误）
+            // 匹配多种格式：API Error 400 JSON、CLI stderr、Anthropic 格式
+            const tokenMatch = errorMessage.match(/input_tokens[,\s]+(?:value|=)[=:\s]*(\d+)/i)
+              || errorMessage.match(/prompt contains at least (\d+) input tokens/i)
+              || errorMessage.match(/(\d+)\s+input tokens/i)
+              || errorMessage.match(/maximum context length is \d+ tokens.*?(\d+)\s+input/i)
+            if (tokenMatch) {
+              const errorInputTokens = parseInt(tokenMatch[1])
+              logger.warn(`[GClaw] Context exceeded, input_tokens=${errorInputTokens}`)
+              // 发送上下文更新事件，让前端显示真实的超限状态
+              yield {
+                event: 'context_update',
+                data: { inputTokens: errorInputTokens, model: lastModel },
+              }
+            }
             yield { event: 'error', data: { message: errorMessage } }
             break
           }
@@ -814,6 +829,19 @@ export async function* executeChat(
           ? sanitizeForLog(`SDK error: ${errMsg}\nstderr: ${detail}`)
           : sanitizeForLog(`SDK error: ${errMsg}`)
         logger.error('[GClaw SDK]', fullError)
+        // 尝试从 SDK 进程错误中提取 input_tokens（上下文超限）
+        const tokenMatch = fullError.match(/input_tokens[,\s]+(?:value|=)[=:\s]*(\d+)/i)
+          || fullError.match(/prompt contains at least (\d+) input tokens/i)
+          || fullError.match(/(\d+)\s+input tokens/i)
+          || fullError.match(/maximum context length is \d+ tokens.*?(\d+)\s+input/i)
+        if (tokenMatch) {
+          const errorInputTokens = parseInt(tokenMatch[1])
+          logger.warn(`[GClaw] Context exceeded in SDK error, input_tokens=${errorInputTokens}`)
+          yield {
+            event: 'context_update',
+            data: { inputTokens: errorInputTokens, model: lastModel },
+          }
+        }
         yield { event: 'error', data: { message: fullError } }
       }
     }

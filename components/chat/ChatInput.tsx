@@ -86,12 +86,13 @@ interface ChatInputProps {
   contextUsage?: number
   contextInputTokens?: number
   contextMaxTokens?: number
+  contextMaxKnown?: boolean
   onCompact?: () => void
   onClearChat?: () => void
   onSendCommand?: (commandId: string, params?: Record<string, unknown>, cwd?: string, commandName?: string) => void
 }
 
-export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings, contextUsage, contextInputTokens, contextMaxTokens, onCompact, onClearChat, onSendCommand }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTemplateSelect, onOpenSkills, onOpenAgents, onScheduleSend, onOpenSchedules, onOpenSettings, contextUsage, contextInputTokens, contextMaxTokens, contextMaxKnown, onCompact, onClearChat, onSendCommand }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
@@ -764,6 +765,7 @@ export function ChatInput({ onSend, onAbort, sending, disabled, projectId, onTem
                 inputTokens={contextInputTokens}
                 maxContext={contextMaxTokens ?? 200000}
                 contextUsage={contextUsage ?? 0}
+                maxContextKnown={contextMaxKnown ?? true}
                 onCompact={onCompact}
                 onClear={onClearChat}
                 disabled={sending}

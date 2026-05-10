@@ -38,7 +38,7 @@ interface ChatPanelProps {
   onOpenSkills?: () => void
   onOpenAgents?: () => void
   onOpenSchedules?: () => void
-  sessionStats?: { inputTokens: number; maxContext: number; contextUsage: number }
+  sessionStats?: { inputTokens: number; maxContext: number; contextUsage: number; maxContextKnown?: boolean }
   onOpenSettings?: () => void
   onScheduleSend?: (message: string, schedule: { mode: 'once' | 'interval'; runAt?: string; intervalMs?: number; label: string }) => void
   sidebarHidden?: boolean
@@ -615,6 +615,7 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           contextUsage={sessionStats?.contextUsage ?? 0}
           contextInputTokens={sessionStats?.inputTokens ?? 0}
           contextMaxTokens={sessionStats?.maxContext ?? 200000}
+          contextMaxKnown={sessionStats?.maxContextKnown ?? true}
           onCompact={() => onSend('/compact')}
           onClearChat={() => onClearChat?.()}
           onSendCommand={onSendCommand}

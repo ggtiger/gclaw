@@ -39,12 +39,14 @@ interface MarkdownRendererProps {
   isStreaming?: boolean
   projectId?: string
   projectCwd?: string
+  filePath?: string // markdown 文件路径，用于解析相对路径图片
 }
 
 // ── 文件路径检测与预处理 ──
 
 // 保护占位符，避免正则匹配到内部内容（含 www. 开头的网址）
-const PROTECT_RE = /```[\s\S]*?```|`[^`\n]+`|\[[^\]]*\]\([^)]+\)|https?:\/\/[^\s)\]"'`|]+|www\.[\w.@+-/?:&=%#]+/g
+// 注意：图片语法 ![alt](path) 要放在普通链接 [alt](path) 前面，先匹配图片
+const PROTECT_RE = /```[\s\S]*?```|`[^`\n]+`|!\[[^\]]*\]\([^)]+\)|\[[^\]]*\]\([^)]+\)|https?:\/\/[^\s)\]"'`|]+|www\.[\w.@+-/?:&=%#]+/g
 // 检测含目录分隔符且带扩展名的路径（Unix 绝对/相对 + Windows 绝对/相对）
 const FILE_PATH_RE = /(^|[\s([|"'`])((?:[A-Za-z]:[\\/]|\/)?(?:[\w.@+-]+[\\/])+[\w.@+-]+\.[a-zA-Z]{1,10})(?=[\s)\]"'`|]|$)/gm
 
@@ -54,13 +56,29 @@ function isInlineFilePath(s: string): boolean {
   return (s.includes('/') || s.includes('\\')) && /\.[a-zA-Z]{1,10}$/.test(s) && !s.includes(' ')
 }
 
-function preprocessFilePaths(content: string): string {
+// 检测相对路径（非 http/https 协议，非绝对路径）
+function isRelativePath(path: string): boolean {
+  if (!path) return false
+  if (/^(https?:|data:)/i.test(path)) return false
+  if (path.startsWith('/') || /^[A-Za-z]:[\\/]/i.test(path)) return false
+  return true
+}
+
+// 解析相对路径：基于 markdown 文件所在目录
+function resolveRelativePath(imgPath: string, mdFilePath?: string): string {
+  if (!mdFilePath || !isRelativePath(imgPath)) return imgPath
+  const lastSlash = Math.max(mdFilePath.lastIndexOf('/'), mdFilePath.lastIndexOf('\\'))
+  const mdDir = lastSlash > 0 ? mdFilePath.substring(0, lastSlash) : ''
+  return mdDir ? `${mdDir}/${imgPath}` : imgPath
+}
+
+function preprocessFilePaths(content: string, projectId?: string, mdFilePath?: string): string {
   if (!content) return content
 
   const protected_: string[] = []
   let idx = 0
 
-  // 保护代码块、内联代码、markdown 链接、URL 不被修改
+  // 保护代码块、内联代码、markdown 图片、链接、URL 不被修改
   let result = content.replace(PROTECT_RE, (m) => {
     protected_.push(m)
     return `\x00P${idx++}\x00`
@@ -69,6 +87,18 @@ function preprocessFilePaths(content: string): string {
   // 将检测到的文件路径包装为 gclaw-file: 链接（保持原始路径不变）
   result = result.replace(FILE_PATH_RE, (_match, prefix: string, path: string) => {
     return `${prefix}[${path}](gclaw-file:${path})`
+  })
+
+  // 处理 markdown 图片语法中的相对路径 → 直接生成 API URL
+  protected_.forEach((m, i) => {
+    if (m.startsWith('![') && projectId) {
+      const imgMatch = m.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+      if (imgMatch && isRelativePath(imgMatch[2])) {
+        const resolvedPath = resolveRelativePath(imgMatch[2], mdFilePath)
+        const apiUrl = `/api/projects/${projectId}/files?action=download&path=${encodeURIComponent(resolvedPath)}`
+        protected_[i] = `![${imgMatch[1]}](${apiUrl})`
+      }
+    }
   })
 
   // 恢复被保护的内容
@@ -213,8 +243,8 @@ const REMARK_PLUGINS = [remarkGfm]
 // 元组类型推断兼容 react-markdown 的 PluggableList
 const REHYPE_PLUGINS: Array<[typeof rehypeSanitize, typeof SANITIZE_SCHEMA]> = [[rehypeSanitize, SANITIZE_SCHEMA]]
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming, projectId, projectCwd }: MarkdownRendererProps) {
-  const processedContent = projectId ? preprocessFilePaths(content) : content
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming, projectId, projectCwd, filePath }: MarkdownRendererProps) {
+  const processedContent = projectId ? preprocessFilePaths(content, projectId, filePath) : content
 
   const components = useMemo(() => ({
     code({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { node?: unknown }) {
@@ -244,6 +274,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
     },
     pre({ children }: React.HTMLAttributes<HTMLElement> & { node?: unknown }) {
       return <>{children}</>
+    },
+    img({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) {
+      // 图片宽度 100%
+      return <div className="flex justify-center my-2"> <img src={src} alt={alt} className="max-w-[90%] h-auto rounded-lg my-2" style={{ border: '1px solid var(--color-border)' }} /></div>
     },
     a({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) {
       if (href?.startsWith('gclaw-file:') && projectId) {

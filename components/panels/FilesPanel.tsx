@@ -1547,7 +1547,7 @@ export default function FilesPanel({
                   if (['pdf', 'word', 'excel', 'ppt'].includes(cat)) return <JitViewerPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} fileName={selectedFile.name} refreshKey={previewKey} />
                   if (cat === 'html') return <HtmlEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
                   if (cat === 'code') return <CodeEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
-                  if (cat === 'markdown') return <MarkdownEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
+                  if (cat === 'markdown') return <MarkdownEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} projectId={projectId} filePath={selectedFile.path} />
                   if (cat === 'text') return <TextEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
                   return (
                     <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: 'var(--color-text-muted)' }}>

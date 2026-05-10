@@ -1515,7 +1515,10 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     else if (modelLower.includes('deepseek-r1') || modelLower.includes('deepseek-reasoner')) maxContext = 128_000
     else if (modelLower.includes('deepseek')) maxContext = 128_000
     else if (modelLower.includes('qwen') || modelLower.includes('qwq')) maxContext = 131_072
-    const contextUsage = maxContext > 0 ? Math.min(inputTokens / maxContext, 1) : 0
+    // 如果实际 inputTokens 超过推断的 maxContext，说明模型推断有误
+    // 此时标记 maxContextKnown = false，UI 显示未知上限
+    const maxContextKnown = inputTokens <= maxContext
+    const contextUsage = maxContextKnown && maxContext > 0 ? Math.min(inputTokens / maxContext, 1) : 0
     return {
       inputTokens,
       outputTokens,
@@ -1523,6 +1526,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       costUsd,
       model,
       maxContext,
+      maxContextKnown, // 标记上限是否已知
       contextUsage,
       messageCount: messages.length,
     }
