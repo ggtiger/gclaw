@@ -706,6 +706,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
       buf.thinkingContent = ''
       buf.lastStats = stats
       buf.sending = false
+      buf.contextInputTokens = null
+      buf.contextModel = null
       setActive(pid, false)
 
       // 同步 React state
@@ -715,6 +717,8 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
         setSending(false)
         setLastStats(stats)
         setWorkflowState(null)
+        setContextInputTokens(null)
+        setContextModel(null)
       }
     } else {
       // 普通聊天模式：保持原有逻辑

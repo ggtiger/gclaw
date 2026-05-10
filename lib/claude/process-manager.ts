@@ -221,6 +221,7 @@ export async function* executeChat(
 
   // 将供应商的 maxOutputTokens 传给 SDK 作为自动压缩窗口
   const activeProvider = (globalSettings.providers || []).find(p => p.id === providerConfig.providerId)
+    || (globalSettings.activeProviderId ? (globalSettings.providers || []).find(p => p.id === globalSettings.activeProviderId) : undefined)
   if (activeProvider?.maxOutputTokens && activeProvider.maxOutputTokens > 0) {
     sdkEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = activeProvider.maxOutputTokens.toString()
   }
