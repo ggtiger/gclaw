@@ -51,6 +51,10 @@ export interface FilesPanelProps {
   diffFilePath?: string | null
   /** diffFilePath 被消费后回调 */
   onDiffFileConsumed?: () => void
+  /** 外部请求预览的文件路径（消费后由 onPreviewFileConsumed 清除） */
+  previewFilePath?: string | null
+  /** previewFilePath 被消费后回调 */
+  onPreviewFileConsumed?: () => void
 }
 
 export interface MenuItem {

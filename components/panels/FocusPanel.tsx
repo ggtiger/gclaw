@@ -19,11 +19,13 @@ interface Props {
   onTabChange?: (tab: MainTab) => void
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
+  previewFilePath?: string | null
+  onPreviewFileConsumed?: () => void
 }
 
 type MainTab = 'focus' | 'memory' | 'files'
 
-export default function FocusPanel({ projectId, onHide, onTabChange, isFullscreen, onToggleFullscreen }: Props) {
+export default function FocusPanel({ projectId, onHide, onTabChange, isFullscreen, onToggleFullscreen, previewFilePath, onPreviewFileConsumed }: Props) {
   const {
     loading, todos, notes, events, settings,
     addTodo, toggleTodo, removeTodo,
@@ -53,6 +55,13 @@ export default function FocusPanel({ projectId, onHide, onTabChange, isFullscree
     setMainTabState(tab)
     onTabChange?.(tab)
   }
+
+  // 外部请求预览文件时自动切换到文件 tab
+  useEffect(() => {
+    if (previewFilePath) {
+      setMainTabState('files')
+    }
+  }, [previewFilePath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 延迟显示骨架屏：加载快于 200ms 时跳过骨架屏，避免闪烁
   const [showSkeleton, setShowSkeleton] = useState(false)
@@ -170,7 +179,7 @@ export default function FocusPanel({ projectId, onHide, onTabChange, isFullscree
       ) : mainTab === 'files' ? (
         /* 文件面板 */
         <div className="flex-1 min-h-0 relative">
-          <FilesPanel projectId={projectId} hideHeaderButtons />
+          <FilesPanel projectId={projectId} hideHeaderButtons previewFilePath={previewFilePath} onPreviewFileConsumed={onPreviewFileConsumed} />
         </div>
       ) : (
         /* 记忆面板 */

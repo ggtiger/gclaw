@@ -505,6 +505,7 @@ export class CommandExecutor {
       cwd: this.context.cwd || undefined,
       dangerouslySkipPermissions: true, // 工作流内跳过权限确认
       maxTurns: step.maxTurns ?? DEFAULT_MAX_TURNS,
+      skipSessionSave: true, // 工作流步骤不覆盖普通会话的 sessionId
       externalAbortController: stepAbortController,
       onAskUserQuestion: this.callbacks.onAskUserQuestion
         ? (req: AskUserQuestionRequest) => {

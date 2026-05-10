@@ -98,6 +98,8 @@ export interface ExecuteOptions {
   maxTurns?: number
   /** 外部传入的 AbortController，用于单步超时等场景 */
   externalAbortController?: AbortController
+  /** 跳过将 sessionId 持久化到 settings（工作流步骤使用，避免污染普通会话的 session） */
+  skipSessionSave?: boolean
 }
 
 /**
@@ -109,6 +111,7 @@ export async function* executeChat(
   onPermissionRequest?: (req: PermissionRequest) => void
 ): AsyncGenerator<SSEEvent> {
   const onAskUserQuestion = options.onAskUserQuestion
+  const skipSessionSave = options.skipSessionSave ?? false
 
   // 终止同一项目的已有查询（不影响其他项目）
   const projectId = options.projectId || ''
@@ -640,7 +643,7 @@ export async function* executeChat(
           case 'init':
             lastSessionId = parsed.sessionId
             lastModel = parsed.model
-            updateProjectSettings(projectId, { sessionId: parsed.sessionId })
+            if (!skipSessionSave) updateProjectSettings(projectId, { sessionId: parsed.sessionId })
             yield {
               event: 'init',
               data: { sessionId: parsed.sessionId, model: parsed.model },
@@ -766,7 +769,7 @@ export async function* executeChat(
             lastSessionId = parsed.sessionId || lastSessionId
             lastUsage = parsed.usage
             lastCost = parsed.costUsd
-            if (parsed.sessionId) {
+            if (parsed.sessionId && !skipSessionSave) {
               updateProjectSettings(projectId, { sessionId: parsed.sessionId })
             }
             yield {
@@ -809,7 +812,7 @@ export async function* executeChat(
                 event: 'context_update',
                 data: { inputTokens: errorInputTokens, model: lastModel },
               }
-              updateProjectSettings(projectId, { sessionId: '' })
+              if (!skipSessionSave) updateProjectSettings(projectId, { sessionId: '' })
               logger.info(`[GClaw] Session cleared due to context overflow, will start new session on next message`)
             }
             yield { event: 'error', data: { message: errorMessage } }
@@ -832,7 +835,7 @@ export async function* executeChat(
       if (isSessionNotFound && sessionId && !retried) {
         // sessionId 失效，清除后重试
         logger.warn(`[GClaw] Session ${sessionId} not found, retrying without resume...`)
-        updateProjectSettings(projectId, { sessionId: '' })
+        if (!skipSessionSave) updateProjectSettings(projectId, { sessionId: '' })
         stderrBuffer = ''
         retried = true
         try {
@@ -859,7 +862,7 @@ export async function* executeChat(
             event: 'context_update',
             data: { inputTokens: errorInputTokens, model: lastModel },
           }
-          updateProjectSettings(projectId, { sessionId: '' })
+          if (!skipSessionSave) updateProjectSettings(projectId, { sessionId: '' })
           logger.info(`[GClaw] Session cleared due to context overflow, will start new session on next message`)
         }
         yield { event: 'error', data: { message: fullError } }

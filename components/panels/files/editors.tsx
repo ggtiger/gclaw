@@ -283,7 +283,7 @@ export function MarkdownEditor({ content, fileName, onSave, saving, projectId, f
         )}
         {(mode === 'preview' || mode === 'split') && (
           <div className={`${mode === 'split' ? 'w-1/2' : 'w-full'} h-full overflow-auto p-3`}>
-            <div ref={previewRef} className="markdown-body text-sm leading-[1.6]"><MarkdownRenderer content={editContent} projectId={projectId} filePath={filePath} /></div>
+            <div ref={previewRef} className="markdown-body text-sm leading-[1.6]"><MarkdownRenderer content={editContent} projectId={projectId} filePath={filePath} disableFilePathAction /></div>
           </div>
         )}
       </div>

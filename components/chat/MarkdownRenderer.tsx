@@ -40,6 +40,8 @@ interface MarkdownRendererProps {
   projectId?: string
   projectCwd?: string
   filePath?: string // markdown 文件路径，用于解析相对路径图片
+  /** 禁用文件路径检测，路径显示为纯文本（文件预览场景） */
+  disableFilePathAction?: boolean
 }
 
 // ── 文件路径检测与预处理 ──
@@ -72,7 +74,7 @@ function resolveRelativePath(imgPath: string, mdFilePath?: string): string {
   return mdDir ? `${mdDir}/${imgPath}` : imgPath
 }
 
-function preprocessFilePaths(content: string, projectId?: string, mdFilePath?: string): string {
+function preprocessFilePaths(content: string, projectId?: string, mdFilePath?: string, disableFilePathAction?: boolean): string {
   if (!content) return content
 
   const protected_: string[] = []
@@ -85,9 +87,12 @@ function preprocessFilePaths(content: string, projectId?: string, mdFilePath?: s
   })
 
   // 将检测到的文件路径包装为 gclaw-file: 链接（保持原始路径不变）
-  result = result.replace(FILE_PATH_RE, (_match, prefix: string, path: string) => {
-    return `${prefix}[${path}](gclaw-file:${path})`
-  })
+  // 文件预览场景下跳过路径检测，避免内容中的路径被转换
+  if (!disableFilePathAction) {
+    result = result.replace(FILE_PATH_RE, (_match, prefix: string, path: string) => {
+      return `${prefix}[${path}](gclaw-file:${path})`
+    })
+    }
 
   // 处理 markdown 图片语法中的相对路径 → 直接生成 API URL
   protected_.forEach((m, i) => {
@@ -243,16 +248,16 @@ const REMARK_PLUGINS = [remarkGfm]
 // 元组类型推断兼容 react-markdown 的 PluggableList
 const REHYPE_PLUGINS: Array<[typeof rehypeSanitize, typeof SANITIZE_SCHEMA]> = [[rehypeSanitize, SANITIZE_SCHEMA]]
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming, projectId, projectCwd, filePath }: MarkdownRendererProps) {
-  const processedContent = projectId ? preprocessFilePaths(content, projectId, filePath) : content
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming, projectId, projectCwd, filePath, disableFilePathAction }: MarkdownRendererProps) {
+  const processedContent = projectId ? preprocessFilePaths(content, projectId, filePath, disableFilePathAction) : content
 
   const components = useMemo(() => ({
     code({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { node?: unknown }) {
       const codeText = String(children).replace(/\n$/, '')
       const isInline = !className && !codeText.includes('\n')
       if (isInline) {
-        // 内联代码中的文件路径 → 渲染为可交互组件（参考 genvis code 覆盖）
-        if (projectId && isInlineFilePath(codeText)) {
+        // 内联代码中的文件路径 → 渲染为可交互组件（文件预览场景下跳过）
+        if (!disableFilePathAction && projectId && isInlineFilePath(codeText)) {
           const filePath = codeText
           const ext = filePath.split('.').pop()?.toLowerCase() || ''
           if (IMAGE_EXTENSIONS.has(ext)) {
@@ -280,7 +285,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
       return <div className="flex justify-center my-2"> <img src={src} alt={alt} className="max-w-[90%] h-auto rounded-lg my-2" style={{ border: '1px solid var(--color-border)' }} /></div>
     },
     a({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) {
-      if (href?.startsWith('gclaw-file:') && projectId) {
+      if (!disableFilePathAction && href?.startsWith('gclaw-file:') && projectId) {
         const filePath = decodeURIComponent(href.slice('gclaw-file:'.length))
         const ext = filePath.split('.').pop()?.toLowerCase() || ''
         // 图片路径：内联预览 + lightbox + 操作按钮
@@ -300,7 +305,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
         </a>
       )
     },
-  }), [isStreaming, projectId, projectCwd])
+  }), [isStreaming, projectId, projectCwd, disableFilePathAction])
 
   return (
     <div className={`markdown-body prose prose-sm max-w-none ${isStreaming ? 'streaming-cursor' : ''}`}>

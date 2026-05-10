@@ -217,6 +217,7 @@ function countFiles(node: GitTreeNode): number {
 export default function FilesPanel({
   projectId, onToggleFullscreen, isFullscreen, onHide, hideHeaderButtons, refreshKey,
   diffFilePath, onDiffFileConsumed,
+  previewFilePath, onPreviewFileConsumed,
 }: FilesPanelProps) {
   // 文件树
   const [tree, setTree] = useState<TreeEntry[]>([])
@@ -419,6 +420,32 @@ export default function FilesPanel({
       .finally(() => setPreviewLoading(false))
     onDiffFileConsumed()
   }, [diffFilePath]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── 外部请求文件预览（从聊天工具调用预览）───
+  useEffect(() => {
+    if (!previewFilePath || !onPreviewFileConsumed) return
+    const fileName = previewFilePath.split('/').pop() || previewFilePath
+    const entry: TreeEntry = { name: fileName, path: previewFilePath, type: 'file' }
+    setSelectedFile(entry)
+    setSelectedPath(previewFilePath)
+    setPreviewKey(k => k + 1)
+    setPreviewLoading(true)
+    setPreviewError(null)
+    setDiffOldContent(null)
+    setDiffNewContent(null)
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/files?action=read&path=${encodeURIComponent(previewFilePath)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.content !== undefined) {
+          setPreviewContent(data.content)
+        } else {
+          setPreviewError(data.error || '读取文件失败')
+        }
+      })
+      .catch(err => setPreviewError(err instanceof Error ? err.message : '读取文件失败'))
+      .finally(() => setPreviewLoading(false))
+    onPreviewFileConsumed()
+  }, [previewFilePath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 扫描 git 目录 ───
   const scanGitDirs = useCallback(async () => {

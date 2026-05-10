@@ -24,8 +24,10 @@ import { useChat, useActiveProjects } from '@/hooks/useChat'
 import { useProject } from '@/hooks/useProject'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { usePreferencesStore } from '@/lib/store/usePreferencesStore'
+import { useSettingsStore } from '@/lib/store/useSettingsStore'
 import { useAuth } from '@/hooks/useAuth'
 import { isTauri } from '@/lib/tauri'
+import { FilePreviewProvider } from '@/contexts/FilePreviewContext'
 import Modal from '@/components/ui/Modal'
 import { WindowControls } from '@/components/ui/WindowControls'
 
@@ -47,6 +49,7 @@ export function ChatLayout() {
   const [devModeStatus, setDevModeStatus] = useState<{ state: string; previewUrl?: string; projectId?: string } | null>(null)
   const [filesRefreshKey, setFilesRefreshKey] = useState(0)
   const [diffFilePath, setDiffFilePath] = useState<string | null>(null)
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
   // 秘书面板当前标签（用于判断是否启用拖拽/全屏）
   const [secretaryTab, setSecretaryTab] = useState<string>('focus')
 
@@ -143,6 +146,32 @@ export function ChatLayout() {
   const currentProject = project.projects.find(p => p.id === project.currentId)
   const projectType = currentProject?.type || 'secretary'
   const isSecretary = projectType === 'secretary'
+
+  // 获取项目 cwd 用于路径转换
+  const effectiveCwd = useSettingsStore(state => state.effectiveCwd)
+  const fetchSettings = useSettingsStore(state => state.fetchSettings)
+  useEffect(() => {
+    if (project.currentId) fetchSettings(project.currentId)
+  }, [project.currentId, fetchSettings])
+
+  // 预览文件回调：切换到文件 tab + 显示右侧面板 + 设置路径
+  const previewFile = useCallback((filePath: string) => {
+    // 绝对路径转为项目相对路径（使用后端解析的 effectiveCwd，与 FilesPanel API 的 getFileRoot 一致）
+    let relPath = filePath
+    if (effectiveCwd && filePath.startsWith('/')) {
+      const normalizedCwd = effectiveCwd.replace(/\/$/, '')
+      if (filePath.startsWith(normalizedCwd + '/')) {
+        relPath = filePath.slice(normalizedCwd.length + 1)
+      }
+    }
+    setPreviewFilePath(relPath)
+    setRightPanelHidden(false)
+    if (isSecretary) {
+      setSecretaryTab('files')
+    } else {
+      setDevPanelTab('files')
+    }
+  }, [isSecretary, effectiveCwd])
 
   // 子项目列表（秘书项目用于 @转发）
   const [subProjects, setSubProjects] = useState<Array<{ id: string; name: string }>>([])
@@ -388,7 +417,8 @@ export function ChatLayout() {
         <main
           className={`flex-1 flex flex-col ${isSecretary ? 'min-w-[500px]' : 'min-w-[350px]'} overflow-hidden glass relative`}
         >
-          <ChatPanel
+          <FilePreviewProvider value={{ previewFile }}>
+            <ChatPanel
             messages={chat.messages}
             initialLoading={chat.initialLoading}
             hasMore={chat.hasMore}
@@ -410,6 +440,7 @@ export function ChatLayout() {
             onSend={handleSendWithRelay}
             onAbort={chat.abortChat}
             onClearChat={chat.clearChat}
+            onResetSession={chat.resetSession}
             onRespondPermission={chat.respondPermission}
             onRespondAskQuestion={chat.respondAskQuestion}
             stepConfirmation={chat.stepConfirmation}
@@ -458,6 +489,7 @@ export function ChatLayout() {
               }
             }}
           />
+          </FilePreviewProvider>
         </main>
         )}
 
@@ -484,7 +516,7 @@ export function ChatLayout() {
           {/* 面板内容 */}
           <div className={`w-full h-full overflow-hidden flex flex-col ${glass ? 'glass' : 'bg-white dark:bg-gray-900'}`}>
             {isSecretary ? (
-              <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} onTabChange={setSecretaryTab} isFullscreen={filesFullscreen} onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)} />
+              <FocusPanel projectId={project.currentId} onHide={() => setRightPanelHidden(true)} onTabChange={setSecretaryTab} isFullscreen={filesFullscreen} onToggleFullscreen={() => setFilesFullscreen(!filesFullscreen)} previewFilePath={previewFilePath} onPreviewFileConsumed={() => setPreviewFilePath(null)} />
             ) : (
               <>
                 {/* 开发项目 tab 栏 — 全屏时显示简化版 */}
@@ -564,6 +596,8 @@ export function ChatLayout() {
                         refreshKey={filesRefreshKey}
                         diffFilePath={diffFilePath}
                         onDiffFileConsumed={() => setDiffFilePath(null)}
+                        previewFilePath={previewFilePath}
+                        onPreviewFileConsumed={() => setPreviewFilePath(null)}
                       />
                     ) : devPanelTab === 'devPreview' ? (
                       <PreviewPanel

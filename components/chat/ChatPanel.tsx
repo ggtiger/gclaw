@@ -34,6 +34,7 @@ interface ChatPanelProps {
   onSend: (message: string, attachments?: ChatAttachment[]) => void
   onAbort: () => void
   onClearChat?: () => void
+  onResetSession?: () => void
   onOpenChannels?: () => void
   onOpenSkills?: () => void
   onOpenAgents?: () => void
@@ -98,7 +99,7 @@ function EmptyState({ onSend }: { onSend: (msg: string, attachments?: ChatAttach
   )
 }
 
-export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, sessionStats, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName, workflowState, stepConfirmation, onRespondStepConfirmation, onSendCommand }: ChatPanelProps) {
+export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingContent, sending, permissionRequest, askQuestion, statusText, projectId, hasMore, onLoadMore, onSend, onAbort, onClearChat, onResetSession, onOpenChannels, onOpenSkills, onOpenAgents, onOpenSchedules, sessionStats, onOpenSettings, onScheduleSend, sidebarHidden, onToggleSidebar, onOpenMobileSidebar, rightPanelHidden, onToggleRightPanel, onRespondPermission, onRespondAskQuestion, onUpdateMessage, projectName, workflowState, stepConfirmation, onRespondStepConfirmation, onSendCommand }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -617,7 +618,8 @@ export function ChatPanel({ messages, initialLoading, streamingBlocks, thinkingC
           contextMaxTokens={sessionStats?.maxContext ?? 200000}
           contextMaxKnown={sessionStats?.maxContextKnown ?? true}
           onCompact={() => onSend('/compact')}
-          onClearChat={() => onClearChat?.()}
+          onClearChat={() => onResetSession?.()}
+          compacting={statusText === 'compacting'}
           onSendCommand={onSendCommand}
         />
       </div>

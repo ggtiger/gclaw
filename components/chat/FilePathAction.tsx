@@ -4,6 +4,7 @@ import { useState, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Eye, ExternalLink, FolderOpen } from 'lucide-react'
 import { isTauri, openWithSystemApp, revealInFinder } from '@/lib/tauri'
+import { useFilePreview } from '@/contexts/FilePreviewContext'
 
 // ── 图片扩展名 ──
 
@@ -74,6 +75,7 @@ export const FilePathAction = memo(function FilePathAction({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const tauriEnv = isTauri()
+  const filePreview = useFilePreview()
 
   const isImage = isImageFile(filePath)
   const displayPath = truncatePath(filePath)
@@ -121,17 +123,19 @@ export const FilePathAction = memo(function FilePathAction({
     }
   }, [resolveAbsolutePath])
 
+  // 判断是否可在右侧面板预览
+  const canPreviewInPanel = !isImage && !!filePreview
+
   const handlePreview = useCallback(() => {
     if (imageUrl) {
       setLightboxOpen(true)
-    } else {
-      // 不在项目目录内，用系统应用打开
-      handleOpen()
+    } else if (filePreview) {
+      filePreview.previewFile(filePath)
     }
-  }, [imageUrl, handleOpen])
+  }, [imageUrl, filePreview, filePath])
 
-  // 非 Tauri 且无图片预览能力：仅显示路径文本
-  if (!tauriEnv && !isImage) {
+  // 非 Tauri 且无图片预览能力且无面板预览能力：仅显示路径文本
+  if (!tauriEnv && !isImage && !canPreviewInPanel) {
     return (
       <span className={compact ? 'truncate max-w-[200px]' : ''} style={{ color: 'var(--color-text-muted)' }} title={filePath}>
         {displayPath}
@@ -152,7 +156,15 @@ export const FilePathAction = memo(function FilePathAction({
           title={filePath}
         >
           {displayPath}
-          {isImage && imageUrl && (
+          {isImage && imageUrl ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxOpen(true) }}
+              className="shrink-0 p-0.5 rounded hover:bg-white/20 dark:hover:bg-white/10 cursor-pointer"
+              title="预览"
+            >
+              <Eye size={10} />
+            </button>
+          ) : canPreviewInPanel ? (
             <button
               onClick={(e) => { e.stopPropagation(); handlePreview() }}
               className="shrink-0 p-0.5 rounded hover:bg-white/20 dark:hover:bg-white/10 cursor-pointer"
@@ -160,7 +172,7 @@ export const FilePathAction = memo(function FilePathAction({
             >
               <Eye size={10} />
             </button>
-          )}
+          ) : null}
           {tauriEnv && (
             <>
               <button
@@ -197,7 +209,16 @@ export const FilePathAction = memo(function FilePathAction({
         <span className="text-[11px] font-mono truncate max-w-full" style={{ color: 'var(--color-text-muted)' }} title={filePath}>
           {filePath}
         </span>
-        {isImage && imageUrl && (
+        {isImage && imageUrl ? (
+          <button
+            onClick={() => setLightboxOpen(true)}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:bg-white/20 dark:hover:bg-white/10"
+            style={{ color: 'var(--color-primary, #7c3aed)' }}
+          >
+            <Eye size={10} />
+            预览
+          </button>
+        ) : canPreviewInPanel ? (
           <button
             onClick={handlePreview}
             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:bg-white/20 dark:hover:bg-white/10"
@@ -206,7 +227,7 @@ export const FilePathAction = memo(function FilePathAction({
             <Eye size={10} />
             预览
           </button>
-        )}
+        ) : null}
         {tauriEnv && (
           <>
             <button

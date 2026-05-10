@@ -1545,6 +1545,31 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     }
   }, [projectId])
 
+  // 重置会话（保留消息，只清除 session，类似 /clear）
+  const resetSession = useCallback(async () => {
+    try {
+      await fetch(`/api/settings?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: '' }),
+      })
+      setSessionId(null)
+      setLastStats(null)
+      // 重置流式状态中的上下文统计
+      const buf = getBuffer(projectId)
+      if (buf) {
+        buf.contextInputTokens = null
+        buf.contextModel = null
+        buf.statusText = null
+      }
+      setContextInputTokens(null)
+      setContextModel(null)
+      setStatusText(null)
+    } catch (err) {
+      console.error('Failed to reset session:', err)
+    }
+  }, [projectId])
+
   // 更新单条消息（标签/收藏操作后）
   const updateMessage = useCallback((updated: ChatMessage) => {
     setMessages(prev => prev.map(m => m.id === updated.id ? updated : m))
@@ -1736,6 +1761,7 @@ export function useChat(projectId: string, onSettingsRequired?: () => void) {
     sendMessage,
     abortChat,
     clearChat,
+    resetSession,
     loadHistory,
     hasMore,
     loadMoreMessages,
