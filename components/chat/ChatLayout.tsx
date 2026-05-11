@@ -601,6 +601,11 @@ export function ChatLayout() {
                         onDiffFileConsumed={() => setDiffFilePath(null)}
                         previewFilePath={previewFilePath}
                         onPreviewFileConsumed={() => setPreviewFilePath(null)}
+                        sendToChat={(data) => {
+                          const element = data.element.length > 2000 ? data.element.slice(0, 2000) + '\n...（已截断）' : data.element
+                          const message = `请修改 HTML 文件 ${data.fileName} 中的以下内容：\n\n选中元素：\n\`\`\`html\n${element}\n\`\`\`\n\n${data.instruction}`
+                          chat.sendMessage(message)
+                        }}
                       />
                     ) : devPanelTab === 'devPreview' ? (
                       <PreviewPanel

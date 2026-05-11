@@ -23,6 +23,15 @@ const VisualEditor = dynamic(() => import('./visual-editor').then(m => ({ defaul
   loading: () => <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" style={{ color: 'var(--color-text-muted)' }} /></div>,
 })
 
+// ─── 编辑器操作接口 ───
+
+export interface EditorActions {
+  save?: () => void
+  copy?: () => void
+  exportPdf?: () => void
+  exportWord?: () => void
+}
+
 // ─── HTML 编辑器 ───
 
 interface HtmlEditorProps {
@@ -30,46 +39,74 @@ interface HtmlEditorProps {
   fileName: string
   onSave: (content: string) => void
   saving: boolean
-  onSendToChat?: (data: { html: string; css: string; element: string }) => void
+  onSendToChat?: (data: { html: string; css: string; element: string; instruction: string; fileName: string }) => void
+  onToggleFullscreen?: () => void
+  isFullscreen?: boolean
+  mode?: 'edit' | 'preview' | 'split' | 'visual'
+  onModeChange?: (mode: 'edit' | 'preview' | 'split' | 'visual') => void
+  registerActions?: (actions: EditorActions) => void
 }
 
-export function HtmlEditor({ content, fileName, onSave, saving, onSendToChat }: HtmlEditorProps) {
+export function HtmlEditor({ content, fileName, onSave, saving, onSendToChat, onToggleFullscreen, isFullscreen, mode: externalMode, onModeChange, registerActions }: HtmlEditorProps) {
   const [editContent, setEditContent] = useState(content)
-  const [mode, setMode] = useState<'edit' | 'preview' | 'split' | 'visual'>('split')
+  const [internalMode, setInternalMode] = useState<'edit' | 'preview' | 'split' | 'visual'>('split')
+  const isExternalMode = externalMode !== undefined
+  const mode = externalMode ?? internalMode
+  const setMode = isExternalMode ? (m: typeof internalMode) => onModeChange?.(m) : setInternalMode
   const extensions = getCodeMirrorExtensions(fileName)
   const isDark = useIsDark()
 
   useEffect(() => { setEditContent(content) }, [content])
 
-  const handleSave = () => { onSave(editContent) }
+  const handleSave = useCallback(() => { onSave(editContent) }, [onSave, editContent])
+
+  useEffect(() => {
+    registerActions?.({ save: handleSave })
+  }, [handleSave, registerActions])
+
+  const handleModeChange = (newMode: 'edit' | 'preview' | 'split' | 'visual') => {
+    if (!isExternalMode && newMode === 'visual' && !isFullscreen && onToggleFullscreen) {
+      onToggleFullscreen()
+    }
+    setMode(newMode)
+  }
+
+  // 退出全屏时自动切回分栏模式
+  useEffect(() => {
+    if (!isExternalMode && !isFullscreen && mode === 'visual') {
+      setMode('split')
+    }
+  }, [isFullscreen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
-        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>HTML</span>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setMode('edit')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
-            style={{ color: mode === 'edit' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'edit' ? 'var(--color-primary-subtle)' : 'transparent' }}>
-            编辑
-          </button>
-          <button onClick={() => setMode('split')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
-            style={{ color: mode === 'split' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'split' ? 'var(--color-primary-subtle)' : 'transparent' }}>
-            分栏
-          </button>
-          <button onClick={() => setMode('preview')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
-            style={{ color: mode === 'preview' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'preview' ? 'var(--color-primary-subtle)' : 'transparent' }}>
-            预览
-          </button>
-          <button onClick={() => setMode('visual')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
-            style={{ color: mode === 'visual' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'visual' ? 'var(--color-primary-subtle)' : 'transparent' }}>
-            可视化
-          </button>
-          <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer ml-1"
-            style={{ color: 'var(--color-primary)' }} title="Ctrl+S 保存">
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 保存
-          </button>
+      {!isExternalMode && mode !== 'visual' && (
+        <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>HTML</span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => handleModeChange('edit')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              style={{ color: mode === 'edit' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'edit' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+              编辑
+            </button>
+            <button onClick={() => handleModeChange('split')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              style={{ color: mode === 'split' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'split' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+              分栏
+            </button>
+            <button onClick={() => handleModeChange('preview')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              style={{ color: mode === 'preview' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mode === 'preview' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+              预览
+            </button>
+            <button onClick={() => handleModeChange('visual')} className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)' }}>
+              可视化
+            </button>
+            <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer ml-1"
+              style={{ color: 'var(--color-primary)' }} title="Ctrl+S 保存">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 保存
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex-1 flex overflow-hidden">
         {(mode === 'edit' || mode === 'split') && (
           <div className={`${mode === 'split' ? 'w-1/2 border-r' : 'w-full'} h-full`} style={{ borderColor: 'var(--color-border)' }}>
@@ -101,6 +138,9 @@ export function HtmlEditor({ content, fileName, onSave, saving, onSendToChat }: 
               onSendToChat={onSendToChat}
               fileName={fileName}
               saving={saving}
+              onExitFullscreen={() => {
+                if (onToggleFullscreen) onToggleFullscreen()
+              }}
             />
           </div>
         )}
@@ -116,31 +156,38 @@ interface CodeEditorProps {
   fileName: string
   onSave: (content: string) => void
   saving: boolean
+  registerActions?: (actions: EditorActions) => void
 }
 
-export function CodeEditor({ content, fileName, onSave, saving }: CodeEditorProps) {
+export function CodeEditor({ content, fileName, onSave, saving, registerActions }: CodeEditorProps) {
   const [editContent, setEditContent] = useState(content)
   const [copied, setCopied] = useState(false)
   const langLabel = getLanguageLabel(fileName)
   const extensions = getCodeMirrorExtensions(fileName)
   const isDark = useIsDark()
+  const hideToolbar = registerActions !== undefined
 
   useEffect(() => {
     setEditContent(content)
   }, [content])
 
-  const handleCopy = () => {
+  const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(editContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
+  }, [editContent])
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onSave(editContent)
-  }
+  }, [onSave, editContent])
+
+  useEffect(() => {
+    registerActions?.({ save: handleSave, copy: handleCopy })
+  }, [handleSave, handleCopy, registerActions])
 
   return (
     <div className="flex flex-col h-full">
+      {!hideToolbar && (
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-1">
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{langLabel}</span>
@@ -155,6 +202,7 @@ export function CodeEditor({ content, fileName, onSave, saving }: CodeEditorProp
           </button>
         </div>
       </div>
+      )}
       <div className="flex-1 overflow-hidden">
         <CodeMirror
           value={editContent}
@@ -179,11 +227,17 @@ interface MarkdownEditorProps {
   saving: boolean
   projectId?: string
   filePath?: string // 文件完整路径，用于解析相对路径图片
+  mode?: 'edit' | 'preview' | 'split'
+  onModeChange?: (mode: 'edit' | 'preview' | 'split') => void
+  registerActions?: (actions: EditorActions) => void
 }
 
-export function MarkdownEditor({ content, fileName, onSave, saving, projectId, filePath }: MarkdownEditorProps) {
+export function MarkdownEditor({ content, fileName, onSave, saving, projectId, filePath, mode: externalMode, onModeChange, registerActions }: MarkdownEditorProps) {
   const [editContent, setEditContent] = useState(content)
-  const [mode, setMode] = useState<'edit' | 'preview' | 'split'>('split')
+  const [internalMode, setInternalMode] = useState<'edit' | 'preview' | 'split'>('split')
+  const isExternalMode = externalMode !== undefined
+  const mode = externalMode ?? internalMode
+  const setMode = isExternalMode ? (m: typeof internalMode) => onModeChange?.(m) : setInternalMode
   const [exporting, setExporting] = useState<'pdf' | 'word' | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
@@ -207,9 +261,9 @@ export function MarkdownEditor({ content, fileName, onSave, saving, projectId, f
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [exportMenuOpen])
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onSave(editContent)
-  }
+  }, [onSave, editContent])
 
   const baseName = fileName.replace(/\.md$/i, '')
 
@@ -238,8 +292,13 @@ export function MarkdownEditor({ content, fileName, onSave, saving, projectId, f
     }
   }
 
+  useEffect(() => {
+    registerActions?.({ save: handleSave, exportPdf: handleExportPdf, exportWord: handleExportWord })
+  }, [handleSave, registerActions]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="flex flex-col h-full">
+      {!isExternalMode && (
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Markdown</span>
         <div className="flex items-center gap-1">
@@ -289,6 +348,7 @@ export function MarkdownEditor({ content, fileName, onSave, saving, projectId, f
           </button>
         </div>
       </div>
+      )}
       <div className="flex-1 flex overflow-hidden">
         {(mode === 'edit' || mode === 'split') && (
           <div className={`${mode === 'split' ? 'w-1/2 border-r' : 'w-full'} h-full`} style={{ borderColor: 'var(--color-border)' }}>
@@ -320,23 +380,30 @@ interface TextEditorProps {
   fileName: string
   onSave: (content: string) => void
   saving: boolean
+  registerActions?: (actions: EditorActions) => void
 }
 
-export function TextEditor({ content, fileName, onSave, saving }: TextEditorProps) {
+export function TextEditor({ content, fileName, onSave, saving, registerActions }: TextEditorProps) {
   const [editContent, setEditContent] = useState(content)
   const extensions = getCodeMirrorExtensions(fileName)
   const isDark = useIsDark()
+  const hideToolbar = registerActions !== undefined
 
   useEffect(() => {
     setEditContent(content)
   }, [content])
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onSave(editContent)
-  }
+  }, [onSave, editContent])
+
+  useEffect(() => {
+    registerActions?.({ save: handleSave })
+  }, [handleSave, registerActions])
 
   return (
     <div className="flex flex-col h-full">
+      {!hideToolbar && (
       <div className="flex items-center justify-between px-3 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>纯文本</span>
         <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded cursor-pointer"
@@ -344,6 +411,7 @@ export function TextEditor({ content, fileName, onSave, saving }: TextEditorProp
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 保存
         </button>
       </div>
+      )}
       <div className="flex-1 overflow-hidden">
         <CodeMirror
           value={editContent}

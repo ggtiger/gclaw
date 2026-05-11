@@ -30,10 +30,12 @@ import {
   Plus,
   Minus,
   Undo2,
+  RotateCw,
   ChevronDown,
   ChevronRight,
   Upload as PushIcon,
   Send,
+  Save,
   Sparkles,
   Check,
   ListTree,
@@ -46,6 +48,7 @@ import { ContextMenu, TreeView } from './files/FileTree'
 import { FileIconSm } from './files/FileTree'
 import { ImagePreview, JitViewerPreview } from './files/previews'
 import { HtmlEditor, CodeEditor, MarkdownEditor, TextEditor, DiffEditor } from './files/editors'
+import type { EditorActions } from './files/editors'
 import { isTauri, openWithSystemApp, revealInFinder, selectDirectory } from '@/lib/tauri'
 import { useFilePreview } from '@/contexts/FilePreviewContext'
 
@@ -219,6 +222,7 @@ export default function FilesPanel({
   projectId, onToggleFullscreen, isFullscreen, onHide, hideHeaderButtons, refreshKey,
   diffFilePath, onDiffFileConsumed,
   previewFilePath, onPreviewFileConsumed,
+  sendToChat,
 }: FilesPanelProps) {
   // 文件树
   const [tree, setTree] = useState<TreeEntry[]>([])
@@ -239,6 +243,32 @@ export default function FilesPanel({
   // diff 预览模式
   const [diffOldContent, setDiffOldContent] = useState<string | null>(null)
   const [diffNewContent, setDiffNewContent] = useState<string | null>(null)
+
+  // HTML 编辑器模式（外部控制）
+  const [htmlMode, setHtmlMode] = useState<'edit' | 'preview' | 'split' | 'visual'>('split')
+  // Markdown 编辑器模式（外部控制）
+  const [mdMode, setMdMode] = useState<'edit' | 'preview' | 'split'>('split')
+  // 图片缩放 + 旋转
+  const [imageZoom, setImageZoom] = useState(1)
+  const [imageRotation, setImageRotation] = useState(0)
+  // 文件标签栏：自适应宽窄模式
+  const tabBarRef = useRef<HTMLDivElement>(null)
+  const [compactMode, setCompactMode] = useState(false)
+  const [mdExportOpen, setMdExportOpen] = useState(false)
+  const [fileActionsOpen, setFileActionsOpen] = useState(false)
+
+  useEffect(() => {
+    const el = tabBarRef.current
+    if (!el) return
+    const observer = new ResizeObserver(entries => {
+      setCompactMode(entries[0].contentRect.width < 580)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  })
+  // 编辑器操作注册
+  const editorActionsRef = useRef<EditorActions>({})
+  const handleRegisterActions = useCallback((actions: EditorActions) => { editorActionsRef.current = actions }, [])
 
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
@@ -271,7 +301,7 @@ export default function FilesPanel({
 
   // 删除确认
   const [pendingDelete, setPendingDelete] = useState<TreeEntry | null>(null)
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+
   const [treeWidth, setTreeWidth] = useState(180)
   const [isDraggingSplit, setIsDraggingSplit] = useState(false)
   const splitDragRef = useRef(false)
@@ -303,14 +333,46 @@ export default function FilesPanel({
   const [cwdDropdownOpen, setCwdDropdownOpen] = useState(false)
   const [cwdRefreshKey, setCwdRefreshKey] = useState(0)
 
-  // 全屏切换时自动调整树宽度
+  // 全屏切换时自动调整树宽度 + 刷新当前文件
   useEffect(() => {
     if (isFullscreen) {
       setTreeWidth(300)
     } else if (treeWidth > 220) {
       setTreeWidth(180)
     }
+    if (selectedFile) {
+      setPreviewKey(k => k + 1)
+      loadFileContent(selectedFile)
+    }
   }, [isFullscreen])
+
+  // HTML 编辑器模式切换（含全屏切换）
+  const handleHtmlModeChange = useCallback((newMode: 'edit' | 'preview' | 'split' | 'visual') => {
+    if (newMode === 'visual' && !isFullscreen && onToggleFullscreen) {
+      onToggleFullscreen()
+    }
+    setHtmlMode(newMode)
+  }, [isFullscreen, onToggleFullscreen])
+
+  // 退出全屏时自动切回分栏
+  useEffect(() => {
+    if (!isFullscreen && htmlMode === 'visual') {
+      setHtmlMode('split')
+    }
+  }, [isFullscreen, htmlMode])
+
+  // 文件切换时重置 HTML/Markdown 模式
+  useEffect(() => {
+    setHtmlMode('split')
+    setMdMode('split')
+    setImageZoom(1)
+    setImageRotation(0)
+    setFileActionsOpen(false)
+    editorActionsRef.current = {}
+  }, [selectedFile?.path]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 当前文件类型
+  const selectedFileCategory = selectedFile ? getFileCategory(selectedFile.name) : null
 
   // ─── 加载当前工作目录（cwd）───
   useEffect(() => {
@@ -1069,256 +1131,169 @@ export default function FilesPanel({
 
   return (
     <div className="flex flex-col h-full bg-transparent">
-      {/* 工具栏 */}
+      {/* 合并工具栏 + 工作目录 + Git 信息 */}
       <div
         data-tauri-drag-region
-        className="fp-header flex items-center justify-between px-3 pt-2 pb-2 py-1.5 border-b shrink-0 select-none"
+        className="fp-header flex items-center justify-between px-2 py-1 border-b shrink-0 select-none"
         style={{ borderColor: 'var(--panel-border)', WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className="flex items-center gap-1 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {/* 左侧：收起 + 图标 + 工作目录 + Git 信息 */}
+        <div className="flex items-center gap-1.5 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {!hideHeaderButtons && onHide && !isFullscreen && (
             <button onClick={onHide} className="p-1 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors cursor-pointer" title="收起面板">
               <PanelRightClose size={14} />
             </button>
           )}
           <Code2 size={16} style={{ color: 'var(--color-primary)' }} />
-          <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>文件</span>
-        </div>
-        <div className="fp-toolbar flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <button onClick={() => startCreate('file', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件">
-            <FilePlus size={15} />
-          </button>
-          <button onClick={refreshCurrentFile} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title={selectedFile ? '刷新当前文件' : '刷新文件树'}>
-            <RefreshCw size={15} />
-          </button>
-          <button onClick={() => startCreate('folder', '')} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件夹">
-            <FolderPlus size={15} />
-          </button>
-          <button onClick={() => { uploadDirRef.current = ''; fileInputRef.current?.click() }} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="上传" disabled={uploading}>
-            {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-          </button>
-          {selectedFile && (
-            <button onClick={() => {
-              const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(selectedFile.path)}`
-              const a = document.createElement('a'); a.href = url; a.download = selectedFile.name; a.click()
-            }} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="下载当前文件">
-              <Download size={15} />
-            </button>
-          )}
-          {selectedFile && isTauri() && (
-            <button onClick={() => handleOpenLocal(selectedFile.path)} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="本地打开">
-              <ExternalLink size={15} />
-            </button>
-          )}
-          {selectedFile && isTauri() && (
-            <button onClick={() => handleRevealInDir(selectedFile.path)} className="fp-extra p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="打开所在目录">
-              <FolderOpen size={15} />
-            </button>
-          )}
-          <div className="fp-more relative">
-            <button onClick={() => setMoreMenuOpen(!moreMenuOpen)} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="更多">
-              <MoreHorizontal size={15} />
-            </button>
-            {moreMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMoreMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[140px]" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                  <button onClick={() => { startCreate('folder', ''); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
-                    <FolderPlus size={13} /> 新建文件夹
-                  </button>
-                  <button onClick={() => { uploadDirRef.current = ''; fileInputRef.current?.click(); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }} disabled={uploading}>
-                    <Upload size={13} /> {uploading ? '上传中...' : '上传文件'}
-                  </button>
-                  {selectedFile && (
-                    <button onClick={() => {
-                      const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(selectedFile.path)}`
-                      const a = document.createElement('a'); a.href = url; a.download = selectedFile.name; a.click()
-                      setMoreMenuOpen(false)
-                    }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
-                      <Download size={13} /> 下载文件
-                    </button>
-                  )}
-                  {selectedFile && isTauri() && (
-                    <button onClick={() => { handleOpenLocal(selectedFile.path); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
-                      <ExternalLink size={13} /> 本地打开
-                    </button>
-                  )}
-                  {selectedFile && isTauri() && (
-                    <button onClick={() => { handleRevealInDir(selectedFile.path); setMoreMenuOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--color-bg-secondary)]" style={{ color: 'var(--color-text-secondary)' }}>
-                      <FolderOpen size={13} /> 打开目录
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* 工作目录 + Git 信息条 */}
-      <div className="px-2 py-1 border-b shrink-0 flex items-center gap-1.5 min-w-0" style={{ borderColor: 'var(--panel-border)' }}>
-        <FolderOpen size={11} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-        <div className="relative flex-1 min-w-0">
-          <button
-            onClick={() => setCwdDropdownOpen(!cwdDropdownOpen)}
-            className="w-full text-[11px] text-left truncate cursor-pointer hover:underline"
-            style={{ color: projectCwd ? 'var(--color-text-secondary)' : 'var(--color-text-muted)' }}
-            title={projectCwd || '默认目录'}
-          >
-            {projectCwd ? (
+          {/* 工作目录 */}
+          <FolderOpen size={11} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+          <div className="relative min-w-0">
+            <button
+              onClick={() => setCwdDropdownOpen(!cwdDropdownOpen)}
+              className="text-[11px] text-left truncate cursor-pointer hover:underline"
+              style={{ color: projectCwd ? 'var(--color-text-secondary)' : 'var(--color-text-muted)' }}
+              title={projectCwd || '默认目录'}
+            >
+              {projectCwd ? (
+                <>
+                  <span className="opacity-60">~/</span>
+                  {projectCwd.split('/').slice(-2).join('/')}
+                </>
+              ) : '默认'}
+            </button>
+            {cwdDropdownOpen && (
               <>
-                <span className="opacity-60">~/</span>
-                {projectCwd.split('/').slice(-2).join('/')}
-              </>
-            ) : '项目默认目录'}
-          </button>
-          {cwdDropdownOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setCwdDropdownOpen(false)} />
-              <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[220px]"
-                style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                <button
-                  onClick={() => handleChangeCwd('')}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
-                  style={{ color: !projectCwd ? 'var(--color-primary)' : 'var(--color-text)' }}
-                >
-                  {!projectCwd ? <Check size={10} /> : <Folder size={10} />}
-                  项目默认目录
-                </button>
-                {projectCwd && (
+                <div className="fixed inset-0 z-40" onClick={() => setCwdDropdownOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[220px]"
+                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
                   <button
                     onClick={() => handleChangeCwd('')}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
-                    style={{ color: 'var(--color-text-muted)' }}
+                    style={{ color: !projectCwd ? 'var(--color-primary)' : 'var(--color-text)' }}
                   >
-                    <Folder size={10} />
-                    <span className="truncate">{projectCwd}</span>
-                    <span className="ml-auto text-red-400 hover:text-red-500 shrink-0">移除</span>
+                    {!projectCwd ? <Check size={10} /> : <Folder size={10} />}
+                    项目默认目录
                   </button>
-                )}
-                {isTauri() && (
-                  <button
-                    onClick={handleSelectDirectory}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
-                    style={{ color: 'var(--color-primary)' }}
-                  >
-                    <FolderPlus size={10} />
-                    选择本地目录...
-                  </button>
-                )}
-              </div>
-            </>
+                  {projectCwd && (
+                    <button
+                      onClick={() => handleChangeCwd('')}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      <Folder size={10} />
+                      <span className="truncate">{projectCwd}</span>
+                      <span className="ml-auto text-red-400 hover:text-red-500 shrink-0">移除</span>
+                    </button>
+                  )}
+                  {isTauri() && (
+                    <button
+                      onClick={handleSelectDirectory}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                      style={{ color: 'var(--color-primary)' }}
+                    >
+                      <FolderPlus size={10} />
+                      选择本地目录...
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Git 分支 */}
+          {isGitRepo && activeGitStatus?.branch && (
+            <div className="relative">
+              <button
+                onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
+                className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors shrink-0"
+                style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}
+                title="切换分支"
+              >
+                {switchingBranch ? <Loader2 size={9} className="animate-spin" /> : <GitBranch size={9} />}
+                {activeGitStatus.branch}
+                <ChevronDown size={8} />
+              </button>
+              {branchDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setBranchDropdownOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[120px] max-h-40 overflow-y-auto"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                    {activeGitStatus.branches.map(b => (
+                      <button key={b.name}
+                        onClick={() => { if (!b.isCurrent) handleCheckout(b.name) }}
+                        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ color: b.isCurrent ? 'var(--color-primary)' : 'var(--color-text)' }}
+                      >
+                        {b.isCurrent ? <Check size={10} /> : <GitBranch size={10} />}
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Git 目录切换 */}
+          {gitDirs.length > 1 && isGitRepo && (
+            <div className="relative">
+              <button
+                onClick={() => setGitDirDropdownOpen(!gitDirDropdownOpen)}
+                className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors shrink-0"
+                style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)' }}
+                title="切换 Git 目录"
+              >
+                <Folder size={9} />
+                {activeGitDir === '' ? '根目录' : activeGitDir || '根目录'}
+                <ChevronDown size={8} />
+              </button>
+              {gitDirDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setGitDirDropdownOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[140px] max-h-40 overflow-y-auto"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                    {gitDirs.map(d => (
+                      <button key={d.path || '__root__'}
+                        onClick={() => { setActiveGitDir(d.path); setGitDirDropdownOpen(false) }}
+                        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
+                        style={{ color: (activeGitDir ?? '') === d.path ? 'var(--color-primary)' : 'var(--color-text)' }}
+                      >
+                        {((activeGitDir ?? '') === d.path) ? <Check size={10} /> : <Folder size={10} />}
+                        {d.path === '' ? '根目录' : d.path}
+                        <span style={{ color: 'var(--color-text-muted)' }}>{d.branch}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
-        {projectCwd && (
-          <button
-            onClick={() => handleChangeCwd('')}
-            className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
-            style={{ color: 'var(--color-text-muted)' }}
-            title="重置为默认目录"
-          >
-            <X size={10} />
+
+        {/* 右侧：操作按钮 */}
+        <div className="fp-toolbar flex items-center gap-1 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <button onClick={() => startCreate('file', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件">
+            <FilePlus size={15} />
           </button>
-        )}
-
-        {/* 分隔 */}
-        <span className="shrink-0 w-px h-3" style={{ backgroundColor: 'var(--color-border)' }} />
-
-        {/* Git 分支 */}
-        {isGitRepo && activeGitStatus?.branch && (
-          <div className="relative">
-            <button
-              onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
-              className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors shrink-0"
-              style={{ backgroundColor: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}
-              title="切换分支"
-            >
-              {switchingBranch ? <Loader2 size={9} className="animate-spin" /> : <GitBranch size={9} />}
-              {activeGitStatus.branch}
-              <ChevronDown size={8} />
-            </button>
-            {branchDropdownOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setBranchDropdownOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[120px] max-h-40 overflow-y-auto"
-                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                  {activeGitStatus.branches.map(b => (
-                    <button key={b.name}
-                      onClick={() => { if (!b.isCurrent) handleCheckout(b.name) }}
-                      className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
-                      style={{ color: b.isCurrent ? 'var(--color-primary)' : 'var(--color-text)' }}
-                    >
-                      {b.isCurrent ? <Check size={10} /> : <GitBranch size={10} />}
-                      {b.name}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Git 目录切换 */}
-        {gitDirs.length > 1 && isGitRepo && (
-          <div className="relative">
-            <button
-              onClick={() => setGitDirDropdownOpen(!gitDirDropdownOpen)}
-              className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-pointer transition-colors shrink-0"
-              style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text-muted)' }}
-              title="切换 Git 目录"
-            >
-              <Folder size={9} />
-              {activeGitDir === '' ? '根目录' : activeGitDir || '根目录'}
-              <ChevronDown size={8} />
-            </button>
-            {gitDirDropdownOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setGitDirDropdownOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[140px] max-h-40 overflow-y-auto"
-                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                  {gitDirs.map(d => (
-                    <button key={d.path || '__root__'}
-                      onClick={() => { setActiveGitDir(d.path); setGitDirDropdownOpen(false) }}
-                      className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)]"
-                      style={{ color: (activeGitDir ?? '') === d.path ? 'var(--color-primary)' : 'var(--color-text)' }}
-                    >
-                      {((activeGitDir ?? '') === d.path) ? <Check size={10} /> : <Folder size={10} />}
-                      {d.path === '' ? '根目录' : d.path}
-                      <span style={{ color: 'var(--color-text-muted)' }}>{d.branch}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* 刷新目录 */}
-        <button
-          onClick={() => { fetchTree(); fetchGitStatus() }}
-          className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
-          style={{ color: 'var(--color-text-muted)' }}
-          title="刷新目录"
-        >
-          <RefreshCw size={11} />
-        </button>
-
-        {/* 打开目录所在位置 */}
-        {isTauri() && (
-          <button
-            onClick={async () => {
+          <button onClick={fetchTree} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="刷新项目目录">
+            <RefreshCw size={15} />
+          </button>
+          <button onClick={() => startCreate('folder', '')} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="新建文件夹">
+            <FolderPlus size={15} />
+          </button>
+          <button onClick={() => { uploadDirRef.current = ''; fileInputRef.current?.click() }} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="上传" disabled={uploading}>
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+          </button>
+          {isTauri() && (
+            <button onClick={async () => {
               const dirPath = effectiveCwd || projectCwd
-              if (dirPath) {
-                try { await revealInFinder(dirPath) } catch { /* ignore */ }
-              }
-            }}
-            className="shrink-0 p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
-            style={{ color: 'var(--color-text-muted)' }}
-            title="打开目录所在位置"
-          >
-            <ExternalLink size={11} />
-          </button>
-        )}
+              if (dirPath) { try { await revealInFinder(dirPath) } catch { /* ignore */ } }
+            }} className="p-1 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="打开目录位置">
+              <ExternalLink size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 错误 */}
@@ -1543,17 +1518,200 @@ export default function FilesPanel({
         <div className="flex-1 overflow-hidden min-w-0 flex flex-col">
           {selectedFile ? (
             <>
-              <div className="flex items-center gap-1.5 px-2 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
-                <FileIconSm name={selectedFile.name} type={selectedFile.type} />
-                <span className="text-sm truncate flex-1 min-w-0" style={{ color: 'var(--color-text)' }}>{selectedFile.name}</span>
-                <button
-                  onClick={() => { setSelectedFile(null); setSelectedPath(null); setPreviewContent(null); setDiffOldContent(null); setDiffNewContent(null) }}
-                  className="p-0.5 rounded cursor-pointer shrink-0 hover:bg-[var(--color-bg-tertiary)]"
-                  style={{ color: 'var(--color-text-muted)' }}
-                  title="关闭预览"
-                >
-                  <X size={14} />
-                </button>
+              {/* 文件标签栏：左中可溢出，右侧固定 */}
+              <div className="flex items-center px-2 py-1 border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+                {/* 左侧 + 中间内容：可溢出裁剪 */}
+                <div ref={tabBarRef} className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+                  <FileIconSm name={selectedFile.name} type={selectedFile.type} />
+                  <span className="text-xs truncate shrink-0 max-w-[100px]" style={{ color: 'var(--color-text)' }}>{selectedFile.name}</span>
+                  {/* HTML 模式切换 */}
+                  {selectedFileCategory === 'html' && htmlMode !== 'visual' && (
+                    <>
+                      <button onClick={() => handleHtmlModeChange('edit')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: htmlMode === 'edit' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: htmlMode === 'edit' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+                        编辑
+                      </button>
+                      <button onClick={() => handleHtmlModeChange('split')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: htmlMode === 'split' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: htmlMode === 'split' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+                        分栏
+                      </button>
+                      <button onClick={() => handleHtmlModeChange('preview')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: htmlMode === 'preview' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: htmlMode === 'preview' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+                        预览
+                      </button>
+                      <button onClick={() => handleHtmlModeChange('visual')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: 'var(--color-text-secondary)' }}>
+                        可视化
+                      </button>
+                    </>
+                  )}
+                  {/* Markdown 模式切换 */}
+                  {selectedFileCategory === 'markdown' && (
+                    <>
+                      <button onClick={() => setMdMode('edit')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: mdMode === 'edit' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mdMode === 'edit' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+                        编辑
+                      </button>
+                      <button onClick={() => setMdMode('split')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: mdMode === 'split' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mdMode === 'split' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+                        分栏
+                      </button>
+                      <button onClick={() => setMdMode('preview')} className="text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0"
+                        style={{ color: mdMode === 'preview' ? 'var(--color-primary)' : 'var(--color-text-secondary)', backgroundColor: mdMode === 'preview' ? 'var(--color-primary-subtle)' : 'transparent' }}>
+                        预览
+                      </button>
+                    </>
+                  )}
+                  {/* 弹性间距 */}
+                  <div className="flex-1 min-w-0" />
+                  {/* 图片：缩放 + 旋转 */}
+                  {selectedFileCategory === 'image' && (
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button onClick={() => setImageZoom(z => Math.max(0.25, z - 0.25))} className="p-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                        <Minus size={13} />
+                      </button>
+                      <span className="text-[10px] min-w-[2rem] text-center shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+                        {Math.round(imageZoom * 100)}%
+                      </span>
+                      <button onClick={() => setImageZoom(z => Math.min(3, z + 0.25))} className="p-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                        <Plus size={13} />
+                      </button>
+                      {imageZoom !== 1 && (
+                        <button onClick={() => setImageZoom(1)} className="text-[11px] px-1 py-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                          重置
+                        </button>
+                      )}
+                      <button onClick={() => setImageRotation(r => (r + 90) % 360)} className="p-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="顺时针旋转 90°">
+                        <RotateCw size={14} />
+                      </button>
+                    </div>
+                  )}
+                  {/* ── 宽屏：全部内联 ── */}
+                  {!compactMode && (
+                  <>
+                    <button onClick={refreshCurrentFile} className="p-1 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title="刷新当前文件">
+                      <RefreshCw size={13} />
+                    </button>
+                    {selectedFileCategory === 'code' && (
+                      <button onClick={() => editorActionsRef.current.copy?.()} className="flex items-center gap-1 text-[11px] px-1 py-0.5 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title="复制内容">
+                        <Copy size={12} /> 复制
+                      </button>
+                    )}
+                    {selectedFileCategory === 'markdown' && (
+                      <div className="relative shrink-0">
+                        <button onClick={() => setMdExportOpen(!mdExportOpen)} className="flex items-center gap-1 text-[11px] px-1 py-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="导出">
+                          <Download size={12} /> 导出 <ChevronDown size={10} />
+                        </button>
+                        {mdExportOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setMdExportOpen(false)} />
+                            <div className="absolute right-0 top-full mt-1 rounded shadow-lg border z-50 py-1 min-w-[100px]" style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+                              <button onClick={() => { editorActionsRef.current.exportPdf?.(); setMdExportOpen(false) }} className="w-full text-left text-xs px-3 py-1.5 cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text)' }}>
+                                导出 PDF
+                              </button>
+                              <button onClick={() => { editorActionsRef.current.exportWord?.(); setMdExportOpen(false) }} className="w-full text-left text-xs px-3 py-1.5 cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text)' }}>
+                                导出 Word
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <button onClick={() => {
+                      const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(selectedFile.path)}`
+                      const a = document.createElement('a'); a.href = url; a.download = selectedFile.name; a.click()
+                    }} className="p-1 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title="下载文件">
+                      <Download size={13} />
+                    </button>
+                    {isTauri() && (
+                      <button onClick={() => handleOpenLocal(selectedFile.path)} className="p-1 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title="本地打开">
+                        <ExternalLink size={13} />
+                      </button>
+                    )}
+                    {isTauri() && (
+                      <button onClick={() => handleRevealInDir(selectedFile.path)} className="p-1 rounded cursor-pointer shrink-0" style={{ color: 'var(--color-text-secondary)' }} title="打开所在目录">
+                        <FolderOpen size={13} />
+                      </button>
+                    )}
+                  </>
+                  )}
+                </div>
+                {/* 右侧固定按钮：保存、更多菜单、关闭 —— 始终可见 */}
+                <div className="flex items-center gap-1 shrink-0 ml-1">
+                  {/* 保存按钮 */}
+                  {(() => {
+                    const showSave = selectedFileCategory && !['image', 'pdf', 'word', 'excel', 'ppt'].includes(selectedFileCategory) && !(selectedFileCategory === 'html' && htmlMode === 'visual')
+                    return showSave ? (
+                      <button
+                        onClick={() => editorActionsRef.current.save?.()}
+                        disabled={saving}
+                        className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded cursor-pointer"
+                        style={{ color: 'var(--color-primary)' }}
+                        title="Ctrl+S 保存">
+                        {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} 保存
+                      </button>
+                    ) : null
+                  })()}
+                  {/* ── 窄屏：更多菜单 ── */}
+                  {compactMode && (
+                  <div className="relative">
+                    <button onClick={() => setFileActionsOpen(!fileActionsOpen)} className="p-0.5 rounded cursor-pointer" style={{ color: 'var(--color-text-secondary)' }} title="更多操作">
+                      <MoreHorizontal size={14} />
+                    </button>
+                    {fileActionsOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setFileActionsOpen(false)} />
+                        <div className="absolute right-0 top-full mt-1 py-1 rounded-lg border shadow-lg z-50 min-w-[140px]"
+                          style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                          <button onClick={() => { refreshCurrentFile(); setFileActionsOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                            <RefreshCw size={12} /> 刷新
+                          </button>
+                          {selectedFileCategory === 'code' && (
+                            <button onClick={() => { editorActionsRef.current.copy?.(); setFileActionsOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                              <Copy size={12} /> 复制
+                            </button>
+                          )}
+                          {selectedFileCategory === 'markdown' && (
+                            <>
+                              <button onClick={() => { editorActionsRef.current.exportPdf?.(); setFileActionsOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                                <Download size={12} /> 导出 PDF
+                              </button>
+                              <button onClick={() => { editorActionsRef.current.exportWord?.(); setFileActionsOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                                <Download size={12} /> 导出 Word
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => {
+                            const url = `/api/projects/${encodeURIComponent(projectId)}/files?action=download&path=${encodeURIComponent(selectedFile.path)}`
+                            const a = document.createElement('a'); a.href = url; a.download = selectedFile.name; a.click()
+                            setFileActionsOpen(false)
+                          }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                            <Download size={12} /> 下载
+                          </button>
+                          {isTauri() && (
+                            <button onClick={() => { handleOpenLocal(selectedFile.path); setFileActionsOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                              <ExternalLink size={12} /> 打开
+                            </button>
+                          )}
+                          {isTauri() && (
+                            <button onClick={() => { handleRevealInDir(selectedFile.path); setFileActionsOpen(false) }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left cursor-pointer hover:bg-[var(--color-bg-tertiary)]" style={{ color: 'var(--color-text-secondary)' }}>
+                              <FolderOpen size={12} /> 打开所在目录
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  )}
+                  {/* 关闭 */}
+                  <button
+                    onClick={() => { setSelectedFile(null); setSelectedPath(null); setPreviewContent(null); setDiffOldContent(null); setDiffNewContent(null) }}
+                    className="p-0.5 rounded cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+                    style={{ color: 'var(--color-text-muted)' }}
+                    title="关闭">
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-hidden min-h-0">
                 {previewLoading ? (
@@ -1572,12 +1730,12 @@ export default function FilesPanel({
                   />
                 ) : (() => {
                   const cat = getFileCategory(selectedFile.name)
-                  if (cat === 'image') return <ImagePreview key={previewKey} projectId={projectId} filePath={selectedFile.path} refreshKey={previewKey} />
+                  if (cat === 'image') return <ImagePreview key={previewKey} projectId={projectId} filePath={selectedFile.path} refreshKey={previewKey} zoom={imageZoom} rotation={imageRotation} />
                   if (['pdf', 'word', 'excel', 'ppt'].includes(cat)) return <JitViewerPreview key={previewKey} projectId={projectId} filePath={selectedFile.path} fileName={selectedFile.name} refreshKey={previewKey} />
-                  if (cat === 'html') return <HtmlEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} onSendToChat={filePreviewCtx?.sendToChat} />
-                  if (cat === 'code') return <CodeEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
-                  if (cat === 'markdown') return <MarkdownEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} projectId={projectId} filePath={selectedFile.path} />
-                  if (cat === 'text') return <TextEditor content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} />
+                  if (cat === 'html') return <HtmlEditor key={previewKey} content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} onSendToChat={sendToChat} onToggleFullscreen={onToggleFullscreen} isFullscreen={isFullscreen} mode={htmlMode} onModeChange={handleHtmlModeChange} registerActions={handleRegisterActions} />
+                  if (cat === 'code') return <CodeEditor key={previewKey} content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} registerActions={handleRegisterActions} />
+                  if (cat === 'markdown') return <MarkdownEditor key={previewKey} content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} projectId={projectId} filePath={selectedFile.path} mode={mdMode} onModeChange={setMdMode} registerActions={handleRegisterActions} />
+                  if (cat === 'text') return <TextEditor key={previewKey} content={previewContent || ''} fileName={selectedFile.name} onSave={saveFile} saving={saving} registerActions={handleRegisterActions} />
                   return (
                     <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: 'var(--color-text-muted)' }}>
                       <File size={24} />

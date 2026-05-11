@@ -55,6 +55,8 @@ export interface FilesPanelProps {
   previewFilePath?: string | null
   /** previewFilePath 被消费后回调 */
   onPreviewFileConsumed?: () => void
+  /** 发送内容到聊天会话（可视化编辑器选中元素发送给 AI） */
+  sendToChat?: (data: { html: string; css: string; element: string; instruction: string; fileName: string }) => void
 }
 
 export interface MenuItem {
